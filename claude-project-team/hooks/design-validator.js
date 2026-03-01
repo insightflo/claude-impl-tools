@@ -69,7 +69,7 @@ const FORBIDDEN_PATTERNS = {
   // Non-standard spacing (not 4px multiples)
   // Matches: padding: 5px, margin: 15px, gap: 3rem, etc.
   nonStandardSpacing: {
-    pattern: /\b(padding|margin|gap|top|right|bottom|left|width|height)\s*:\s*(\d+(?:\.\d+)?)(px|rem|em)\b/g,
+    pattern: /\b(padding|margin|gap|top|right|bottom|left|width|height)\s*:\s*['"]?(\d+(?:\.\d+)?)(px|rem|em)['"]?(?=[^a-zA-Z0-9]|$)/g,
     message: 'Use standard spacing values (4px multiples: 4, 8, 16, 24, 32, 48) or design tokens var(--space-*).',
     severity: 'warning',
     validator: (match) => {

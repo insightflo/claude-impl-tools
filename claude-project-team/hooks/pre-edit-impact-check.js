@@ -24,6 +24,88 @@ const path = require('path');
 const fs = require('fs');
 
 // ---------------------------------------------------------------------------
+// 0. Safety Constants (Path Validation & Discovery Bounds)
+// ---------------------------------------------------------------------------
+
+const DEFAULT_MAX_DISCOVERY_DEPTH = 6;
+const MAX_DISCOVERY_DEPTH = Number.isFinite(Number.parseInt(process.env.PRE_EDIT_IMPACT_CHECK_MAX_DEPTH || process.env.PRE_EDIT_IMPACT_MAX_DEPTH || '', 10))
+  ? Number.parseInt(process.env.PRE_EDIT_IMPACT_CHECK_MAX_DEPTH || process.env.PRE_EDIT_IMPACT_MAX_DEPTH, 10)
+  : DEFAULT_MAX_DISCOVERY_DEPTH;
+
+function safeRealpath(p) {
+  try {
+    // native preserves platform-specific behavior and is faster
+    return fs.realpathSync.native(p);
+  } catch {
+    return null;
+  }
+}
+
+function normalizeRelativeSlashes(p) {
+  return typeof p === 'string' ? p.replace(/\\/g, '/') : '';
+}
+
+function isPathInside(baseDirAbs, targetAbs) {
+  if (!baseDirAbs || !targetAbs) return false;
+  const rel = path.relative(baseDirAbs, targetAbs);
+  if (rel === '') return true;
+  return !rel.startsWith('..' + path.sep) && rel !== '..' && !path.isAbsolute(rel);
+}
+
+function getProjectDirReal() {
+  const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
+  return safeRealpath(projectDir);
+}
+
+function realpathOfExistingAncestor(absPath) {
+  if (!absPath) return null;
+
+  let current = absPath;
+  while (true) {
+    if (fs.existsSync(current)) {
+      return safeRealpath(current);
+    }
+    const parent = path.dirname(current);
+    if (parent === current) return null;
+    current = parent;
+  }
+}
+
+/**
+ * Resolve a tool-provided file path into a validated project-relative path.
+ *
+ * This defends against:
+ * - absolute paths outside the project
+ * - relative traversal (..)
+ * - symlink escapes (project-internal symlink pointing outside)
+ *
+ * It uses realpath-based checks for both project root and the existing ancestor
+ * of the target path (to handle new files that don't exist yet).
+ *
+ * @param {string} filePath
+ * @param {string} projectDirReal - realpath of project root
+ * @returns {string|null} project-relative path if inside, otherwise null
+ */
+function validateAndGetRelativePath(filePath, projectDirReal) {
+  if (!filePath || !projectDirReal) return null;
+
+  const candidateAbs = path.isAbsolute(filePath)
+    ? path.resolve(filePath)
+    : path.resolve(projectDirReal, filePath);
+
+  // Determine the realpath of an existing ancestor to detect symlink escapes.
+  const ancestorReal = realpathOfExistingAncestor(candidateAbs);
+  if (!ancestorReal) return null;
+
+  if (!isPathInside(projectDirReal, ancestorReal)) return null;
+
+  const rel = normalizeRelativeSlashes(path.relative(projectDirReal, candidateAbs));
+  if (!rel || rel.startsWith('..')) return null;
+
+  return rel;
+}
+
+// ---------------------------------------------------------------------------
 // 1. Risk Level Constants & Patterns
 // ---------------------------------------------------------------------------
 
@@ -666,14 +748,11 @@ function formatImpactReport(impact) {
 function toRelativePath(filePath) {
   if (!filePath) return '';
 
-  const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
+  const projectDirReal = getProjectDirReal();
+  if (!projectDirReal) return '';
 
-  if (!path.isAbsolute(filePath)) return filePath;
-
-  const relative = path.relative(projectDir, filePath);
-  if (relative.startsWith('..')) return relative;
-
-  return relative;
+  const rel = validateAndGetRelativePath(filePath, projectDirReal);
+  return rel || '';
 }
 
 // ---------------------------------------------------------------------------
@@ -682,16 +761,27 @@ function toRelativePath(filePath) {
 
 /**
  * Discover project files for dependency analysis.
- * Uses fs.readdirSync to walk the project tree.
- * Skips common non-source directories.
  *
- * @param {string} projectDir - Project root directory
- * @param {number} [maxDepth=6] - Maximum directory depth
+ * Safety properties:
+ * - realpath-based visited tracking prevents symlink loops
+ * - realpath containment ensures we don't traverse outside project root
+ * - bounded recursion depth prevents hangs on deep trees
+ *
+ * @param {string} projectDir - Project root directory (absolute)
+ * @param {number} [maxDepth] - Maximum directory depth
  * @returns {string[]} List of relative file paths
  */
 function discoverProjectFiles(projectDir, maxDepth) {
-  const max = maxDepth || 6;
+  const projectDirReal = safeRealpath(projectDir);
+  if (!projectDirReal) return [];
+
+  const max = (typeof maxDepth === 'number' && Number.isFinite(maxDepth))
+    ? maxDepth
+    : MAX_DISCOVERY_DEPTH;
+
   const files = [];
+  const visited = new Set();
+
   const skipDirs = new Set([
     'node_modules', '.git', '__pycache__', '.venv', 'venv',
     '.tox', '.mypy_cache', '.pytest_cache', 'dist', 'build',
@@ -702,8 +792,42 @@ function discoverProjectFiles(projectDir, maxDepth) {
     '.py', '.js', '.ts', '.jsx', '.tsx', '.vue', '.svelte'
   ]);
 
+  function shouldWalkDir(fullPath, entry) {
+    try {
+      if (entry && entry.isDirectory && entry.isDirectory()) return true;
+      if (entry && entry.isSymbolicLink && entry.isSymbolicLink()) {
+        const stat = fs.statSync(fullPath);
+        return stat.isDirectory();
+      }
+    } catch {
+      return false;
+    }
+    return false;
+  }
+
+  function shouldIncludeFile(fullPath, entry) {
+    try {
+      if (entry && entry.isFile && entry.isFile()) return true;
+      if (entry && entry.isSymbolicLink && entry.isSymbolicLink()) {
+        const stat = fs.statSync(fullPath);
+        return stat.isFile();
+      }
+    } catch {
+      return false;
+    }
+    return false;
+  }
+
   function walk(dir, depth) {
     if (depth > max) return;
+
+    const dirReal = safeRealpath(dir);
+    if (!dirReal) return;
+
+    if (!isPathInside(projectDirReal, dirReal)) return;
+
+    if (visited.has(dirReal)) return;
+    visited.add(dirReal);
 
     let entries;
     try {
@@ -717,21 +841,23 @@ function discoverProjectFiles(projectDir, maxDepth) {
 
       const fullPath = path.join(dir, entry.name);
 
-      if (entry.isDirectory()) {
+      if (shouldWalkDir(fullPath, entry)) {
         if (!skipDirs.has(entry.name)) {
           walk(fullPath, depth + 1);
         }
-      } else if (entry.isFile()) {
+      } else if (shouldIncludeFile(fullPath, entry)) {
         const ext = path.extname(entry.name);
         if (codeExts.has(ext)) {
-          const relative = path.relative(projectDir, fullPath);
-          files.push(relative);
+          const relative = normalizeRelativeSlashes(path.relative(projectDirReal, fullPath));
+          if (relative && !relative.startsWith('..')) {
+            files.push(relative);
+          }
         }
       }
     }
   }
 
-  walk(projectDir, 0);
+  walk(projectDirReal, 0);
   return files;
 }
 
@@ -786,22 +912,20 @@ async function main() {
 
   if (!filePath) return; // No file path = nothing to check
 
-  // Convert to project-relative path
-  const relativePath = toRelativePath(filePath);
+  const projectDirReal = getProjectDirReal();
+  if (!projectDirReal) return;
 
-  // Skip files outside project directory
-  if (relativePath.startsWith('..')) return;
-
-  // Determine project root
-  const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
+  // Convert to validated project-relative path
+  const relativePath = validateAndGetRelativePath(filePath, projectDirReal);
+  if (!relativePath) return;
 
   // Discover project files for dependency analysis
-  const allFiles = discoverProjectFiles(projectDir);
+  const allFiles = discoverProjectFiles(projectDirReal);
 
   // Content reader: reads file from filesystem
   const contentReader = (f) => {
     try {
-      return fs.readFileSync(path.join(projectDir, f), 'utf8');
+      return fs.readFileSync(path.join(projectDirReal, f), 'utf8');
     } catch {
       return '';
     }
@@ -855,6 +979,8 @@ if (typeof module !== 'undefined' && module.exports) {
     analyzeImpact,
     formatImpactReport,
     toRelativePath,
-    discoverProjectFiles
+    discoverProjectFiles,
+    validateAndGetRelativePath,
+    isPathInside
   };
 }

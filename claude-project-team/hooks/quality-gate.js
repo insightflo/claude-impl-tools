@@ -28,9 +28,136 @@
  *   6. Block/allow based on thresholds
  */
 
-const { execSync } = require('child_process');
+const { spawnSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+
+// ---------------------------------------------------------------------------
+// 0. Safe command execution (no shell)
+// ---------------------------------------------------------------------------
+
+/**
+ * Split a command string into argv parts without invoking a shell.
+ * Supports basic single/double quotes and backslash escaping.
+ *
+ * @param {string} commandStr
+ * @returns {string[]}
+ */
+function splitCommandArgs(commandStr) {
+  const s = String(commandStr || '').trim();
+  if (!s) return [];
+
+  const parts = [];
+  let cur = '';
+  /** @type {null | '"' | "'"} */
+  let quote = null;
+  let escape = false;
+
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+
+    if (escape) {
+      cur += ch;
+      escape = false;
+      continue;
+    }
+
+    // In POSIX shells, backslash doesn't escape inside single quotes.
+    if (ch === '\\' && quote !== "'") {
+      escape = true;
+      continue;
+    }
+
+    if (quote) {
+      if (ch === quote) {
+        quote = null;
+        continue;
+      }
+      cur += ch;
+      continue;
+    }
+
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      continue;
+    }
+
+    if (/\s/.test(ch)) {
+      if (cur) {
+        parts.push(cur);
+        cur = '';
+      }
+      continue;
+    }
+
+    cur += ch;
+  }
+
+  if (escape) {
+    // Treat dangling backslash literally
+    cur += '\\';
+  }
+
+  if (cur) parts.push(cur);
+  return parts;
+}
+
+/**
+ * Execute a command string safely (no shell evaluation).
+ *
+ * @param {string} commandStr
+ * @param {{ cwd?: string }} [options]
+ * @returns {{ ok: boolean, status: number | null, stdout: string, stderr: string, output: string, error?: string }}
+ */
+function runCommand(commandStr, options = {}) {
+  const argv = splitCommandArgs(commandStr);
+  if (argv.length === 0) {
+    return {
+      ok: false,
+      status: 127,
+      stdout: '',
+      stderr: '',
+      output: '',
+      error: 'Empty command'
+    };
+  }
+
+  const command = argv[0];
+  const args = argv.slice(1);
+
+  const result = spawnSync(command, args, {
+    cwd: options.cwd || process.cwd(),
+    encoding: 'utf-8',
+    shell: false,
+    stdio: 'pipe'
+  });
+
+  const stdout = result.stdout || '';
+  const stderr = result.stderr || '';
+
+  const output = stdout || stderr;
+
+  if (result.error) {
+    const errMsg = result.error && result.error.message ? result.error.message : String(result.error);
+    return {
+      ok: false,
+      status: result.status ?? 1,
+      stdout,
+      stderr,
+      output: output || errMsg,
+      error: errMsg
+    };
+  }
+
+  const ok = result.status === 0;
+  return {
+    ok,
+    status: result.status,
+    stdout,
+    stderr,
+    output
+  };
+}
 
 // ---------------------------------------------------------------------------
 // 1. Configuration
@@ -93,7 +220,23 @@ function detectProjectType() {
   // Check for package.json (frontend)
   const packageJsonPath = path.join(cwd, 'package.json');
   if (fs.existsSync(packageJsonPath)) {
-    return 'frontend';
+    try {
+      const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+      const scripts = pkg && typeof pkg === 'object' ? pkg.scripts : null;
+
+      // Only classify as a "frontend" project if it appears runnable.
+      // Tooling-only folders may have a package.json for devDeps but no scripts.
+      const hasTestScript = !!(scripts && typeof scripts === 'object' && scripts.test);
+      const hasLintScript = !!(scripts && typeof scripts === 'object' && scripts.lint);
+      const hasTypeScript = !!(scripts && typeof scripts === 'object' && (scripts['type-check'] || scripts.typecheck));
+
+      if (hasTestScript || hasLintScript || hasTypeScript) {
+        return 'frontend';
+      }
+    } catch {
+      // If package.json is unreadable, don't assume frontend.
+      // Continue checking backend markers before falling back to unknown.
+    }
   }
 
   // Check for pyproject.toml or setup.py (backend)
@@ -121,21 +264,16 @@ function runTests(projectType) {
     return { passed: 0, failed: 0, total: 0, output: 'Unknown project type' };
   }
 
-  try {
-    const output = execSync(config.testCmd, {
-      encoding: 'utf-8',
-      stdio: 'pipe',
-      cwd: process.cwd()
-    });
+  const res = runCommand(config.testCmd, { cwd: process.cwd() });
 
-    // Parse test results
-    const results = parseTestOutput(output, projectType);
-    return { ...results, output };
-  } catch (error) {
-    // Command failed - tests did not pass
-    const output = error.stdout || error.stderr || String(error);
-    return { passed: 0, failed: 1, total: 1, output };
+  if (res.ok) {
+    const results = parseTestOutput(res.stdout, projectType);
+    return { ...results, output: res.stdout };
   }
+
+  // Command failed - tests did not pass
+  const output = res.output || res.error || 'Test command failed';
+  return { passed: 0, failed: 1, total: 1, output };
 }
 
 /**
@@ -205,10 +343,8 @@ function extractCoverage(projectType) {
       }
 
       // Fallback: parse from term-missing output
-      const match = execSync('pytest --cov=app --cov-report=term-missing -q', {
-        encoding: 'utf-8',
-        stdio: 'pipe'
-      }).match(/TOTAL\s+\d+\s+\d+\s+(\d+)%/);
+      const fallbackRes = runCommand('pytest --cov=app --cov-report=term-missing -q', { cwd: process.cwd() });
+      const match = (fallbackRes.stdout || '').match(/TOTAL\s+\d+\s+\d+\s+(\d+)%/);
 
       return {
         line: match ? parseInt(match[1], 10) : 0,
@@ -260,22 +396,16 @@ function runLinter(projectType) {
     return { errors: 0, warnings: 0, output: 'Unknown project type' };
   }
 
-  try {
-    const output = execSync(config.lintCmd, {
-      encoding: 'utf-8',
-      stdio: 'pipe',
-      cwd: process.cwd()
-    });
+  const res = runCommand(config.lintCmd, { cwd: process.cwd() });
 
-    // Parse linting output
-    const results = parseLintOutput(output, projectType);
-    return { ...results, output };
-  } catch (error) {
-    // Linter found issues
-    const output = error.stdout || error.stderr || String(error);
-    const results = parseLintOutput(output, projectType);
-    return { ...results, output };
+  // Parse linting output (even on failure; output may still be JSON)
+  const parsed = parseLintOutput(res.stdout || res.stderr || '', projectType);
+
+  if (res.ok) {
+    return { ...parsed, output: res.stdout };
   }
+
+  return { ...parsed, output: res.output || res.error || 'Lint command failed' };
 }
 
 /**
@@ -287,7 +417,6 @@ function runLinter(projectType) {
 function parseLintOutput(output, projectType) {
   if (projectType === 'backend') {
     // ruff output
-    const lines = output.split('\n');
     let errors = 0;
     let warnings = 0;
 
@@ -349,21 +478,15 @@ function runTypeCheck(projectType) {
     return { errors: 0, output: 'Unknown project type' };
   }
 
-  try {
-    const output = execSync(config.typeCmd, {
-      encoding: 'utf-8',
-      stdio: 'pipe',
-      cwd: process.cwd()
-    });
+  const res = runCommand(config.typeCmd, { cwd: process.cwd() });
 
-    // No errors
-    return { errors: 0, output };
-  } catch (error) {
-    // Type errors found
-    const output = error.stdout || error.stderr || String(error);
-    const errors = parseTypeOutput(output, projectType);
-    return { errors, output };
+  if (res.ok) {
+    return { errors: 0, output: res.stdout };
   }
+
+  const combined = res.stdout || res.stderr || '';
+  const errors = parseTypeOutput(combined, projectType);
+  return { errors, output: res.output || res.error || combined || 'Type check command failed' };
 }
 
 /**
@@ -587,9 +710,11 @@ async function main() {
   }
 }
 
-main().catch(() => {
-  // Silent exit - hooks must never break the session
-});
+if (require.main === module) {
+  main().catch(() => {
+    // Silent exit - hooks must never break the session
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Exports for testing
@@ -600,6 +725,8 @@ if (typeof module !== 'undefined' && module.exports) {
     QUALITY_THRESHOLDS,
     PROJECT_PATTERNS,
     detectProjectType,
+    runCommand,
+    splitCommandArgs,
     runTests,
     parseTestOutput,
     extractCoverage,

@@ -12,9 +12,14 @@
  *   7. Comprehensive report generation
  */
 
+const fs = require('fs');
+const path = require('path');
+
 const {
   QUALITY_THRESHOLDS,
   PROJECT_PATTERNS,
+  detectProjectType,
+  runTests,
   parseTestOutput,
   parseLintOutput,
   parseTypeOutput,
@@ -514,3 +519,44 @@ describe('Quality Gate Full Flow', () => {
     expect(report).toContain('Type errors');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Regression: command injection hardening
+// ---------------------------------------------------------------------------
+
+describe('command execution hardening', () => {
+  test('does not shell-evaluate metacharacters in configured commands', () => {
+    jest.isolateModules(() => {
+      const spawnSync = jest.fn(() => ({
+        status: 0,
+        stdout: '5 passed in 1.23s',
+        stderr: ''
+      }));
+
+      jest.doMock('child_process', () => ({ spawnSync }));
+
+      // Require after mocking child_process
+      // eslint-disable-next-line global-require
+      const qualityGate = require('../quality-gate');
+
+      // Attempt to smuggle extra commands via shell metacharacters.
+      qualityGate.PROJECT_PATTERNS.backend.testCmd = 'pytest -q && touch /tmp/SHOULD_NOT_RUN';
+
+      const result = qualityGate.runTests('backend');
+      expect(result.passed).toBe(5);
+      expect(result.failed).toBe(0);
+
+      expect(spawnSync).toHaveBeenCalledTimes(1);
+      const [cmd, args, opts] = spawnSync.mock.calls[0];
+
+      expect(cmd).toBe('pytest');
+      expect(args).toEqual(['-q', '&&', 'touch', '/tmp/SHOULD_NOT_RUN']);
+      expect(opts).toMatchObject({ shell: false });
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Integration Tests
+// ---------------------------------------------------------------------------
+

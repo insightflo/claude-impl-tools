@@ -14,14 +14,174 @@
  *   - stdout: JSON { decision: "allow"|"deny", reason?: string }
  *             or { hookSpecificOutput: { additionalContext: string } }
  *
- * Agent Detection:
- *   The current agent role is detected from environment variable
- *   CLAUDE_AGENT_ROLE (set by the orchestration layer) or from
- *   the session context. If undetectable, the hook issues a warning
- *   instead of blocking.
+ * Agent Authentication:
+ *   The current agent identity is established via a signed token.
+ *   Do not trust CLAUDE_AGENT_ROLE alone for authorization decisions.
  */
 
 const path = require('path');
+const fs = require('fs');
+const crypto = require('crypto');
+
+// ---------------------------------------------------------------------------
+// 0. Agent Authentication (Signed Token)
+// ---------------------------------------------------------------------------
+
+function base64UrlEncode(buffer) {
+  return Buffer.from(buffer)
+    .toString('base64')
+    .replace(/=+$/g, '')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_');
+}
+
+function base64UrlDecodeToBuffer(str) {
+  if (typeof str !== 'string' || str.length === 0) {
+    throw new Error('Invalid base64url string');
+  }
+  if (!/^[A-Za-z0-9_-]+$/.test(str)) {
+    throw new Error('Invalid base64url characters');
+  }
+
+  const padded = str + '='.repeat((4 - (str.length % 4)) % 4);
+  const b64 = padded.replace(/-/g, '+').replace(/_/g, '/');
+  return Buffer.from(b64, 'base64');
+}
+
+function signAgentTokenPayload(payloadB64, secret) {
+  return base64UrlEncode(
+    crypto.createHmac('sha256', secret).update(payloadB64).digest()
+  );
+}
+
+/**
+ * Verify a signed agent token.
+ * Token format: base64url(JSON(payload)).base64url(HMAC_SHA256(payloadB64, secret))
+ * Payload: { role: string, exp: number (unix seconds) }
+ *
+ * @param {string} token
+ * @param {string} secret
+ * @param {number} [nowMs]
+ * @returns {{ ok: true, role: string } | { ok: false, reason: string }}
+ */
+function verifyAgentToken(token, secret, nowMs = Date.now()) {
+  if (!secret) {
+    return { ok: false, reason: 'Missing token verification secret (CLAUDE_HOOK_SECRET or PERMISSION_CHECKER_SECRET).' };
+  }
+  if (!token || typeof token !== 'string') {
+    return { ok: false, reason: 'Missing agent authentication token (CLAUDE_AGENT_TOKEN or tool_input.agent_token).' };
+  }
+
+  const parts = token.split('.');
+  if (parts.length !== 2 || !parts[0] || !parts[1]) {
+    return { ok: false, reason: 'Invalid agent_token format (expected "payload.signature").' };
+  }
+
+  const [payloadB64, signatureB64] = parts;
+
+  let expectedSig;
+  try {
+    expectedSig = signAgentTokenPayload(payloadB64, secret);
+  } catch {
+    return { ok: false, reason: 'Failed to compute token signature.' };
+  }
+
+  try {
+    const a = Buffer.from(signatureB64);
+    const b = Buffer.from(expectedSig);
+    if (a.length !== b.length) {
+      return { ok: false, reason: 'Invalid agent_token signature.' };
+    }
+    if (!crypto.timingSafeEqual(a, b)) {
+      return { ok: false, reason: 'Invalid agent_token signature.' };
+    }
+  } catch {
+    return { ok: false, reason: 'Invalid agent_token signature.' };
+  }
+
+  let payload;
+  try {
+    payload = JSON.parse(base64UrlDecodeToBuffer(payloadB64).toString('utf8'));
+  } catch {
+    return { ok: false, reason: 'Invalid agent_token payload.' };
+  }
+
+  if (!payload || typeof payload !== 'object') {
+    return { ok: false, reason: 'Invalid agent_token payload.' };
+  }
+  if (typeof payload.role !== 'string' || payload.role.trim() === '') {
+    return { ok: false, reason: 'agent_token payload missing role.' };
+  }
+  if (typeof payload.exp !== 'number' || !Number.isFinite(payload.exp)) {
+    return { ok: false, reason: 'agent_token payload missing exp.' };
+  }
+
+  const nowSec = Math.floor(nowMs / 1000);
+  if (payload.exp <= nowSec) {
+    return { ok: false, reason: 'agent_token has expired.' };
+  }
+
+  const roleLower = payload.role.toLowerCase().replace(/\s+/g, '-');
+  return { ok: true, role: roleLower };
+}
+
+// ---------------------------------------------------------------------------
+// 0b. Safe Path Resolution (realpath-based)
+// ---------------------------------------------------------------------------
+
+function realpathNative(p) {
+  const fn = fs.realpathSync.native ? fs.realpathSync.native : fs.realpathSync;
+  return fn(p);
+}
+
+/**
+ * Resolve a tool file path to a normalized project-relative path.
+ * Rejects traversal and symlink-escape using realpath checks.
+ *
+ * @param {string} filePath
+ * @param {string} projectDir
+ * @returns {{ ok: true, relativePath: string } | { ok: false, reason: string }}
+ */
+function toSafeProjectRelativePath(filePath, projectDir) {
+  if (!filePath) return { ok: false, reason: 'Missing file_path in tool input.' };
+
+  const projectRootAbs = path.resolve(projectDir || process.cwd());
+
+  let projectRootReal;
+  try {
+    projectRootReal = realpathNative(projectRootAbs);
+  } catch {
+    return { ok: false, reason: `Project root is not accessible: "${projectRootAbs}".` };
+  }
+
+  const absTarget = path.isAbsolute(filePath)
+    ? path.resolve(filePath)
+    : path.resolve(projectRootAbs, filePath);
+
+  let targetReal;
+  try {
+    targetReal = realpathNative(absTarget);
+  } catch {
+    // If the target file doesn't exist yet (e.g., Write), resolve its parent directory.
+    const parentAbs = path.dirname(absTarget);
+    let parentReal;
+    try {
+      parentReal = realpathNative(parentAbs);
+    } catch {
+      return { ok: false, reason: `Target path parent is not accessible: "${parentAbs}".` };
+    }
+    targetReal = path.join(parentReal, path.basename(absTarget));
+  }
+
+  const rel = path.relative(projectRootReal, targetReal);
+  if (rel.startsWith('..') || path.isAbsolute(rel)) {
+    return { ok: false, reason: 'Path escapes project root (traversal or symlink escape).' };
+  }
+
+  const normalized = rel.split(path.sep).join('/');
+  return { ok: true, relativePath: normalized };
+}
+
 
 // ---------------------------------------------------------------------------
 // 1. Permission Matrix
@@ -339,27 +499,21 @@ function findEscalationTarget(relativePath, escalationMap) {
 }
 
 // ---------------------------------------------------------------------------
-// 4. Agent Role Detection
+// 4. Agent Role Parsing / Detection
 // ---------------------------------------------------------------------------
 
 /**
- * Detect the current agent role from environment or context.
+ * Parse an agent role string into {role, domain}.
+ * Accepts both static roles (e.g. "project-manager") and domain-scoped
+ * roles encoded as "{domain}-developer|designer|part-leader".
  *
- * Priority:
- *   1. CLAUDE_AGENT_ROLE environment variable (set by orchestrator)
- *   2. CLAUDE_AGENT_NAME environment variable (alternative)
- *   3. null (unknown - will issue warning instead of blocking)
- *
+ * @param {string|null} agentRole
  * @returns {{ role: string|null, domain: string|null }}
  */
-function detectAgentRole() {
-  const agentRole = process.env.CLAUDE_AGENT_ROLE
-    || process.env.CLAUDE_AGENT_NAME
-    || null;
-
+function parseAgentRoleString(agentRole) {
   if (!agentRole) return { role: null, domain: null };
 
-  const roleLower = agentRole.toLowerCase().replace(/\s+/g, '-');
+  const roleLower = String(agentRole).toLowerCase().replace(/\s+/g, '-');
 
   // Check static roles first
   if (PERMISSION_MATRIX[roleLower]) {
@@ -384,6 +538,23 @@ function detectAgentRole() {
   }
 
   return { role: null, domain: null };
+}
+
+/**
+ * Detect the current agent role from environment variables.
+ *
+ * NOTE: This is retained for backwards compatibility and unit tests.
+ * The hook's authorization decision should be based on a verified token,
+ * not on these environment variables.
+ *
+ * @returns {{ role: string|null, domain: string|null }}
+ */
+function detectAgentRole() {
+  const agentRole = process.env.CLAUDE_AGENT_ROLE
+    || process.env.CLAUDE_AGENT_NAME
+    || null;
+
+  return parseAgentRoleString(agentRole);
 }
 
 /**
@@ -570,8 +741,6 @@ function checkPermission(role, domain, relativePath) {
 // 8. stdin/stdout Helpers (Claude Code Hook Protocol)
 // ---------------------------------------------------------------------------
 
-let _hookEventName = '';
-
 /**
  * Read JSON from stdin.
  * @returns {Promise<object>}
@@ -584,7 +753,6 @@ function readStdin() {
     process.stdin.on('end', () => {
       try {
         const parsed = data.trim() ? JSON.parse(data) : {};
-        _hookEventName = parsed.hook_event_name || '';
         resolve(parsed);
       } catch {
         resolve({});
@@ -603,16 +771,6 @@ function outputDeny(reason) {
     decision: 'deny',
     reason: reason
   }));
-}
-
-/**
- * Output a warning via additionalContext (does not block).
- * @param {string} context
- */
-function outputWarning(context) {
-  const hookSpecificOutput = { additionalContext: context };
-  if (_hookEventName) hookSpecificOutput.hookEventName = _hookEventName;
-  process.stdout.write(JSON.stringify({ hookSpecificOutput }));
 }
 
 // ---------------------------------------------------------------------------
@@ -656,20 +814,30 @@ async function main() {
 
   if (!filePath) return; // No file path = nothing to check
 
-  // Convert to project-relative path
-  const relativePath = toRelativePath(filePath);
-
-  // Skip files outside project directory
-  if (relativePath.startsWith('..')) return;
-
-  // Detect current agent role
-  const { role, domain } = detectAgentRole();
-
-  // If role is unknown, issue warning but do not block
-  if (!role) {
-    outputWarning(formatUnknownAgentWarning(relativePath));
+  // Authenticate agent identity using signed token
+  const agentToken = toolInput.agent_token || process.env.CLAUDE_AGENT_TOKEN || '';
+  const tokenSecret = process.env.CLAUDE_HOOK_SECRET || process.env.PERMISSION_CHECKER_SECRET || '';
+  const verified = verifyAgentToken(agentToken, tokenSecret);
+  if (!verified.ok) {
+    outputDeny(verified.reason);
     return;
   }
+
+  // Derive role/domain from verified token claim
+  const { role, domain } = parseAgentRoleString(verified.role);
+  if (!role) {
+    outputDeny(`Invalid role in agent_token: "${verified.role}".`);
+    return;
+  }
+
+  // Convert to safe project-relative path (reject traversal & symlink escape)
+  const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
+  const safePath = toSafeProjectRelativePath(filePath, projectDir);
+  if (!safePath.ok) {
+    outputDeny(safePath.reason);
+    return;
+  }
+  const relativePath = safePath.relativePath;
 
   // Perform permission check
   const result = checkPermission(role, domain, relativePath);
@@ -720,6 +888,9 @@ if (typeof module !== 'undefined' && module.exports) {
     checkDomainBoundary,
     checkPermission,
     toRelativePath,
+    toSafeProjectRelativePath,
+    parseAgentRoleString,
+    verifyAgentToken,
     formatDenialMessage,
     formatBoundaryViolationMessage,
     formatUnknownAgentWarning
