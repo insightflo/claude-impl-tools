@@ -208,6 +208,29 @@
 
 ## 7. Metrics & Reporting
 
+---
+
+## 8. Governance Operationalization (Doc → Execution)
+
+> 품질 게이트가 "문서로만" 남지 않도록, 실제 실행 경로(로컬/CI)와 산출물을 명시합니다.
+
+### 8.1 Single Entry 검증 커맨드
+- Recommended: `scripts/verify_all.sh` 또는 `make verify`
+- 목적: Gate 1~7을 **한 번에** 실행해서 PASS/FAIL을 결정
+
+### 8.2 Gate ↔ Command 매핑
+
+| Gate | What | Command/Job | Output Artifact | Enforcement |
+|------|------|-------------|-----------------|-------------|
+| G1 | Contracts | {{COMMAND}} | {{PATH}} | Block |
+| G2 | Safe-mode invariants | {{COMMAND}} | {{PATH}} | Block |
+| G3 | Lint/Type | {{COMMAND}} | {{PATH}} | Block |
+| G4 | Unit/Integration | {{COMMAND}} | {{PATH}} | Block/Warn |
+| G5 | E2E | {{COMMAND}} | {{PATH}} | Block |
+| G6 | Security scan | {{COMMAND}} | {{PATH}} | Block/Warn |
+| G7 | Handoff readiness | {{COMMAND}} | {{PATH}} | Block |
+
+
 ### 7.1 Quality Dashboard
 
 | Metric | Source | Update Frequency |

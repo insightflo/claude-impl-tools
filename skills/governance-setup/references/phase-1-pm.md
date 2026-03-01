@@ -30,6 +30,10 @@ Task({
 3. 리스크 관리 계획 (식별된 리스크, 대응 방안)
 4. 커뮤니케이션 규칙 (보고 주기, 채널)
 5. 에스컬레이션 정책
+6. (필수) **Governance Operationalization (Doc → Execution)**
+   - 단일 엔트리 검증 커맨드 제안: `scripts/verify_all.sh` 또는 `make verify`
+   - 거버넌스 산출물(ADR/quality-gates/DB standards/Design system)이 어디에서 어떻게 강제되는지(CI job, 테스트, 산출물 경로)
+   - 거버넌스 업데이트 트리거(게이트 실패/새 퍼블릭 경계/보안 포스처 변화)
 
 ## 주의사항
 - 구현 코드 작성 금지

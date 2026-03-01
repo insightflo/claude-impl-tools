@@ -60,6 +60,12 @@ Task({
 - 보존 기간
 - 복구 테스트 주기
 
+### (필수) Governance Operationalization (Doc → Execution)
+- 단일 엔트리 검증 커맨드 제안: `scripts/verify_all.sh` 또는 `make verify`
+- DB 표준이 실제로 강제되는 지점 명시(예: migration lint, naming checks, CI jobs)
+- 체크별 실행 커맨드/산출물 경로/Block vs Warn 매핑 표
+- 업데이트 트리거(incident, 성능/락 이슈, 도메인 확장)
+
 ## 주의사항
 - 구현 코드 작성 금지 (SQL 예시만 포함)
 - 팀 전체가 따를 수 있는 명확한 규칙

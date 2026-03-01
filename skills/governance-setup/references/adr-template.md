@@ -60,6 +60,17 @@ We will {{DECISION_STATEMENT}}.
 
 ## Compliance
 
+### Where This Is Enforced (Doc → Execution)
+- CI/Local entrypoint: {{VERIFY_ENTRYPOINT}} (e.g., `scripts/verify_all.sh`, `make verify`)
+- Tests/suites: {{TEST_SUITE_NAMES}}
+- Linters/formatters: {{TOOLS}}
+- Output artifacts: {{ARTIFACT_PATHS}}
+
+### Update Triggers
+- Gate/contract test failure related to this decision
+- New public boundary / API surface added
+- Security posture changes (permissions, sandboxing, secret handling)
+
 ### Validation Rules
 ```
 - [ ] All new code follows this decision

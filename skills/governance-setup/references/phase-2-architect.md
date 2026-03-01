@@ -51,6 +51,13 @@ API 버저닝 정책:
 - Decision (무엇을 결정했는가)
 - Consequences (결정의 영향)
 
+## (필수) Governance Operationalization (Doc → Execution)
+- ADR이 "문서로 끝"나지 않도록, 아래를 포함하세요:
+  - 단일 엔트리 검증 커맨드 제안: `scripts/verify_all.sh` 또는 `make verify`
+  - 각 ADR의 결정이 실제로 강제/검증되는 지점 명시(예: lint rule/CI job/테스트/런타임 가드)
+  - 산출물 경로 및 CI 아티팩트 경로(있는 경우)
+  - 업데이트 트리거(반복 실패, 신규 퍼블릭 경계 추가, 운영/보안 포스처 변화)
+
 ## 주의사항
 - 구현 코드 작성 금지
 - 결정 근거를 명확히 기술

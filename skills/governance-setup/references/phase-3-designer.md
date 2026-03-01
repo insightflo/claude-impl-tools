@@ -51,6 +51,12 @@ Task({
 - ARIA labels 규칙
 - Keyboard navigation
 
+### (필수) Governance Operationalization (Doc → Execution)
+- 디자인 시스템이 실제 개발에 반영되도록 아래를 각 문서(또는 공통 섹션)로 포함:
+  - 단일 엔트리 검증 커맨드 제안: `scripts/verify_all.sh` 또는 `make verify`
+  - Tokens/Components/Visual regression/a11y에 대한 체크 도구/CI job/산출물 경로/Block vs Warn 매핑 표
+  - 업데이트 트리거(토큰 변경, a11y 위반, 신규 핵심 패턴 추가)
+
 ## 주의사항
 - 구현 코드 작성 금지 (CSS/Tailwind 예시만 포함)
 - 일관성 있는 디자인 언어 정의

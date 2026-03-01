@@ -25,6 +25,12 @@ Task({
 
 다음 섹션을 포함하세요:
 
+### 0. Governance Operationalization (Doc → Execution)
+- (필수) **문서 → 실행 연결고리**를 위해, 아래를 포함하세요:
+  - 단일 엔트리 검증 커맨드 제안: `scripts/verify_all.sh` 또는 `make verify`
+  - Gate 항목별 실행 커맨드/CI job/산출물 경로/Block vs Warn 매핑 표
+  - 업데이트 트리거(반복 실패, 신규 퍼블릭 경계 추가, 운영/보안 포스처 변화)
+
 ### 1. 테스트 커버리지 기준
 - Unit Test: 80% 이상
 - Integration Test: 주요 API 100%

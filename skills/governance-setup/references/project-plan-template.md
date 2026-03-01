@@ -127,6 +127,28 @@ Level 4: Stakeholder
 
 ---
 
+## 7. Governance Operationalization (Doc → Execution)
+
+> 거버넌스 문서가 "만들고 끝"이 되지 않도록, 실제 실행/운영으로 연결되는 경로를 정의합니다.
+
+### 7.1 Single Entry 검증 커맨드
+- Recommended: `scripts/verify_all.sh` 또는 `make verify`
+- 목적: 계약/품질/보안/핸드오프 기준을 **한 번에** 실행해 PASS/FAIL을 결정
+
+### 7.2 CI Enforcement
+| Gate | CI Job | Block/Warn | Output Artifact |
+|------|--------|------------|-----------------|
+| Contracts | {{CI_JOB}} | Block | {{PATH}} |
+| Quality gates | {{CI_JOB}} | Block/Warn | {{PATH}} |
+| Security scan | {{CI_JOB}} | Block/Warn | {{PATH}} |
+
+### 7.3 Governance Update Triggers
+- [ ] Gate 실패가 반복되거나 기준이 현실과 불일치
+- [ ] 새로운 public boundary(API/CLI/권한/데이터) 추가
+- [ ] 운영/보안 포스처 변경(비밀 관리, 권한 모델, 샌드박스)
+
+---
+
 ## Change Log
 
 | Date | Version | Author | Changes |
