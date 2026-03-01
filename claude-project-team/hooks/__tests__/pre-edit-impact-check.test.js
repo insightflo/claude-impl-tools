@@ -13,6 +13,9 @@
  *   8. Edge cases and error handling
  */
 
+const fs = require('fs');
+const path = require('path');
+
 const {
   classifyRiskLevel,
   findDirectDependents,
@@ -27,7 +30,9 @@ const {
   buildDependencyMap,
   getRiskDescription,
   RISK_LEVELS,
-  RISK_PATTERNS
+  RISK_PATTERNS,
+  validateAndGetRelativePath,
+  discoverProjectFiles
 } = require('../pre-edit-impact-check');
 
 // ---------------------------------------------------------------------------
@@ -782,29 +787,160 @@ describe('formatImpactReport', () => {
 // 12. Relative Path Resolution
 // ---------------------------------------------------------------------------
 
-describe('toRelativePath', () => {
+describe('toRelativePath / validateAndGetRelativePath (path safety)', () => {
+  let tmpRoot;
+  let projectDir;
+
+  beforeAll(() => {
+    tmpRoot = fs.mkdtempSync(path.join(fs.realpathSync.native(require('os').tmpdir()), 'pre-edit-impact-'));
+    projectDir = path.join(tmpRoot, 'project');
+    fs.mkdirSync(projectDir, { recursive: true });
+
+    // Seed some files
+    fs.mkdirSync(path.join(projectDir, 'src', 'models'), { recursive: true });
+    fs.writeFileSync(path.join(projectDir, 'src', 'models', 'user.py'), 'class User: pass\n', 'utf8');
+  });
+
+  afterAll(() => {
+    try {
+      fs.rmSync(tmpRoot, { recursive: true, force: true });
+    } catch {
+      // ignore
+    }
+  });
+
   test('returns empty string for empty input', () => {
     expect(toRelativePath('')).toBe('');
     expect(toRelativePath(null)).toBe('');
     expect(toRelativePath(undefined)).toBe('');
   });
 
-  test('returns relative path as-is', () => {
-    expect(toRelativePath('src/models/user.py')).toBe('src/models/user.py');
+  test('returns relative path as-is when inside project (validated)', () => {
+    const prev = process.env.CLAUDE_PROJECT_DIR;
+    process.env.CLAUDE_PROJECT_DIR = projectDir;
+    try {
+      expect(toRelativePath('src/models/user.py')).toBe('src/models/user.py');
+    } finally {
+      process.env.CLAUDE_PROJECT_DIR = prev;
+    }
   });
 
-  test('converts absolute path to relative', () => {
-    const projectDir = process.cwd();
-    const absPath = `${projectDir}/src/models/user.py`;
-    const result = toRelativePath(absPath);
-    expect(result).toBe('src/models/user.py');
+  test('converts absolute path to relative when inside project', () => {
+    const prev = process.env.CLAUDE_PROJECT_DIR;
+    process.env.CLAUDE_PROJECT_DIR = projectDir;
+    try {
+      const absPath = path.join(projectDir, 'src', 'models', 'user.py');
+      const result = toRelativePath(absPath);
+      expect(result).toBe('src/models/user.py');
+    } finally {
+      process.env.CLAUDE_PROJECT_DIR = prev;
+    }
   });
 
-  test('handles paths outside project directory', () => {
-    const result = toRelativePath('/some/other/project/file.py');
-    expect(result).toContain('..');
+  test('rejects absolute path outside project', () => {
+    const projectDirReal = fs.realpathSync.native(projectDir);
+    const outsideFile = path.join(tmpRoot, 'outside.py');
+    fs.writeFileSync(outsideFile, 'print("no")\n', 'utf8');
+
+    const rel = validateAndGetRelativePath(outsideFile, projectDirReal);
+    expect(rel).toBeNull();
+  });
+
+  test('rejects symlink escape outside project', () => {
+    const projectDirReal = fs.realpathSync.native(projectDir);
+
+    const outsideDir = path.join(tmpRoot, 'outside');
+    fs.mkdirSync(outsideDir, { recursive: true });
+    fs.writeFileSync(path.join(outsideDir, 'secret.py'), 'print("secret")\n', 'utf8');
+
+    const linkPath = path.join(projectDir, 'linked_outside');
+    try {
+      fs.symlinkSync(outsideDir, linkPath, 'dir');
+    } catch (e) {
+      // Some CI environments restrict symlinks; if so, skip.
+      if (String(e && e.code) === 'EPERM' || String(e && e.code) === 'EACCES') {
+        return;
+      }
+      throw e;
+    }
+
+    const escaped = path.join(linkPath, 'secret.py');
+    const rel = validateAndGetRelativePath(escaped, projectDirReal);
+    expect(rel).toBeNull();
   });
 });
+
+// ---------------------------------------------------------------------------
+// 13b. File Discovery Safety: symlink loops + max depth
+// ---------------------------------------------------------------------------
+
+describe('discoverProjectFiles (safety bounds)', () => {
+  let tmpRoot;
+  let projectDir;
+
+  beforeAll(() => {
+    tmpRoot = fs.mkdtempSync(path.join(fs.realpathSync.native(require('os').tmpdir()), 'pre-edit-impact-discovery-'));
+    projectDir = path.join(tmpRoot, 'project');
+    fs.mkdirSync(projectDir, { recursive: true });
+
+    fs.mkdirSync(path.join(projectDir, 'src'), { recursive: true });
+    fs.writeFileSync(path.join(projectDir, 'src', 'a.js'), '/* test fixture file */\n', 'utf8');
+
+    // Deep tree for max depth test
+    let cur = projectDir;
+    for (let i = 0; i < 10; i++) {
+      cur = path.join(cur, `d${i}`);
+      fs.mkdirSync(cur, { recursive: true });
+      fs.writeFileSync(path.join(cur, `f${i}.js`), '/* test fixture file */\n', 'utf8');
+    }
+
+    // Symlink loop: project/loop -> project
+    const loopLink = path.join(projectDir, 'loop');
+    try {
+      fs.symlinkSync(projectDir, loopLink, 'dir');
+    } catch (e) {
+      // If symlinks not permitted, we still keep max-depth test.
+      if (!(String(e && e.code) === 'EPERM' || String(e && e.code) === 'EACCES')) {
+        throw e;
+      }
+    }
+  });
+
+  afterAll(() => {
+    try {
+      fs.rmSync(tmpRoot, { recursive: true, force: true });
+    } catch {
+      // ignore
+    }
+  });
+
+  test('does not hang on symlink loops and returns bounded file list', () => {
+    const start = Date.now();
+    const files = discoverProjectFiles(projectDir, 6);
+    const elapsed = Date.now() - start;
+
+    // Not a strict perf test; just a guard against infinite recursion.
+    expect(elapsed).toBeLessThan(2000);
+    expect(Array.isArray(files)).toBe(true);
+    expect(files).toContain('src/a.js');
+  });
+
+  test('respects maxDepth to bound recursion', () => {
+    const shallow = discoverProjectFiles(projectDir, 1);
+    const deep = discoverProjectFiles(projectDir, 20);
+
+    expect(shallow.length).toBeLessThan(deep.length);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// End safety regression tests
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// 13. Edge Cases
+// ---------------------------------------------------------------------------
+
 
 // ---------------------------------------------------------------------------
 // 13. Edge Cases

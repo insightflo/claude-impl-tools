@@ -25,10 +25,19 @@ const {
   checkDomainBoundary,
   checkPermission,
   toRelativePath,
+  toSafeProjectRelativePath,
+  parseAgentRoleString,
+  verifyAgentToken,
   formatDenialMessage,
   formatBoundaryViolationMessage,
   formatUnknownAgentWarning
 } = require('../permission-checker');
+
+const crypto = require('crypto');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+
 
 // ---------------------------------------------------------------------------
 // Glob Pattern Matching
@@ -107,7 +116,7 @@ describe('PERMISSION_MATRIX', () => {
   });
 
   test('each role has read, write, and cannot arrays', () => {
-    for (const [role, perms] of Object.entries(PERMISSION_MATRIX)) {
+    for (const perms of Object.values(PERMISSION_MATRIX)) {
       expect(Array.isArray(perms.read)).toBe(true);
       expect(Array.isArray(perms.write)).toBe(true);
       expect(Array.isArray(perms.cannot)).toBe(true);
@@ -641,5 +650,150 @@ describe('toRelativePath', () => {
 
   test('returns relative path as-is', () => {
     expect(toRelativePath('src/domains/auth/models/user.py')).toBe('src/domains/auth/models/user.py');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Agent Token Verification
+// ---------------------------------------------------------------------------
+
+describe('verifyAgentToken', () => {
+  function base64UrlEncode(input) {
+    return Buffer.from(input)
+      .toString('base64')
+      .replace(/=+$/g, '')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_');
+  }
+
+  function sign(payloadB64, secret) {
+    return Buffer.from(crypto.createHmac('sha256', secret).update(payloadB64).digest())
+      .toString('base64')
+      .replace(/=+$/g, '')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_');
+  }
+
+  function makeToken(payload, secret) {
+    const payloadB64 = base64UrlEncode(JSON.stringify(payload));
+    const sigB64 = sign(payloadB64, secret);
+    return `${payloadB64}.${sigB64}`;
+  }
+
+  test('denies when secret is missing', () => {
+    const res = verifyAgentToken('abc.def', '');
+    expect(res.ok).toBe(false);
+    expect(res.reason).toContain('Missing token verification secret');
+  });
+
+  test('denies when token is missing', () => {
+    const res = verifyAgentToken('', 'test-secret');
+    expect(res.ok).toBe(false);
+    expect(res.reason).toContain('Missing agent authentication token');
+  });
+
+  test('denies when token format is invalid', () => {
+    const res = verifyAgentToken('not-a-jwt', 'test-secret');
+    expect(res.ok).toBe(false);
+    expect(res.reason).toContain('Invalid agent_token format');
+  });
+
+  test('denies when token signature is invalid', () => {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const token = makeToken({ role: 'project-manager', exp: nowSec + 60 }, 'secret-a');
+
+    const res = verifyAgentToken(token, 'secret-b');
+    expect(res.ok).toBe(false);
+    expect(res.reason).toContain('Invalid agent_token signature');
+  });
+
+  test('denies when token is expired', () => {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const secret = 'test-secret';
+    const token = makeToken({ role: 'project-manager', exp: nowSec - 1 }, secret);
+
+    const res = verifyAgentToken(token, secret);
+    expect(res.ok).toBe(false);
+    expect(res.reason).toContain('expired');
+  });
+
+  test('allows valid token and normalizes role', () => {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const secret = 'test-secret';
+    const token = makeToken({ role: 'Project Manager', exp: nowSec + 60 }, secret);
+
+    const res = verifyAgentToken(token, secret);
+    expect(res).toEqual({ ok: true, role: 'project-manager' });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Safe Path Handling
+// ---------------------------------------------------------------------------
+
+describe('toSafeProjectRelativePath', () => {
+  let tmpRoot;
+  let projectDir;
+  let outsideDir;
+  let insideFile;
+  let outsideFile;
+  let symlinkPath;
+
+  beforeEach(() => {
+    tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'permission-checker-'));
+    projectDir = path.join(tmpRoot, 'project');
+    outsideDir = path.join(tmpRoot, 'outside');
+
+    fs.mkdirSync(projectDir, { recursive: true });
+    fs.mkdirSync(outsideDir, { recursive: true });
+
+    insideFile = path.join(projectDir, 'src', 'ok.txt');
+    fs.mkdirSync(path.dirname(insideFile), { recursive: true });
+    fs.writeFileSync(insideFile, 'ok', 'utf8');
+
+    outsideFile = path.join(outsideDir, 'evil.txt');
+    fs.writeFileSync(outsideFile, 'evil', 'utf8');
+
+    symlinkPath = path.join(projectDir, 'link-to-evil.txt');
+    fs.symlinkSync(outsideFile, symlinkPath);
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+  });
+
+  test('allows paths inside project root', () => {
+    const res = toSafeProjectRelativePath(insideFile, projectDir);
+    expect(res.ok).toBe(true);
+    expect(res.relativePath).toBe('src/ok.txt');
+  });
+
+  test('allows new (non-existent) files under an existing project subdir', () => {
+    const newDir = path.join(projectDir, 'newdir');
+    fs.mkdirSync(newDir, { recursive: true });
+
+    const newFile = path.join(newDir, 'newfile.txt');
+    const res = toSafeProjectRelativePath(newFile, projectDir);
+    expect(res.ok).toBe(true);
+    expect(res.relativePath).toBe('newdir/newfile.txt');
+  });
+
+  test('denies absolute paths outside project root', () => {
+    const res = toSafeProjectRelativePath(outsideFile, projectDir);
+    expect(res.ok).toBe(false);
+    expect(res.reason).toContain('escapes project root');
+  });
+
+  test('denies relative traversal paths that escape project root', () => {
+    const traversal = path.join('..', 'outside', 'evil.txt');
+    const res = toSafeProjectRelativePath(traversal, projectDir);
+    expect(res.ok).toBe(false);
+    expect(res.reason).toContain('escapes project root');
+  });
+
+  test('denies symlink escape outside project root', () => {
+    const res = toSafeProjectRelativePath(symlinkPath, projectDir);
+    expect(res.ok).toBe(false);
+    expect(res.reason).toContain('escapes project root');
   });
 });
