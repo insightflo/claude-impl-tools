@@ -18,7 +18,7 @@ updated: 2026-03-01
 > | **`/audit` (이 스킬)** | **배포 전** | **기획 정합성 + DDD + 보안 + 테스트 + 브라우저 검증** |
 > | `/multi-ai-review` | 심층 검토 필요 시 | 3개 AI 협업 리뷰 |
 >
-> **v2.2.0 업데이트**: vibelab v1.9.2 Hook 시스템 연동
+> **v2.4.0 업데이트**: `/security-review` 연동 보안 검증 추가 + vibelab v1.9.2 Hook 시스템 연동
 
 ---
 
@@ -106,7 +106,7 @@ docs/planning/07-coding-convention.md  # 코드 스타일
 
 #### Stage 2: Code Quality Review (코드 품질)
 - **SOLID/Clean Code**: 코드가 읽기 쉽고 확장 가능한 구조인가?
-- **보안 (Guardrails)**: API Key 노출, SQL Injection 등 보안 취약점이 없는가?
+- **보안 (Security Review)**: API Key 노출, SQL Injection 등 보안 취약점이 없는가?
 - **성능 (Vercel Review)**: 불필요한 리렌더링이나 워터폴 페칭이 없는가?
 
 ### 4단계: DDD (Demo-Driven Development) 검증
@@ -306,7 +306,7 @@ mcp__playwright__browser_console_messages → 콘솔 에러 확인
 
 ---
 
-## 🔗 스킬 연동 (v2.2)
+## 🔗 스킬 연동 (v2.4)
 
 감사 결과에 따라 **자동으로 적합한 스킬을 권장**합니다:
 
@@ -315,7 +315,7 @@ mcp__playwright__browser_console_messages → 콘솔 에러 확인
 | **Spec 불일치** | `/agile iterate` | 요구사항 맞춰 수정 |
 | **명세-코드 드리프트** | `/sync` | 명세와 코드 동기화 검증 |
 | **코드 품질 이슈** | `/trinity` → `/code-review` → 재감사 | 五柱 평가 + 2단계 리뷰 |
-| **보안 취약점** | `/guardrails` 검토 | 보안 패턴 확인 |
+| **보안 취약점** | `/security-review` 재실행 | OWASP TOP 10 기준 재검증 |
 | **성능 이슈** | `/vercel-review` | 프론트엔드 성능 최적화 |
 | **테스트 실패** | `/powerqa` 또는 `/systematic-debugging` | 자동 QA 사이클링 |
 | **심층 검토 필요** | `/multi-ai-review` | Claude + Gemini + GLM 3중 검증 |
@@ -348,7 +348,7 @@ mcp__playwright__browser_console_messages → 콘솔 에러 확인
 ├─────────────────────────────────────────┤
 │ Spec 불일치  → /agile iterate           │
 │ 품질 이슈    → /code-review             │
-│ 보안 이슈    → /guardrails              │
+│ 보안 이슈    → /security-review         │
 │ 성능 이슈    → /vercel-review           │
 │ 대량 수정   → /tasks-generator analyze  │
 └─────────────────────────────────────────┘
@@ -370,10 +370,10 @@ mcp__playwright__browser_console_messages → 콘솔 에러 확인
 | 날짜 | 총점 | 판정 | 주요 이슈 | 조치 |
 |------|------|------|-----------|------|
 | 2026-01-27 | 85 | CAUTION | 컨벤션 75% | /agile iterate |
-| 2026-01-26 | 72 | CAUTION | 보안 이슈 | /guardrails 검토 |
+| 2026-01-26 | 72 | CAUTION | 보안 이슈 | /security-review 재검증 |
 | 2026-01-25 | 91 | PASS | - | 배포 |
 ```
 
 ---
 
-**Last Updated**: 2026-02-21 (v2.3.0 - vibelab v1.10.0 에로스/Poietes 검증 항목 추가)
+**Last Updated**: 2026-03-01 (v2.4.0 - `/security-review` 연동 보안 검증 추가)
