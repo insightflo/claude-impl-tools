@@ -1,8 +1,8 @@
 ---
 name: quality-auditor
-description: Phase 완료/배포 전 종합 품질 감사. 기획 정합성 + DDD 검증 + 테스트 + 브라우저 검증을 수행합니다. /audit 트리거.
-version: 2.3.0
-updated: 2026-02-21
+description: Phase 완료/배포 전 종합 품질 감사. 기획 정합성 + DDD 검증 + 보안 검증 + 테스트 + 브라우저 검증을 수행합니다. /audit 트리거.
+version: 2.4.0
+updated: 2026-03-01
 ---
 
 # 🕵️ Quality Auditor (배포 전 종합 감사)
@@ -15,10 +15,10 @@ updated: 2026-02-21
 > | `/code-review` | 태스크/기능 완료 시 | 코드 리뷰 (2단계) |
 > | `/trinity` | Phase 완료/PR 전 | 五柱 철학 기반 품질 평가 |
 > | `/evaluation` | Phase 완료 시 | 메트릭 측정 + 품질 게이트 |
-> | **`/audit` (이 스킬)** | **배포 전** | **기획 정합성 + DDD + 테스트 + 브라우저 검증** |
+> | **`/audit` (이 스킬)** | **배포 전** | **기획 정합성 + DDD + 보안 + 테스트 + 브라우저 검증** |
 > | `/multi-ai-review` | 심층 검토 필요 시 | 3개 AI 협업 리뷰 |
 >
-> **v2.2.0 업데이트**: vibelab v1.9.2 Hook 시스템 연동
+> **v2.4.0 업데이트**: `/security-review` 연동 보안 검증 추가 + vibelab v1.9.2 Hook 시스템 연동
 
 ---
 
@@ -49,10 +49,11 @@ updated: 2026-02-21
    - Stage 1: Spec Compliance (요구사항 & 비즈니스 로직)
    - Stage 2: Code Quality (품질, 보안, 성능)
 4. **DDD (Demo-Driven Development) 검증**
-5. **동적 검증 (테스트 실행)** ← v2.0 변경: 기본 명령어 사용
-6. UI/UX 브라우저 검증 (선택적, playwright MCP 있을 때)
-7. 품질 리포트 작성
-8. 수정 지침 제공 (스킬 연동 권장)
+5. **🔒 보안 검증 (NEW v2.4)** ← /security-review 호출
+6. **동적 검증 (테스트 실행)** ← v2.0 변경: 기본 명령어 사용
+7. UI/UX 브라우저 검증 (선택적, playwright MCP 있을 때)
+8. 품질 리포트 작성
+9. 수정 지침 제공 (스킬 연동 권장)
 ```
 
 ---
@@ -105,7 +106,7 @@ docs/planning/07-coding-convention.md  # 코드 스타일
 
 #### Stage 2: Code Quality Review (코드 품질)
 - **SOLID/Clean Code**: 코드가 읽기 쉽고 확장 가능한 구조인가?
-- **보안 (Guardrails)**: API Key 노출, SQL Injection 등 보안 취약점이 없는가?
+- **보안 (Security Review)**: API Key 노출, SQL Injection 등 보안 취약점이 없는가?
 - **성능 (Vercel Review)**: 불필요한 리렌더링이나 워터폴 페칭이 없는가?
 
 ### 4단계: DDD (Demo-Driven Development) 검증
@@ -114,7 +115,33 @@ docs/planning/07-coding-convention.md  # 코드 스타일
 - **스크린샷 대조**: 데모 페이지의 상태별 렌더링 결과가 목업(`design/`)과 일치하는가?
 - **콘솔 무결성**: 데모 페이지 실행 시 브라우저 콘솔에 에러가 없는가?
 
-### 5단계: 동적 검증 (테스트 실행) - v2.0 개선
+### 5단계: 🔒 보안 검증 (NEW v2.4)
+
+배포 전 보안 취약점을 검사합니다. `/security-review` 스킬을 활용합니다.
+
+```bash
+/security-review --path src --summary
+```
+
+**보안 검증 체크리스트:**
+
+- [ ] **Injection 공격**: SQL, Command, NoSQL Injection 대응이 있는가?
+- [ ] **인증 & 인가**: API 키, 토큰이 안전하게 관리되는가? 권한 검증이 있는가?
+- [ ] **데이터 노출**: 하드코딩된 시크릿, 환경설정 정보 노출이 없는가?
+- [ ] **암호화**: 민감 데이터가 전송 중/저장 중 암호화되는가?
+- [ ] **OWASP**: TOP 10 항목에 대한 기본 대응이 있는가?
+
+**보안 검증 결과 해석:**
+
+| 심각도 | 의미 | 배포 가능 |
+|--------|------|----------|
+| 🔴 CRITICAL | 즉시 수정 필수 | ❌ 배포 불가 |
+| 🟠 HIGH | 배포 전 수정 권장 | ⚠️ 조건부 |
+| 🟡 MEDIUM | 알려진 이슈 | ✅ 배포 가능 |
+
+---
+
+### 6단계: 동적 검증 (테스트 실행) - v2.0 개선
 
 **MCP 없이 기본 테스트 명령어를 사용합니다:**
 
@@ -149,7 +176,7 @@ pytest 2>&1 | grep -E "(FAILED|ERROR)"
 - [ ] 핵심 비즈니스 로직에 대한 테스트가 있는가?
 - [ ] 엣지 케이스 테스트가 있는가?
 
-### 6단계: UI/UX 브라우저 검증 (선택적)
+### 7단계: UI/UX 브라우저 검증 (선택적)
 
 > **⚠️ playwright MCP가 설정된 경우에만 실행**
 
@@ -200,6 +227,7 @@ mcp__playwright__browser_console_messages → 콘솔 에러 확인
 │ ✅ 아키텍처: 90%                         │
 │ ⚠️ 컨벤션: 75%                          │
 │ ⚠️ 코드 품질: 80%                       │
+│ 🔒 보안: 88% (1개 중급 이슈)            │
 │ ✅ 테스트: 통과 (커버리지 82%)           │
 │ ⚠️ 브라우저: 스킵 (MCP 미설정)          │
 └─────────────────────────────────────────┘
@@ -278,7 +306,7 @@ mcp__playwright__browser_console_messages → 콘솔 에러 확인
 
 ---
 
-## 🔗 스킬 연동 (v2.2)
+## 🔗 스킬 연동 (v2.4)
 
 감사 결과에 따라 **자동으로 적합한 스킬을 권장**합니다:
 
@@ -287,7 +315,7 @@ mcp__playwright__browser_console_messages → 콘솔 에러 확인
 | **Spec 불일치** | `/agile iterate` | 요구사항 맞춰 수정 |
 | **명세-코드 드리프트** | `/sync` | 명세와 코드 동기화 검증 |
 | **코드 품질 이슈** | `/trinity` → `/code-review` → 재감사 | 五柱 평가 + 2단계 리뷰 |
-| **보안 취약점** | `/guardrails` 검토 | 보안 패턴 확인 |
+| **보안 취약점** | `/security-review` 재실행 | OWASP TOP 10 기준 재검증 |
 | **성능 이슈** | `/vercel-review` | 프론트엔드 성능 최적화 |
 | **테스트 실패** | `/powerqa` 또는 `/systematic-debugging` | 자동 QA 사이클링 |
 | **심층 검토 필요** | `/multi-ai-review` | Claude + Gemini + GLM 3중 검증 |
@@ -320,7 +348,7 @@ mcp__playwright__browser_console_messages → 콘솔 에러 확인
 ├─────────────────────────────────────────┤
 │ Spec 불일치  → /agile iterate           │
 │ 품질 이슈    → /code-review             │
-│ 보안 이슈    → /guardrails              │
+│ 보안 이슈    → /security-review         │
 │ 성능 이슈    → /vercel-review           │
 │ 대량 수정   → /tasks-generator analyze  │
 └─────────────────────────────────────────┘
@@ -342,10 +370,10 @@ mcp__playwright__browser_console_messages → 콘솔 에러 확인
 | 날짜 | 총점 | 판정 | 주요 이슈 | 조치 |
 |------|------|------|-----------|------|
 | 2026-01-27 | 85 | CAUTION | 컨벤션 75% | /agile iterate |
-| 2026-01-26 | 72 | CAUTION | 보안 이슈 | /guardrails 검토 |
+| 2026-01-26 | 72 | CAUTION | 보안 이슈 | /security-review 재검증 |
 | 2026-01-25 | 91 | PASS | - | 배포 |
 ```
 
 ---
 
-**Last Updated**: 2026-02-21 (v2.3.0 - vibelab v1.10.0 에로스/Poietes 검증 항목 추가)
+**Last Updated**: 2026-03-01 (v2.4.0 - `/security-review` 연동 보안 검증 추가)

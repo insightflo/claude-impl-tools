@@ -1,30 +1,31 @@
 ---
 name: workflow-guide
 description: 여러 플러그인 중 상황에 맞는 워크플로우를 안내합니다. /workflow, "어떤 스킬을 써야 해?", "워크플로우 추천" 트리거.
-version: 3.2.0
-updated: 2026-02-21
+version: 3.3.0
+updated: 2026-03-01
 ---
 
 # 🧭 워크플로우 선택 가이드 (Meta Hub)
 
-> **목적**: 63개 스킬(바이브랩 46개 + Editor-K 6개 + 우리스킬 11개) 중 현재 상황에 가장 적합한 스킬을 **단 하나만** 추천하는 메타 허브입니다.
+> **목적**: 64개 스킬(바이브랩 46개 + Editor-K 6개 + 우리스킬 12개) 중 현재 상황에 가장 적합한 스킬을 **단 하나만** 추천하는 메타 허브입니다.
 >
 > **⚠️ 핵심 원칙**: 이 스킬은 **코드를 작성하지 않습니다**. 오직 **상황 진단 → 스킬 추천 → 사용자 확인**만 수행합니다.
 >
-> **v3.2.0 업데이트**: v1.10.0 신규 스킬 11개 추가, tmux 병렬 모드, 에로스 사이클 연동
+> **v3.3.0 업데이트**: `/security-review` 추가, 보안 검사 라우팅 강화, v1.10.0 tmux/에로스 연동 유지
 
 ---
 
-## 📊 전체 스킬 카탈로그 (63개)
+## 📊 전체 스킬 카탈로그 (64개)
 
-### 우리스킬 (11개) - 프로젝트 확장
+### 우리스킬 (12개) - 프로젝트 확장
 
 | 스킬 | 트리거 | 고유 역할 |
 |------|--------|-----------|
 | **`/workflow`** | `/workflow`, "뭐해야해?" | 메타 허브 - 스킬 라우팅 |
 | **`/agile`** | `/agile auto`, `/agile iterate` | 레이어 기반 스프린트 (Skeleton→Muscles→Skin) |
 | **`/recover`** | `/recover`, "작업 복구" | 범용 복구 허브 |
-| **`/audit`** | `/audit`, "품질 검사" | 배포 전 종합 감사 (DDD/테스트/브라우저) |
+| **`/audit`** | `/audit`, "품질 검사" | 배포 전 종합 감사 (DDD/테스트/브라우저/보안) |
+| **`/security-review`** | `/security-review --deep`, "보안 검사" | **보안 취약점 분석 (OWASP TOP 10)** **(v3.3 NEW)** |
 | **`/multi-ai-review`** | `/multi-ai-review`, "심층 리뷰" | Claude+Gemini+GLM 3중 검증 |
 | **`/governance-setup`** | `/governance-setup`, "거버넌스 구성" | 대규모 프로젝트 Phase 0 거버넌스 **(v3.1 NEW)** |
 | **`/impact`** | `/impact <file>`, "영향도 분석" | 파일 변경 전 의존성/위험도 분석 |
@@ -497,6 +498,7 @@ specs/screens/*.yaml 생성
 "코드 검토해줘"                 → /code-review
 "품질 점수 측정해줘"            → /trinity
 "QA 자동화해줘"                 → /powerqa
+"보안 검사해줘"                 → /security-review
 "품질 검사해줘"                 → /audit
 "작업이 중단됐어"               → /recover
 "대규모 프로젝트야"             → /governance-setup → /project-bootstrap → /auto-orchestrate
@@ -529,7 +531,7 @@ specs/screens/*.yaml 생성
 
 ---
 
-## 🔒 품질 게이트 체크리스트 (v2.2)
+## 🔒 품질 게이트 체크리스트 (v3.3)
 
 모든 구현 완료 후 반드시 거쳐야 하는 게이트:
 
@@ -538,7 +540,7 @@ specs/screens/*.yaml 생성
 | **G1: 기능 검증** | `/code-review` | 2단계 리뷰 통과 |
 | **G2: 五柱 평가** | `/trinity` | Trinity Score 70+ |
 | **G3: Phase 검증** | `/evaluation` | 품질 메트릭 80% 이상 |
-| **G4: 종합 감사** | `/audit` | 기획 정합성 + DDD + TestSprite |
+| **G4: 종합 감사** | `/audit` | 기획 정합성 + DDD + 보안 + 테스트/브라우저 |
 | **G5: 심층 검토** | `/multi-ai-review` | 3개 AI 합의 (선택적) |
 | **G6: 최종 검증** | `/verification-before-completion` | 검증 명령어 성공 |
 
@@ -605,4 +607,4 @@ A: 특정 언어/기술 코드 품질이 중요할 때 `/python-pro`, `/typescri
 
 ---
 
-**Last Updated**: 2026-02-21 (v3.2.0 - 63개 스킬: 바이브랩 46개 + Editor-K 6개 + 우리스킬 11개)
+**Last Updated**: 2026-03-01 (v3.3.0 - 64개 스킬: 바이브랩 46개 + Editor-K 6개 + 우리스킬 12개) **(v3.3 NEW: security-review 추가)**
