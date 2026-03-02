@@ -1,6 +1,7 @@
 ---
 name: workflow-guide
 description: 여러 플러그인 중 상황에 맞는 워크플로우를 안내합니다. /workflow, "어떤 스킬을 써야 해?", "워크플로우 추천" 트리거.
+trigger: /workflow, /workflow-guide, "뭐해야해?", "어떤 스킬", "워크플로우 추천"
 version: 3.3.0
 updated: 2026-03-01
 ---
@@ -26,7 +27,7 @@ updated: 2026-03-01
 | **`/recover`** | `/recover`, "작업 복구" | 범용 복구 허브 |
 | **`/audit`** | `/audit`, "품질 검사" | 배포 전 종합 감사 (DDD/테스트/브라우저/보안) |
 | **`/security-review`** | `/security-review --deep`, "보안 검사" | **보안 취약점 분석 (OWASP TOP 10)** **(v3.3 NEW)** |
-| **`/multi-ai-review`** | `/multi-ai-review`, "심층 리뷰" | Claude+Gemini+GLM 3중 검증 |
+| **`/multi-ai-review`** | `/multi-ai-review`, "심층 리뷰" | Claude + Gemini CLI + Codex CLI 컨센서스 리뷰 |
 | **`/governance-setup`** | `/governance-setup`, "거버넌스 구성" | 대규모 프로젝트 Phase 0 거버넌스 **(v3.1 NEW)** |
 | **`/impact`** | `/impact <file>`, "영향도 분석" | 파일 변경 전 의존성/위험도 분석 |
 | **`/deps`** | `/deps`, "의존성 그래프" | 순환 감지, Mermaid 시각화 |
@@ -203,7 +204,7 @@ updated: 2026-03-01
 
 1. ❌ **직접 코드를 작성하지 마세요** - 워크플로우 안내만 합니다.
 2. ❌ **모든 스킬을 나열하지 마세요** - 상황에 맞는 **1~2개만** 추천합니다.
-3. ❌ **사용자에게 먼저 묻지 마세요** - 프로젝트 상태를 **먼저 자동 진단**합니다.
+3. ❌ **요구사항 질문으로 시작하지 마세요** - 먼저 프로젝트 상태를 **자동 진단**한 뒤, 3단계에서 확인 질문(AskUserQuestion)으로 진행합니다.
 
 ---
 
@@ -217,8 +218,8 @@ updated: 2026-03-01
 # 1. 기획 문서 확인
 ls docs/planning/*.md 2>/dev/null
 
-# 2. 태스크 파일 확인
-ls docs/planning/06-tasks.md 2>/dev/null
+# 2. 태스크 파일 확인 (둘 중 하나만 있어도 OK)
+ls docs/planning/06-tasks.md 2>/dev/null || ls TASKS.md 2>/dev/null
 
 # 3. 코드 베이스 확인
 ls package.json pyproject.toml requirements.txt 2>/dev/null
@@ -265,8 +266,8 @@ ls .claude/agents/*.md 2>/dev/null | wc -l  # 3개 이상이면 팀 구성됨
 | docs/planning/ 없음 | 🌱 **기획 시작** | `/socrates` |
 | docs/planning/ 일부만 존재 (1~5개) | 📝 **기획 진행 중** | `/socrates` (이어서 진행) |
 | 기존 코드만 있음 (명세 없음) | 🔄 **역추출 필요** | `/reverse` |
-| 기획 있음 + 06-tasks.md 없음 | 📋 **기획 완료** | `/tasks-generator` |
-| 태스크 있음 + 대규모 + 거버넌스 없음 | 🏛️ **거버넌스 필요** | `/governance-setup` |
+| 기획 있음 + 태스크 파일 없음 (06-tasks.md/TASKS.md) | 📋 **기획 완료** | `/tasks-generator` |
+| 태스크 있음 + **거버넌스 권장 조건 충족** + 거버넌스 없음 | 🏛️ **거버넌스 필요** | `/governance-setup` |
 | 거버넌스 일부만 존재 | 🏛️ **거버넌스 진행 중** | `/governance-setup` (이어서 진행) |
 | 거버넌스 완료 + 에이전트 팀 없음 | 👥 **팀 구성 필요** | `/project-bootstrap` |
 | 거버넌스 + 에이전트 팀 있음 + 미구현 | 🚀 **구현 준비** | `/auto-orchestrate` |
@@ -337,13 +338,13 @@ ls .claude/agents/*.md 2>/dev/null | wc -l  # 3개 이상이면 팀 구성됨
 │   └─ YES → TASKS.md 있음? ─────────── NO → /tasks-generator
 │                                            (UI 상세화: /screen-spec)
 │
-├─ 대규모 프로젝트? ─────────────────── YES (10+태스크, 2+도메인)
+├─ 거버넌스 권장 조건 충족? ─────────── YES (태스크 ≥10 AND (도메인 ≥2 OR 팀원 ≥2 OR 외부 API ≥3))
 │   │                                      ↓
 │   │                                  /governance-setup (Phase 0)
 │   │                                      ↓
 │   │                                  /project-bootstrap (에이전트 팀)
 │   │                                      ↓
-│   └───────────────────────────────── /auto-orchestrate
+│   └───────────────────────────────── /auto-orchestrate (50+면 /ultra-thin-orchestrate)
 │
 ├─ 코드베이스 있음?
 │   │
@@ -378,18 +379,18 @@ ls .claude/agents/*.md 2>/dev/null | wc -l  # 3개 이상이면 팀 구성됨
 | **에러 반복** | `/ralph-loop` | 자기 참조 학습 | - | - |
 | **QA 사이클** | `/powerqa` | 테스트 자동화 | - | - |
 
-### 대규모 프로젝트 추가 기준 (거버넌스 팀 권장)
+### 거버넌스 권장 기준 (실행 규모와 별개)
 
-| 조건 | 기준 | 권장 스킬 |
-|------|------|-----------|
-| 태스크 수 | 10개 이상 | `/governance-setup` |
-| 도메인 수 | 2개 이상 | `/governance-setup` |
-| 팀원 수 | 2명 이상 | `/governance-setup` |
-| 외부 API | 3개 이상 | `/governance-setup` |
+아래 조건을 만족하면 **구현 전에** 거버넌스(Phase 0)를 권장합니다:
 
-**대규모 프로젝트 권장 경로:**
+- **태스크 수: 10개 이상** AND 아래 중 1개 이상
+  - 도메인 수: 2개 이상
+  - 팀원 수: 2명 이상
+  - 외부 API: 3개 이상
+
+**거버넌스 권장 경로:**
 ```
-/tasks-generator → /governance-setup → /project-bootstrap → /auto-orchestrate
+/tasks-generator → /governance-setup → /project-bootstrap → (태스크 규모에 따라) /auto-orchestrate 또는 /ultra-thin-orchestrate
 ```
 
 ---
@@ -416,12 +417,12 @@ ls .claude/agents/*.md 2>/dev/null | wc -l  # 3개 이상이면 팀 구성됨
 │ 🏢 중규모 (30~50개)                                      │
 │   └─ /project-bootstrap → /auto-orchestrate             │
 │                                                         │
-│ 🏛️ 대규모 (50+개 또는 2+도메인)                          │
+│ 🏛️ 거버넌스 (태스크 10+ + 복잡/협업 조건)                │
 │   └─ /governance-setup (Phase 0: PM/Architect/QA/DBA)   │
 │       ↓                                                 │
 │   └─ /project-bootstrap (에이전트 팀 생성)              │
 │       ↓                                                 │
-│   └─ /auto-orchestrate --ultra-thin                     │
+│   └─ (태스크 규모에 따라) /auto-orchestrate 또는 /ultra-thin-orchestrate │
 │                                                         │
 │ ┌─ 개발 중간: /sync (명세 동기화) ─┐                     │
 │ └─ 비용 최적화: /cost-router ─────┘                     │
@@ -578,7 +579,7 @@ A: 권장하지 않습니다. 각 스킬은 순차적으로 실행하고, 완료
 A: `/recover`를 실행하여 중단된 작업을 복구하거나, `/systematic-debugging`으로 원인을 분석하세요.
 
 ### Q: 대규모 프로젝트는 어떻게 관리하나요?
-A: 50개 이상의 태스크는 `/governance-setup` → `/project-bootstrap` → `/auto-orchestrate --ultra-thin` 순서로 실행하세요. 거버넌스 팀이 표준을 정의하고, 에이전트 팀이 구현을 담당합니다.
+A: 태스크가 **10개 이상**이고(특히 **2+도메인/2+팀원/외부 API 3+** 등 복잡·협업 조건이면) 구현 전에 `/governance-setup` → `/project-bootstrap`을 먼저 권장합니다. 구현 실행은 규모에 따라 **30~50개는** `/auto-orchestrate`, **50개 이상은** `/ultra-thin-orchestrate`를 사용하세요.
 
 ### Q: 에이전트 팀은 언제 필요한가요?
 A: **30개 이상 태스크** 또는 **2개 이상 도메인**이면 `/project-bootstrap`으로 에이전트 팀을 구성하세요. 소규모(≤30개)는 `/agile auto`가 Claude 직접 작성 방식이라 에이전트 팀 없이도 됩니다.

@@ -1,0 +1,29 @@
+# Multi-AI Review Council Configuration
+# CLI 기반 멀티-AI 리뷰 설정
+# 참조: https://github.com/team-attention/agent-council
+
+council:
+    # Council members configuration
+    members:
+        - name: gemini
+          # NOTE: gemini CLI는 prompt를 positional로 받지 않고 -p/--prompt가 필요합니다.
+          # council-job-worker가 -p를 자동 보정하지만, config에도 명시해두면 더 안전합니다.
+          command: "gemini --model gemini-3.1-pro-preview --output-format text -p"
+          emoji: "💎"
+          color: "GREEN"
+
+        - name: codex
+          command: "codex exec"
+          emoji: "🤖"
+          color: "BLUE"
+
+
+    # Chairman configuration (Claude가 의장 역할)
+    chairman:
+        role: "auto"
+        description: "모든 의견을 종합하여 최종 추천을 제시합니다"
+
+    # Execution settings
+    settings:
+        timeout: 180
+        exclude_chairman_from_members: true

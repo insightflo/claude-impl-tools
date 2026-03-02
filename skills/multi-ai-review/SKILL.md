@@ -1,359 +1,139 @@
 ---
 name: multi-ai-review
-description: Claude + Gemini + GLM 멀티-AI 리뷰 오케스트레이션. 3단계 리뷰 시스템으로 Spec Compliance(GLM) -> Creative Review(Gemini) -> Integration(Claude) 수행.
-trigger: /review, "리뷰해줘", "검토해줘", "코드 리뷰", "기획서 리뷰", "아키텍처 리뷰"
-version: 2.2.0
-updated: 2026-02-07
+description: Claude + Gemini CLI + Codex CLI 멀티-AI 리뷰. 3단계 파이프라인으로 Initial Opinions → Cross-Review → Chairman Synthesis 수행. CLI 방식으로 추가 API 비용 없이 실행.
+trigger: "council 소집", "여러 AI 의견 물어봐", "심층 리뷰", "컨센서스 리뷰"
+version: 3.0.0
+updated: 2026-03-02
 ---
 
-# Multi-AI Review 스킬 (완전 자동화)
+# Multi-AI Review 스킬 (CLI 기반)
 
-> **Agentic Design Pattern**: MCP 프로토콜을 통한 멀티 에이전트 자동 협업
->
-> **v2.2.0 업데이트**: vibelab v1.9.2 연동 - Gemini OAuth MCP, Hook 시스템 통합
+> **v3.0.0**: MCP 의존성 제거, agent-council 패턴 적용, CLI 직접 호출
 
 ## 개요
 
-Claude(오케스트레이터) + Gemini(MCP) + GLM(MCP)가 **완전 자동화**된 리뷰를 수행합니다.
-사용자 개입 없이 여러 라운드의 리뷰-반박-합의 과정을 자동으로 진행합니다.
+Claude(오케스트레이터) + Gemini CLI + Codex CLI가 **완전 자동화**된 리뷰를 수행합니다.
+agent-council 패턴을 적용하여 추가 API 비용 없이 CLI 구독 플랜만으로 실행합니다.
 
----
+## 3-Stage Pipeline
 
-## MCP 소스 설정 (v2.2.0 업데이트)
+```
+Stage 1: Initial Opinions (병렬 실행)
+├── Gemini CLI → opinion.md (창의적 관점)
+└── Codex CLI → opinion.md (기술적 관점)
 
-### Gemini MCP (OAuth 인증) - 권장
+Stage 2: Cross-Review (반박 단계)
+├── Gemini가 Codex 의견 검토
+└── Codex가 Gemini 의견 검토
+
+Stage 3: Chairman Synthesis (의장 종합)
+└── Claude가 모든 의견 종합 → 최종 리포트
+```
+
+## CLI 요구사항
 
 ```bash
-# OAuth 로그인 (API 키 불필요)
-mcp__gemini__auth_login
+# CLI 설치 확인
+command -v claude  # Claude Code (호스트)
+command -v gemini  # Gemini CLI
+command -v codex   # Codex CLI
+
+# 설치 방법
+# Gemini CLI: https://github.com/google-gemini/gemini-cli
+# Codex CLI: https://github.com/openai/codex
 ```
 
-### GLM MCP (API 키)
+## 사용법
+
+### 호스트 에이전트를 통한 사용
+
+```
+"리뷰해줘"
+"council 소집해줘"
+"여러 AI 의견 물어봐"
+"Gemini랑 Codex 의견 들어보자"
+```
+
+### 스크립트 직접 실행
 
 ```bash
-# ~/.zshrc 또는 ~/.bashrc에 추가
-export GLM_API_KEY="your_glm_api_key"
+# 원샷 실행
+JOB_DIR=$(./skills/multi-ai-review/scripts/council.sh start "리뷰 요청 내용")
+./skills/multi-ai-review/scripts/council.sh wait "$JOB_DIR"
+./skills/multi-ai-review/scripts/council.sh results "$JOB_DIR"
+./skills/multi-ai-review/scripts/council.sh clean "$JOB_DIR"
+
+# 또는 간단히
+./skills/multi-ai-review/scripts/council.sh "리뷰 요청 내용"
 ```
 
-### API Key 발급 방법
+## 설정 파일
 
-- **Gemini**: OAuth 인증 사용 (API 키 불필요, `mcp__gemini__auth_login` 실행)
-- **GLM**: [智谱AI Open Platform](https://open.bigmodel.cn/)
+`council.config.yaml`에서 멤버 구성:
 
----
+```yaml
+council:
+  members:
+    - name: gemini
+      command: "gemini"
+      emoji: "💎"
+      color: "GREEN"
 
-## 자동화된 리뷰 워크플로우
+    - name: codex
+      command: "codex exec"
+      emoji: "🤖"
+      color: "BLUE"
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    Fully Automated Multi-AI Review                       │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                          │
-│  Round 1: Initial Review (병렬 실행)                                    │
-│  ├── [MCP] mcp__glm__analyze_code_architecture()                        │
-│  └── [MCP] mcp__gemini__gemini_generate_text()                          │
-│                                                                          │
-│  Round 2: Cross-Review (반박 단계)                                      │
-│  ├── GLM이 Gemini 의견 검토 → 반박/동의                                 │
-│  └── Gemini가 GLM 의견 검토 → 반박/동의                                 │
-│                                                                          │
-│  Round 3: Consensus Building (합의 도출)                                │
-│  ├── 상충 의견 재검토                                                    │
-│  └── 최종 의견 수렴                                                      │
-│                                                                          │
-│  Final: Claude Integration                                               │
-│  ├── Tree of Thought로 모든 의견 평가                                   │
-│  ├── Reflection으로 자체 검증                                            │
-│  └── 최종 판정 및 리포트 생성                                            │
-│                                                                          │
-└─────────────────────────────────────────────────────────────────────────┘
+  chairman:
+    role: "auto"  # 호스트 CLI 자동 감지
+    description: "모든 의견을 종합하여 최종 추천 제시"
+
+  settings:
+    timeout: 120
+    exclude_chairman_from_members: true
 ```
 
----
+## 리뷰 유형
 
-## 실행 방법
+| 유형 | Gemini 역할 | Codex 역할 |
+|------|------------|-----------|
+| 코드 | 가독성, 개선 제안 | SOLID, 패턴 분석 |
+| 아키텍처 | 창의적 대안 | 구조적 타당성 |
+| 기획서 | UX, 완전성 | 논리적 일관성 |
+| 보안 | 공격 벡터 | 취약점 분석 |
 
-### Step 1: 리뷰 요청 분석
+## 실행 흐름
 
-사용자 요청을 분석하여 리뷰 유형을 결정합니다:
+1. **CLI 존재 확인**: `command -v`로 각 CLI 설치 여부 검증
+2. **멤버 필터링**: 설치된 CLI만 members에 포함
+3. **병렬 실행**: 각 멤버에게 동시에 리뷰 요청
+4. **결과 수집**: 응답을 포맷팅하여 표시
+5. **의장 종합**: Claude가 최종 판정 및 리포트 생성
 
-```markdown
-## 리뷰 유형 분석
-
-- **리뷰 유형**: {architecture | code | planning | test | frontend | security | quality}
-- **대상 파일**: {파일 목록}
-- **리뷰 라운드**: {1-3 라운드, 기본 2라운드}
-```
-
-### Step 2: Round 1 - Initial Review (병렬 실행)
-
-**GLM과 Gemini에게 동시에 리뷰 요청:**
-
-```typescript
-// GLM에게 Spec Compliance 리뷰 요청
-const glmResult = await mcp__glm__analyze_code_architecture({
-  code: targetCode,
-  focus: ["spec_compliance", "SOLID", "logic_consistency"]
-});
-
-// Gemini에게 Creative Review 요청
-const geminiResult = await mcp__gemini__gemini_generate_text({
-  prompt: `[Creative Reviewer]
-  다음 코드/문서를 아키텍처, UX, 혁신성 관점에서 리뷰해주세요:
-  ${targetContent}`,
-  model: "gemini-2.5-pro"
-});
-```
-
-### Step 3: Round 2 - Cross-Review (반박 단계)
-
-**각 모델이 상대방의 의견을 검토:**
-
-```typescript
-// GLM이 Gemini 의견 검토
-const glmCrossReview = await mcp__glm__review_technical_decision({
-  decision: geminiResult.suggestions,
-  context: "Gemini의 개선 제안에 대한 기술적 타당성 검토"
-});
-
-// Gemini가 GLM 의견 검토
-const geminiCrossReview = await mcp__gemini__gemini_generate_text({
-  prompt: `[Cross Review]
-  GLM의 다음 리뷰 의견을 검토하고, 동의/반박 의견을 제시해주세요:
-  ${glmResult.issues}`,
-  model: "gemini-2.5-pro"
-});
-```
-
-### Step 4: Round 3 - Consensus (선택적)
-
-**상충 의견이 있을 경우 추가 라운드:**
-
-```typescript
-// 상충 의견 식별
-const conflicts = identifyConflicts(glmCrossReview, geminiCrossReview);
-
-if (conflicts.length > 0) {
-  // GLM에게 최종 의견 요청
-  const glmFinal = await mcp__glm__consult_architecture({
-    query: `다음 상충 의견에 대한 최종 판단: ${conflicts}`,
-    context: "멀티-AI 리뷰 합의 도출"
-  });
-
-  // Gemini에게 최종 의견 요청
-  const geminiFinal = await mcp__gemini__gemini_generate_text({
-    prompt: `[Final Consensus]
-    상충 의견: ${conflicts}
-    최종 판단을 제시해주세요.`
-  });
-}
-```
-
-### Step 5: Claude Integration
-
-**모든 의견을 종합하여 최종 판정:**
-
-```markdown
-## Tree of Thought 분석
+## 파일 구조
 
 ```
-리뷰 종합 (자동 수집)
-├── GLM Round 1: {initial_review}
-├── Gemini Round 1: {initial_review}
-├── GLM Cross-Review: {cross_review}
-├── Gemini Cross-Review: {cross_review}
-├── 합의된 의견: {consensus}
-├── 남은 상충 의견: {remaining_conflicts}
-└── Claude 최종 판단: {final_decision}
+skills/multi-ai-review/
+├── SKILL.md                    # 이 파일
+├── council.config.yaml         # 멤버 설정
+├── scripts/
+│   ├── council.sh              # 메인 실행 스크립트
+│   ├── council-job.sh          # Job runner
+│   ├── council-job.js          # Job 구현
+│   └── council-job-worker.js   # 멤버별 워커
+├── templates/
+│   ├── review-prompt.md        # 리뷰 프롬프트 템플릿
+│   └── report.md               # 최종 리포트 템플릿
+└── references/
+    ├── overview.md             # 상세 개요
+    ├── config.md               # 설정 가이드
+    ├── examples.md             # 사용 예시
+    └── requirements.md         # 요구사항
 ```
 
-## Reflection 검증
+## 참조
 
-1. 모든 관점이 충분히 반영되었는가?
-2. 상충 의견 해결이 합리적인가?
-3. 추가 검토가 필요한 부분은?
-```
-
----
-
-## MCP 도구 매핑
-
-### GLM MCP 도구
-
-| 도구 | 용도 | 사용 단계 |
-|------|------|----------|
-| `mcp__glm__analyze_code_architecture` | 코드 아키텍처 분석 | Round 1 |
-| `mcp__glm__review_technical_decision` | 기술 결정 검토 | Round 2 |
-| `mcp__glm__consult_architecture` | 아키텍처 상담 | Round 3 |
-| `mcp__glm__design_system_architecture` | 시스템 설계 | 필요시 |
-
-### Gemini MCP 도구 (v2.2.0 - OAuth 기반)
-
-| 도구 | 용도 | 사용 단계 |
-|------|------|----------|
-| `mcp__gemini__generate_content` | 텍스트 리뷰 | Round 1, 2, 3 |
-| `mcp__gemini__chat` | 대화형 리뷰 | Cross-Review |
-| `mcp__gemini__auth_status` | 인증 상태 확인 | 사전 검증 |
-
----
-
-## 리뷰 유형별 자동화 전략
-
-### 코드 리뷰
-
-```
-Round 1:
-├── GLM: analyze_code_architecture (SOLID, 패턴 분석)
-└── Gemini: 가독성, 유지보수성, 개선 제안
-
-Round 2:
-├── GLM: Gemini 개선 제안의 기술적 타당성 검토
-└── Gemini: GLM 이슈의 실용성 검토
-
-Final:
-└── Claude: code-review 스킬 연동, 최종 판정
-```
-
-### 아키텍처 리뷰
-
-```
-Round 1:
-├── GLM: design_system_architecture (구조 분석)
-├── Gemini: gemini_analyze_image (다이어그램 분석)
-└── Gemini: 창의적 대안 제안
-
-Round 2:
-├── GLM: Gemini 대안의 기술적 실현 가능성 검토
-└── Gemini: GLM 분석의 혁신성 검토
-
-Final:
-└── Claude: reasoning (ToT) 연동, 최종 결정
-```
-
-### 기획서/PRD 리뷰
-
-```
-Round 1:
-├── Gemini: 완전성, 명확성, 실현 가능성 리뷰
-└── GLM: 논리적 일관성, 기술 요구사항 검증
-
-Round 2:
-├── GLM: Gemini 피드백의 구체성 검토
-└── Gemini: GLM 검증 결과의 사용자 관점 검토
-
-Final:
-└── Claude: socrates 스킬 연동, 개선 방향 제시
-```
-
----
-
-## 반박 프로토콜
-
-### Cross-Review 규칙
-
-각 모델은 상대방 의견을 검토할 때 다음 형식을 따릅니다:
-
-```markdown
-## Cross-Review: {상대 모델} 의견 검토
-
-### 동의하는 의견
-1. {의견 1}: 동의 - {이유}
-2. {의견 2}: 동의 - {이유}
-
-### 반박하는 의견
-1. {의견 3}: 반박
-   - 원래 의견: {요약}
-   - 반박 근거: {이유}
-   - 대안 제안: {대안}
-
-### 추가 의견
-- {상대가 놓친 관점}
-```
-
-### 합의 도출 규칙
-
-1. **2:0 동의**: 즉시 채택
-2. **1:1 상충**: Claude가 최종 판단
-3. **0:2 반박**: 재검토 또는 제외
-
----
-
-## 최종 리포트 자동 생성
-
-모든 라운드가 완료되면 `templates/report.md` 형식으로 자동 생성:
-
-```markdown
-# Multi-AI Review Report (Automated)
-
-## 리뷰 참여 모델
-| 모델 | 라운드 | 주요 기여 |
-|------|--------|----------|
-| GLM | 1, 2, 3 | Spec Compliance, 기술 검토 |
-| Gemini | 1, 2, 3 | Creative Review, 대안 제안 |
-| Claude | Final | 종합 판정 |
-
-## 라운드별 결과 요약
-
-### Round 1: Initial Review
-- **GLM**: {요약}
-- **Gemini**: {요약}
-
-### Round 2: Cross-Review
-- **합의된 이슈**: {N}건
-- **상충 의견**: {M}건
-
-### Round 3: Consensus (해당시)
-- **해결된 상충**: {K}건
-
-## 최종 판정
-| 항목 | 결과 |
-|------|------|
-| **판정** | {Approved/Conditional/Revision Required} |
-| **합의율** | {X}% |
-| **주요 이슈** | {Critical: N, High: M} |
-
-## 개선 우선순위 Top 5
-{자동 생성}
-```
-
----
-
-## 활성화 조건
-
-다음 상황에서 자동 활성화:
-- `/review` 명령어 실행 시
-- "리뷰해줘", "검토해줘" 키워드 감지
-- Phase 완료 후 머지 전
-- PR 생성 전 코드 검토 요청
-
----
-
-## 필수 조건 (v2.2.0)
-
-1. **Gemini MCP (OAuth 인증)**
-   - `mcp__gemini__auth_login` 실행하여 Google 계정 연동
-   - API 키 불필요 (OAuth 토큰 자동 관리)
-
-2. **GLM MCP (API 키)**
-   - `GLM_API_KEY`: 智谱AI에서 발급
-
-3. **MCP 서버 활성화**
-   - `~/.claude.json`에 gemini 서버 등록 (`claude mcp add -s user`)
-   - Claude Code 재시작
-
-### 🪝 Hook 연동 (v1.9.2)
-
-| Hook | 효과 |
-|------|------|
-| `skill-router` | `/review`, `/multi-ai-review` 키워드 자동 감지 |
-| `post-edit-analyzer` | 리뷰 후 수정 시 보안 패턴 자동 검사 |
-
----
-
-## 참조 파일
-
-- `templates/gemini-prompt.md` - Gemini용 프롬프트 템플릿
-- `templates/glm-prompt.md` - GLM용 프롬프트 템플릿
-- `templates/report.md` - 최종 리포트 템플릿
-- `sources/gemini/guide.md` - Gemini API 설정 가이드
-- `sources/glm/guide.md` - GLM API 설정 가이드
+- `references/overview.md` — 워크플로우 상세
+- `references/config.md` — 멤버 설정 가이드
+- `references/examples.md` — 사용 예시
+- `../agent-council-overview.md` — agent-council 원본 참조
