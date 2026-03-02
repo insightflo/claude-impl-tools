@@ -56,7 +56,7 @@ cd claude-project-team
 | **우리스킬** | `/agile` | 레이어별 스프린트 (1~30개) | 소규모 구현 |
 | **우리스킬** | `/recover` | 범용 복구 허브 | 작업 중단 시 |
 | **우리스킬** | `/audit` | 배포 전 종합 감사 | 배포 전 |
-| **우리스킬** | `/multi-ai-review` | Claude+Gemini+GLM 3중 검증 | 머지/배포 전 |
+| **우리스킬** | `/multi-ai-review` | Claude+Gemini CLI+Codex CLI 컨센서스 리뷰 | 머지/배포 전 | ✅ v3.0.0 (2026-03-02) |
 | **우리스킬** | `/impact` | 파일 변경 영향도 분석 **(v3.0 NEW)** | 수정 전 |
 | **우리스킬** | `/deps` | 의존성 그래프, 순환 감지 **(v3.0 NEW)** | 리팩토링 전 |
 | **우리스킬** | `/changelog` | 변경 이력 조회 **(v3.0 NEW)** | 추적 시 |
@@ -109,11 +109,14 @@ cd claude-project-team
 
 #### 5. Multi-AI Review (`/multi-ai-review`)
 
-**Claude + Gemini + GLM 3개 AI 협업 리뷰**
+**Claude(오케스트레이터) + Gemini CLI + Codex CLI 컨센서스 리뷰**
 
 ```
 /multi-ai-review
 ```
+
+- 3-Stage: Initial Opinions → Cross-Review → Chairman Synthesis
+- MCP 없이 CLI 직접 호출 (추가 API 비용 없이 CLI 구독 플랜 기반)
 
 ### v3.1 NEW: Phase 0 거버넌스 스킬
 
@@ -255,7 +258,7 @@ vibelab-extension/
 │   ├── agile/                    # v1.9.0 - 레이어별 스프린트
 │   ├── recover/                  # v1.9.0 - 범용 복구
 │   ├── quality-auditor/          # v2.1.0 - 종합 감사
-│   ├── multi-ai-review/          # v1.0.0 - 3개 AI 협업 리뷰
+│   ├── multi-ai-review/          # v3.0.0 - CLI council 리뷰 (Gemini/Codex)
 │   └── coverage/                 # v2.2.0 - 테스트 커버리지
 │
 ├── claude-project-team/          # v1.0.0 - AI 팀 협업 시스템 (NEW)
@@ -319,7 +322,7 @@ cd claude-project-team
 | `/agile` | playwright (선택) | 스크린샷 시에만 |
 | `/recover` | 없음 | 기본 도구만 사용 |
 | `/audit` | playwright (선택) | 브라우저 검증 시에만 |
-| `/multi-ai-review` | gemini, glm (필수) | 3개 AI 협업 필요 |
+| `/multi-ai-review` | 없음 (CLI 필요) | gemini/codex CLI 설치 시 컨센서스 리뷰 |
 | `/impact`, `/deps`, `/changelog`, `/coverage`, `/architecture` | 없음 | 기본 도구만 사용 |
 
 ---
@@ -331,6 +334,7 @@ cd claude-project-team
 | **v3.2.0** | 2026-02-21 | **vibelab v1.10.0 연동** - 신규 스킬 11개 지원 (eros, poietes, pro 시리즈), tmux 병렬 모드, Progressive Disclosure 적용 |
 | **v3.1.2** | 2026-02-11 | **워크플로우 연속성 강화** - 세션 중단 후에도 진행 상태 자동 감지, 기획/거버넌스 진행 중 상태 판별 |
 | v3.1.0 | 2026-02-11 | governance-setup 스킬 추가, workflow-guide 개선 (에이전트 팀 필요 여부 명확화) |
+| v3.0.0 | 2026-03-02 | multi-ai-review: CLI council 워크플로우(Gemini/Codex)로 전환 |
 | v3.0.0 | 2026-02-08 | Claude Project Team 추가 - 9 에이전트, 10 Hook, 5 유지보수 스킬 |
 | v2.2.0 | 2026-02-02 | VibeLab v1.8.1 통합 (trinity, reverse, sync, cost-router) |
 | v2.1.0 | 2026-01-28 | multi-ai-review 스킬 추가 |

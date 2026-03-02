@@ -21,6 +21,13 @@ worktree/
 # 내부 설계 문서 (개발용)
 docs/design/
 
+# 로컬 참고 자료 (배포 불필요)
+ref/
+
+# multi-ai-review 실행 산출물 (로컬/CI 런타임 생성)
+skills/multi-ai-review/.jobs/
+skills/multi-ai-review/.jobs/**
+
 # --------------------------------------------
 # OS 생성 파일
 # --------------------------------------------
