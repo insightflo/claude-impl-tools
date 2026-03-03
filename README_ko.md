@@ -10,15 +10,36 @@ Claude Code로 소프트웨어를 개발할 때 도와주는 **스킬**과 **에
 
 ## 빠른 시작
 
+### 옵션 1: 원라인 설치 (git clone 불필요)
+
 ```bash
+# 자동 다운로드 및 설치
+curl -fsSL https://raw.githubusercontent.com/insightflo/claude-imple-skills/main/scripts/quick-install.sh | bash
+```
+
+`~/.claude/claude-imple-skills/`에 설치되고 스킬이 `~/.claude/skills/`로 연결됩니다.
+
+### 옵션 2: 수동 설치
+
+```bash
+# 저장소 복제
+git clone https://github.com/insightflo/claude-imple-skills.git
+cd claude-imple-skills
+
 # 설치 (macOS/Linux)
 chmod +x ./scripts/install-unix.sh && ./scripts/install-unix.sh
 
 # 설치 (Windows PowerShell)
 powershell -ExecutionPolicy Bypass -File .\scripts\install-windows.ps1
+```
 
-# 선택사항: 대규모 프로젝트용 Project Team
-cd project-team && ./install.sh --global
+### 선택사항: Project Team
+
+대규모 프로젝트용 AI 에이전트 팀 배포:
+
+```bash
+cd claude-imple-skills/project-team
+./install.sh --global
 ```
 
 ---

@@ -10,15 +10,36 @@ A standalone-first collection of **skills** and **agent teams** that help you bu
 
 ## Quick Start
 
+### Option 1: One-line Install (No git clone required)
+
 ```bash
+# Download and install automatically
+curl -fsSL https://raw.githubusercontent.com/insightflo/claude-imple-skills/main/scripts/quick-install.sh | bash
+```
+
+This installs to `~/.claude/claude-imple-skills/` and symlinks skills to `~/.claude/skills/`.
+
+### Option 2: Manual Install
+
+```bash
+# Clone repository
+git clone https://github.com/insightflo/claude-imple-skills.git
+cd claude-imple-skills
+
 # Install (macOS/Linux)
 chmod +x ./scripts/install-unix.sh && ./scripts/install-unix.sh
 
 # Install (Windows PowerShell)
 powershell -ExecutionPolicy Bypass -File .\scripts\install-windows.ps1
+```
 
-# Optional: Project Team for large projects
-cd project-team && ./install.sh --global
+### Optional: Project Team
+
+For large projects, deploy the AI agent team:
+
+```bash
+cd claude-imple-skills/project-team
+./install.sh --global
 ```
 
 ---
