@@ -1,8 +1,8 @@
 ---
 name: agile
 description: 사용자와의 정기적인 체크인과 스프린트 관리를 담당하는 애자일 마스터입니다. /agile, /sprint, "스프린트 시작", "체크포인트" 트리거.
-version: 2.3.0
-updated: 2026-02-21
+version: 2.4.0
+updated: 2026-03-03
 ---
 
 # 🏃 Agile Sprint Master
@@ -49,7 +49,7 @@ updated: 2026-02-21
 - **반드시 `notify_user` 호출**: 각 스프린트 목표 달성 시 또는 마일스톤 종료 시, 코드와 함께 **시각적 결과물(캡처 이미지)**을 제공하고 승인을 요청합니다.
 - 사용자의 피드백을 수집하여 즉시 다음 작업에 반영합니다.
 
-### 4. 품질 게이트 (Quality Gate) - v1.8.0
+### 4. 품질 게이트 (Quality Gate) - v2.4.0
 
 각 레이어 완료 시 **품질 검증**을 수행합니다:
 
@@ -63,10 +63,10 @@ updated: 2026-02-21
 │                                                             │
 │  💪 Muscles 완료 시:                                        │
 │  └── 린트 + 빌드 + 단위 테스트 통과                         │
-│  └── /code-review 권장                                      │
+│  └── /checkpoint (2단계 리뷰) ← v2.4.0 NEW                 │
 │                                                             │
 │  ✨ Skin 완료 시:                                           │
-│  └── 전체 테스트 + /audit 실행 권장                         │
+│  └── 전체 테스트 + /trinity → /audit 실행                   │
 │  └── /verification-before-completion 필수                   │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
@@ -313,17 +313,17 @@ TASKS 파일(`TASKS.md` 우선, 없으면 `docs/planning/06-tasks.md`)에서 태
 
 ---
 
-## 🔗 스킬 연동 (v2.3.0)
+## 🔗 스킬 연동 (v2.4.0)
 
 | 상황 | 연동 스킬 | 설명 |
 |------|-----------|------|
 | **시작 전** | `/workflow` | 현재 상태에 맞는 스킬 추천 |
-| **태스크 필요** | `/tasks-generator` | TASKS.md 생성 |
-| **대규모 자동화** | `/auto-orchestrate` (`--tmux`) | 완전 자동화 (tmux 병렬 모드 지원) |
-| **결핍/가정 검증** | `/eros` → `/the-fool` | 결핍 분석 + 비판적 검증 **(v1.10.0)** |
-| **기획 재검토** | `/poietes` | 에로스 기획 v2 **(v1.10.0)** |
-| **레이어 완료 시** | `/trinity` → `/code-review` | 五柱 평가 + 2단계 코드 리뷰 |
-| **전체 완료 시** | `/audit` | 품질 감사 |
+| **태스크 필요** | `/tasks-init` | TASKS.md 스캐폴딩 |
+| **대규모 자동화** | `/orchestrate-standalone` | 30~80개 태스크 병렬 실행 |
+| **결핍/가정 검증** | `/eros` → `/the-fool` | 결핍 분석 + 비판적 검증 |
+| **기획 재검토** | `/poietes` | 에로스 기획 v2 |
+| **Muscles 레이어 완료 시** | `/checkpoint` | 2단계 코드 리뷰 **(v2.4.0 NEW)** |
+| **Skin 레이어 완료 시** | `/trinity` → `/audit` | 五柱 평가 + 종합 감사 |
 | **버그 발생 시** | `/systematic-debugging` | 근본 원인 분석 |
 | **테스트 자동화** | `/powerqa` | QA 사이클링 |
 | **중단 시** | `/recover` | 작업 복구 |
@@ -349,4 +349,4 @@ TASKS 파일(`TASKS.md` 우선, 없으면 `docs/planning/06-tasks.md`)에서 태
 
 ---
 
-**Last Updated**: 2026-02-21 (v2.3.0 - vibelab v1.10.0 스킬 연동: eros, poietes, tmux 모드)
+**Last Updated**: 2026-03-03 (v2.4.0 - /checkpoint 연동, standalone 의존성 변경)

@@ -42,6 +42,7 @@ fi
 # ---------------------------------------------------------------------------
 
 INSTALL_MODE=""        # "global" | "local"
+MODE=""                # "lite" | "standard" | "full"
 HOOKS_ONLY=false
 SKILLS_ONLY=false
 DRY_RUN=false
@@ -100,6 +101,11 @@ ${BOLD}Install Modes:${NC}
   --local           Install to .claude/ (current project only)
   (no flag)         Interactive mode (prompts for choice)
 
+${BOLD}Configuration Mode:${NC}
+  --mode=lite       MVP용 (policy-gate, security-scan)
+  --mode=standard   General project (lite + quality-gate, contract-gate)
+  --mode=full       Enterprise (standard + risk-gate, docs-gate)
+
 ${BOLD}Selective Install:${NC}
   --hooks-only      Install hooks only
   --skills-only     Install skills only
@@ -114,7 +120,7 @@ ${BOLD}Other Options:${NC}
 ${BOLD}Examples:${NC}
   $(basename "$0")                    # Interactive install
   $(basename "$0") --global           # Global install
-  $(basename "$0") --local            # Project-local install
+  $(basename "$0") --local --mode=standard  # Standard mode install
   $(basename "$0") --dry-run          # Preview changes
   $(basename "$0") --uninstall        # Remove installation
 
@@ -130,6 +136,10 @@ parse_args() {
         case "$1" in
             --global)     INSTALL_MODE="global" ;;
             --local)      INSTALL_MODE="local" ;;
+            --mode)
+                MODE="$2"
+                shift
+                ;;
             --hooks-only) HOOKS_ONLY=true ;;
             --skills-only) SKILLS_ONLY=true ;;
             --dry-run)    DRY_RUN=true ;;
@@ -150,6 +160,18 @@ parse_args() {
     if [ "$HOOKS_ONLY" = true ] && [ "$SKILLS_ONLY" = true ]; then
         log_error "--hooks-only and --skills-only cannot be used together."
         exit 1
+    fi
+
+    # Validate mode
+    if [ -n "$MODE" ]; then
+        case "$MODE" in
+            lite|standard|full)
+                ;;
+            *)
+                log_error "Invalid mode: $MODE (must be: lite, standard, or full)"
+                exit 1
+                ;;
+        esac
     fi
 }
 
@@ -305,11 +327,42 @@ install_hooks() {
     local hooks_src="${SCRIPT_DIR}/hooks"
     local count=0
 
+    # Mode-based hook filtering
+    local allowed_hooks=""
+    if [ -n "$MODE" ]; then
+        case "$MODE" in
+            lite)
+                allowed_hooks="policy-gate|security-scan"
+                ;;
+            standard)
+                allowed_hooks="policy-gate|security-scan|quality-gate|contract-gate"
+                ;;
+            full)
+                allowed_hooks="policy-gate|security-scan|quality-gate|contract-gate|risk-gate|docs-gate"
+                ;;
+        esac
+        log_info "Mode: ${MODE} (installing: ${allowed_hooks})"
+    fi
+
     # Install hook JS files (skip __tests__ and docs)
     while IFS= read -r -d '' hookfile; do
         local basename_file
         basename_file="$(basename "$hookfile")"
         local dest="${TARGET_HOOKS}/${basename_file}"
+
+        # Skip test files
+        if [[ "$basename_file" == *".test."* ]]; then
+            continue
+        fi
+
+        # Mode-based filtering
+        if [ -n "$allowed_hooks" ]; then
+            local hook_name="${basename_file%.js}"
+            if [[ ! "$hook_name" =~ ^($allowed_hooks)$ ]]; then
+                log_dry "  [skip] ${basename_file} (not in ${MODE} mode)"
+                continue
+            fi
+        fi
 
         install_file "$hookfile" "$dest"
         count=$((count + 1))

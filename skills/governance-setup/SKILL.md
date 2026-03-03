@@ -1,12 +1,12 @@
 ---
 name: governance-setup
-description: 대규모 프로젝트의 거버넌스 팀(PM, Architect, Designer, QA, DBA)이 구현 전 선행 작업을 수행합니다.
+description: 대규모 프로젝트의 거버넌스 팀(PM, Architect, Designer, QA, DBA) 또는 Mini-PRD(소규모)를 지원합니다.
 trigger: /governance-setup, "거버넌스 구성", "프로젝트 팀 셋업"
-version: 1.3.0
+version: 1.4.0
 updated: 2026-03-03
 ---
 
-> **v1.3.0**: `/project-bootstrap` 의존 제거, 거버넌스 완료 후 **프로젝트 팀 로컬 초기화(standalone)** 경로 추가 (install + project-team.yaml + 도메인 에이전트 + TASKS 스캐폴딩)
+> **v1.4.0**: **Mini-PRD 지원** (Progressive Disclosure + `/audit` 호환), `/project-bootstrap` 의존 제거, 거버넌스 완료 후 **프로젝트 팀 로컬 초기화(standalone)** 경로 추가
 
 # 🏛️ Governance Setup (Phase 0)
 
@@ -44,11 +44,61 @@ updated: 2026-03-03
 # TASKS 파일은 프로젝트에 따라 루트(TASKS.md) 또는 docs/planning/06-tasks.md에 있을 수 있습니다.
 ls docs/planning/06-tasks.md 2>/dev/null || ls TASKS.md 2>/dev/null
 ls management/project-plan.md management/decisions/ADR-*.md 2>/dev/null
+ls management/mini-prd.md 2>/dev/null
 ```
 
 **TASKS.md가 없으면**:
 - 레거시 파일(`docs/planning/06-tasks.md`)만 있으면 → `/tasks-migrate` 먼저 안내 (TASKS.md로 통합)
-- 태스크 파일 자체가 없으면 → `/tasks-generator` 먼저 안내
+- 태스크 파일 자체가 없으면 → `/tasks-init` 먼저 안내 (스캐폴딩 생성)
+
+**Mini-PRD vs Full Governance 선택**:
+- 소규모 프로젝트 (1~5인) → **Mini-PRD** (`references/mini-prd/`)
+- 대규모 프로젝트 (6인 이상) → **Full Governance** (5단계 에이전트 팀)
+
+---
+
+## 🎯 Mini-PRD (Lightweight Alternative)
+
+> **빠른 시작**: 대규모 거버넌스 팀이 필요 없는 소규모 프로젝트용
+
+**파일**: `management/mini-prd.md`
+
+### Mini-PRD 생성
+
+```bash
+# 템플릿 참조
+references/mini-prd/mini-prd-template.md
+
+# Progressive Disclosure 질문 세트
+references/mini-prd/progressive-disclosure.md
+
+# /audit 호환성 매핑
+references/mini-prd/audit-mapping.md
+```
+
+### Phase별 질문
+
+| Phase | 시점 | 질문 |
+|-------|------|------|
+| **Phase 1** | 초기 | purpose, features, tech-stack |
+| **Phase 2** | Skeleton 완료 후 | business-logic, data-model, api-contract |
+| **Phase 3** | Muscles 진행 중 | error-handling, edge-cases, performance |
+
+### /audit 호환성
+
+Mini-PRD는 `/audit`의 기획 정합성 검사를 통과합니다:
+
+```bash
+# Mini-PRD만 있어도 통과
+management/mini-prd.md  # Phase 1+2 필수
+
+# /audit 실행 시
+/audit
+  → ✅ Mini-PRD 감지
+  → ✅ 기획 정합성 확인
+  → ✅ 아키텍처 확인
+  → ✅ DDD 확인 (data-model)
+```
 
 ---
 
@@ -146,7 +196,8 @@ database/
 ## 🆘 FAQ
 
 **Q: TASKS.md가 없어요**
-→ `/tasks-generator` 먼저 실행
+→ `/tasks-init` 먼저 실행 (스캐폴딩 생성)
+  (VibeLab 설치 시 `/tasks-generator` 선택 가능)
 
 **Q: 특정 단계만 다시 실행하고 싶어요**
 → 해당 `references/phase-N-*.md`를 Read 후 Task 호출

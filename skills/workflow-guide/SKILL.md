@@ -35,6 +35,8 @@ updated: 2026-03-03
 구현 ────────────────── /agile auto (≤30개)
      │                  /multi-ai-run (모델 라우팅)
      ↓
+태스크 리뷰 ─────────── /checkpoint (2단계 리뷰) ← v4.1 NEW
+     ↓
 검증 ────────────────── /security-review (보안)
      │                  /quality-auditor (종합 감사)
      ↓
@@ -60,6 +62,7 @@ updated: 2026-03-03
 | **`/agile`** | `/agile auto` | 레이어 기반 스프린트 |
 | **`/multi-ai-run`** | `/multi-ai-run` | 역할별 모델 라우팅 |
 | **`/recover`** | `/recover` | 작업 복구 허브 |
+| **`/checkpoint`** | `/checkpoint`, "리뷰해줘" | 태스크 완료 시 2단계 코드 리뷰 **(v4.1 NEW)** |
 | **`/security-review`** | `/security-review` | OWASP TOP 10 보안 검사 |
 | **`/audit`** | `/audit` | 배포 전 종합 감사 |
 | **`/multi-ai-review`** | `/multi-ai-review` | 3-AI 컨센서스 리뷰 |
@@ -403,8 +406,8 @@ ls .claude/agents/*.md 2>/dev/null | wc -l  # 3개 이상이면 팀 구성됨
 |-----------|-----------|---------------|------------|-----------|
 | **1~10개** | `/agile run` + `/agile done` | Claude 직접 | ❌ 불필요 | - |
 | **10~30개** | `/agile auto` | Claude 직접 | ❌ 불필요 | - |
-| **30~50개** | `/auto-orchestrate` | 전문가 에이전트 | ✅ 권장 | `/project-bootstrap` |
-| **50~200개** | `/ultra-thin-orchestrate` | 전문가 에이전트 | ✅ 필수 | `/project-bootstrap` |
+| **30~80개** | `/agile iterate` 반복 or `/orchestrate-standalone` (준비 중) | 전문가 에이전트 | ✅ 권장 | `/governance-setup` |
+| **80개+** | 30개 단위 스프린트 분할 (Lite 모드 반복) | 전문가 에이전트 | ✅ 권장 | `/governance-setup` |
 | **에러 반복** | `/ralph-loop` | 자기 참조 학습 | - | - |
 | **QA 사이클** | `/powerqa` | 테스트 자동화 | - | - |
 
@@ -417,9 +420,12 @@ ls .claude/agents/*.md 2>/dev/null | wc -l  # 3개 이상이면 팀 구성됨
   - 팀원 수: 2명 이상
   - 외부 API: 3개 이상
 
-**거버넌스 권장 경로:**
+**거버넌스 권장 경로 (Standalone):**
 ```
-/tasks-generator → /governance-setup → /project-bootstrap → (태스크 규모에 따라) /auto-orchestrate 또는 /ultra-thin-orchestrate
+/tasks-init → /governance-setup → /agile auto (≤30) 또는 /orchestrate-standalone (30~80, 준비 중)
+
+**선택적 확장 (VibeLab 설치 시):**
+/tasks-generator → /project-bootstrap → /auto-orchestrate 또는 /ultra-thin-orchestrate
 ```
 
 ---
@@ -443,15 +449,16 @@ ls .claude/agents/*.md 2>/dev/null | wc -l  # 3개 이상이면 팀 구성됨
 │ 📦 소규모 (≤30개)                                        │
 │   └─ /agile auto (Claude 직접 작성, 에이전트 팀 불필요)  │
 │                                                         │
-│ 🏢 중규모 (30~50개)                                      │
-│   └─ /project-bootstrap → /auto-orchestrate             │
+│ 🏢 중규모 (30~80개)                                      │
+│   └─ /governance-setup → /agile iterate 반복 (30개 단위) │
 │                                                         │
 │ 🏛️ 거버넌스 (태스크 10+ + 복잡/협업 조건)                │
 │   └─ /governance-setup (Phase 0: PM/Architect/QA/DBA)   │
 │       ↓                                                 │
-│   └─ /project-bootstrap (에이전트 팀 생성)              │
-│       ↓                                                 │
-│   └─ (태스크 규모에 따라) /auto-orchestrate 또는 /ultra-thin-orchestrate │
+│   └─ 30개 단위 스프린트 분할 → /agile auto 반복          │
+│                                                         │
+│ 🔌 선택적 확장 (VibeLab 설치 시)                         │
+│   └─ /project-bootstrap → /auto-orchestrate            │
 │                                                         │
 │ ┌─ 개발 중간: /sync (명세 동기화) ─┐                     │
 │ └─ 비용 최적화: /cost-router ─────┘                     │
@@ -525,7 +532,8 @@ specs/screens/*.yaml 생성
 "이 기능 수정해줘"              → /agile iterate
 "명세랑 코드가 맞는지 확인해줘" → /sync
 "버그 있어"                     → /systematic-debugging
-"코드 검토해줘"                 → /code-review
+"코드 검토해줘"                 → /checkpoint
+"리뷰해줘"                      → /checkpoint
 "품질 점수 측정해줘"            → /trinity
 "QA 자동화해줘"                 → /powerqa
 "보안 검사해줘"                 → /security-review
@@ -564,18 +572,18 @@ specs/screens/*.yaml 생성
 
 ---
 
-## 🔒 품질 게이트 체크리스트 (v3.3)
+## 🔒 품질 게이트 체크리스트 (v4.1.0)
 
 모든 구현 완료 후 반드시 거쳐야 하는 게이트:
 
 | 게이트 | 필수 스킬 | 통과 기준 |
 |--------|-----------|-----------|
-| **G1: 기능 검증** | `/code-review` | 2단계 리뷰 통과 |
-| **G2: 五柱 평가** | `/trinity` | Trinity Score 70+ |
-| **G3: Phase 검증** | `/evaluation` | 품질 메트릭 80% 이상 |
-| **G4: 종합 감사** | `/audit` | 기획 정합성 + DDD + 보안 + 테스트/브라우저 |
-| **G5: 심층 검토** | `/multi-ai-review` | 3개 AI 합의 (선택적) |
-| **G6: 최종 검증** | `/verification-before-completion` | 검증 명령어 성공 |
+| **G0: 태스크 리뷰** | `/checkpoint` | 2단계 리뷰 통과 |
+| **G1: 五柱 평가** | `/trinity` | Trinity Score 70+ |
+| **G2: Phase 검증** | `/evaluation` | 품질 메트릭 80% 이상 |
+| **G3: 종합 감사** | `/audit` | 기획 정합성 + DDD + 보안 + 테스트/브라우저 |
+| **G4: 심층 검토** | `/multi-ai-review` | 3개 AI 합의 (선택적) |
+| **G5: 최종 검증** | `/verification-before-completion` | 검증 명령어 성공 |
 
 ---
 
@@ -640,4 +648,4 @@ A: 특정 언어/기술 코드 품질이 중요할 때 `/python-pro`, `/typescri
 
 ---
 
-**Last Updated**: 2026-03-03 (v3.5.0 - 59개 스킬: 바이브랩 46개 + 우리스킬 13개) **(v3.5 NEW: multi-ai-run 추가)**
+**Last Updated**: 2026-03-03 (v4.1.0 - 60개 스킬: 바이브랩 46개 + 우리스킬 14개) **(v4.1 NEW: /checkpoint 추가)**

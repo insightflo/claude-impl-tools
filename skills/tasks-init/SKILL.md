@@ -6,7 +6,7 @@ triggers:
   - 태스크 초기화
   - TASKS 만들어줘
   - 태스크 생성
-version: 1.0.0
+version: 2.0.0
 ---
 
 # Tasks Init (Standalone)
@@ -17,8 +17,11 @@ version: 1.0.0
 ## 역할
 
 - 프로젝트 정보를 대화형으로 수집
-- 레이어 기반 TASKS.md 스캐폴딩 생성
-- `/agile auto`와 바로 연동 가능
+- **Specialist 컨텍스트 주입**으로 상세 태스크 생성
+- 자동 의존성 감지 및 메타데이터 추가
+- Domain-guarded TASKS.md 생성 (백엔드/프론트엔드 분리)
+
+**v2.0.0 업데이트**: Dependency-aware, Domain-guarded, Specialist 통합
 
 ## 실행 흐름
 
@@ -29,26 +32,35 @@ version: 1.0.0
 │ 1단계: 프로젝트 정보 수집 (AskUserQuestion)                  │
 │   • 프로젝트 이름                                            │
 │   • 주요 기능 (3-5개)                                        │
-│   • 기술 스택 (선택)                                         │
+│   • 기술 스택 (자동 감지)                                     │
 └─────────────────────────────────────────────────────────────┘
      ↓
 ┌─────────────────────────────────────────────────────────────┐
 │ 2단계: 기존 코드 분석 (자동)                                 │
 │   • package.json / pyproject.toml 파싱                      │
-│   • 디렉토리 구조 스캔                                       │
+│   • 디렉토리 구조 스캔 (도메인 감지)                           │
+│   • import/require 의존성 분석                                 │
 │   • 기존 TODO 마커 수집                                      │
 └─────────────────────────────────────────────────────────────┘
      ↓
 ┌─────────────────────────────────────────────────────────────┐
-│ 3단계: TASKS.md 생성                                         │
-│   • T0.* (Skeleton) 태스크                                   │
-│   • T1.* (Muscles) 태스크                                    │
-│   • T3.* (Skin) 태스크                                       │
+│ 3단계: **Specialist 컨텍스트 주입** (v2.0 NEW)            │
+│   • Backend Specialist → 백엔드 태스크 상세화                │
+│   • Frontend Specialist → 프론트엔드 태스크 상세화              │
+│   • Security Specialist → 보안 관련 태스크 추가                  │
 └─────────────────────────────────────────────────────────────┘
      ↓
 ┌─────────────────────────────────────────────────────────────┐
-│ 4단계: 사용자 확인 + 다음 단계 안내                          │
-│   → /agile auto 또는 /multi-ai-run 실행 권장                 │
+│ 4단계: TASKS.md 생성 (Dependency-aware)                       │
+│   • 자동 의존성 계산 (deps 필드)                              │
+│   • 도메인 분리 (domain 필드)                                  │
+│   • 위험도 자동 분류 (risk 필드)                               │
+│   • 파일 충돌 감지 (files 필드)                               │
+└─────────────────────────────────────────────────────────────┘
+     ↓
+┌─────────────────────────────────────────────────────────────┐
+│ 5단계: 사용자 확인 + 다음 단계 안내                          │
+│   → /agile auto 또는 /orchestrate-standalone 실행 권장        │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -131,8 +143,8 @@ grep -rn "TODO\|FIXME\|XXX" --include="*.ts" --include="*.tsx" --include="*.py" 
       "question": "TASKS.md가 생성되었습니다. 다음 단계를 선택하세요:",
       "header": "다음 단계",
       "options": [
-        {"label": "구현 시작 (/agile auto)", "description": "레이어별 자동 구현"},
-        {"label": "모델 분업 (/multi-ai-run)", "description": "Codex/Gemini로 분업"},
+        {"label": "구현 시작 (/agile auto)", "description": "30개 이하 태스크용 레이어별 자동 구현"},
+        {"label": "병렬 오케스트레이션 (/orchestrate-standalone)", "description": "30~80개 태스크용 의존성 기반 병렬 실행"},
         {"label": "수동 진행", "description": "직접 태스크 수정 후 진행"}
       ],
       "multiSelect": false
@@ -147,18 +159,58 @@ grep -rn "TODO\|FIXME\|XXX" --include="*.ts" --include="*.tsx" --include="*.py" 
 |------|------------------------|------------------------------|
 | 의존성 | 없음 (standalone) | VibeLab 필요 |
 | 입력 | 대화형 인터뷰 | 기획 문서 (PRD, TRD) |
-| 출력 | 기본 레이어 구조 | Domain-Guarded 상세 구조 |
+| 출력 | Dependency-aware, Domain-Guarded | 화면 단위 상세 구조 |
 | 복잡도 | 간단 (10-30개 태스크) | 복잡 (30-200개 태스크) |
 | 용도 | 빠른 시작 | 대규모 프로젝트 |
+| 메타데이터 | deps, domain, risk, files, owner, model | 화면, 도메인 리소스 |
 
 ## 관련 스킬
 
 | 스킬 | 관계 |
 |------|------|
 | `/tasks-migrate` | 기존 레거시 파일 통합 |
-| `/agile auto` | 생성된 TASKS.md 실행 |
+| `/agile auto` | 생성된 TASKS.md 실행 (≤30 태스크) |
+| `/orchestrate-standalone` | 병렬 오케스트레이션 (30~80 태스크) |
 | `/governance-setup` | 대규모 프로젝트 기획 |
 
 ---
 
-**Last Updated**: 2026-03-03 (v1.0.0)
+**Last Updated**: 2026-03-03 (v2.0.0)
+
+## 파일 구조
+
+```
+skills/tasks-init/
+├── SKILL.md                    # 스킬 정의
+├── scripts/
+│   ├── analyze.js              # 코드 분석 (기술 스택, 의존성, TODO)
+│   ├── generate.js             # 태스크 생성 (Specialist 컨텍스트 주입)
+│   └── tasks-init.sh           # 메인 진입점
+└── templates/
+    ├── task-metadata.yaml      # 메타데이터 포맷 설명
+    └── TASKS.md                # 생성될 TASKS.md 템플릿
+```
+
+## 사용법
+
+### CLI 직접 실행
+
+```bash
+# 기본 사용 (현재 디렉토리에 TASKS.md 생성)
+cd skills/tasks-init/scripts
+./tasks-init.sh
+
+# 출력 파일 지정
+./tasks-init.sh --output ../TASKS.md
+
+# 기능 목록 지정
+./tasks-init.sh --features "user-auth,product-catalog,payment"
+```
+
+### 스킬로 실행
+
+```bash
+/tasks-init
+```
+
+Claude가 대화형으로 프로젝트 정보를 수집한 후 TASKS.md를 생성합니다.

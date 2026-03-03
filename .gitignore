@@ -12,14 +12,14 @@
 # 로컬 프로젝트 지침 (프로젝트별 설정)
 CLAUDE.md
 
+# 로컬 구현 계획 문서
+docs/
+
 # MCP 설정 (사용자별 설정)
 .mcp.json
 
 # Git Worktree (임시 작업 디렉토리)
 worktree/
-
-# 내부 설계 문서 (개발용)
-docs/design/
 
 # 개발용 에이전트 가이드/태스크 (배포 불필요)
 AGENTS.md
@@ -98,10 +98,9 @@ build/
 # 아래 파일들은 .gitignore 규칙에서 제외 (배포에 포함)
 #
 # skills/                    - 우리스킬 (10개)
-# claude-project-team/       - AI 팀 협업 시스템
+# project-team/       - AI 팀 협업 시스템
 #   ├── hooks/               - 10개 Hook
 #   ├── agents/              - 9개 에이전트
-#   ├── skills/              - 4개 스킬
 #   ├── templates/           - 프로토콜, ADR, Contract
 #   ├── examples/            - ecommerce, saas 예제
 #   ├── docs/                - 설치, 사용, 유지보수 문서

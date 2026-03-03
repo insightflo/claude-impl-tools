@@ -1,8 +1,8 @@
 ---
 name: quality-auditor
 description: Phase 완료/배포 전 종합 품질 감사. 기획 정합성 + DDD 검증 + 보안 검증 + 테스트 + 브라우저 검증을 수행합니다. /audit 트리거.
-version: 2.4.0
-updated: 2026-03-01
+version: 2.5.0
+updated: 2026-03-03
 ---
 
 # 🕵️ Quality Auditor (배포 전 종합 감사)
@@ -18,7 +18,7 @@ updated: 2026-03-01
 > | **`/audit` (이 스킬)** | **배포 전** | **기획 정합성 + DDD + 보안 + 테스트 + 브라우저 검증** |
 > | `/multi-ai-review` | 심층 검토 필요 시 | 3개 AI 협업 리뷰 |
 >
-> **v2.5.0 업데이트**: `/security-review` 연동 + project-team Hook 시스템 (quality-gate, standards-validator)
+> **v2.5.0 업데이트**: Mini-PRD 지원 (Socrates 대안), `/security-review` 연동 + project-team Hook 시스템 (quality-gate, standards-validator)
 
 ---
 
@@ -36,7 +36,7 @@ updated: 2026-03-01
 
 1. ❌ **직접 코드를 수정하지 마세요** - 수정은 `implementation agent`의 역할입니다.
 2. ❌ **근거 없는 비판을 하지 마세요** - 반드시 `docs/planning/` 내의 문서를 근거로 제시해야 합니다.
-3. ❌ **기획 문서 없이 감사하지 마세요** - 기획 문서가 없으면 먼저 `/socrates` 실행을 안내합니다.
+3. ❌ **기획 문서 없이 감사하지 마세요** - 기획 문서가 없으면 먼저 `/governance-setup` 실행을 안내합니다.
 
 ---
 
@@ -63,19 +63,32 @@ updated: 2026-03-01
 ### 1단계: 기획 문서 확인 (Pre-flight Check)
 
 ```bash
-# 기획 문서 존재 확인
-ls docs/planning/*.md 2>/dev/null
+# 기획 문서 존재 확인 (두 가지 옵션)
+ls management/mini-prd.md 2>/dev/null        # 옵션 A: Mini-PRD
+ls docs/planning/*.md 2>/dev/null             # 옵션 B: Socrates
 ```
 
-**필수 문서 체크리스트:**
+**옵션 A: Mini-PRD (권장, v2.5.0 NEW)**
 
-| 문서                      | 용도                    | 필수 여부 |
-| ------------------------- | ----------------------- | --------- |
-| `01-prd.md`               | 비즈니스 로직 검증      | ✅ 필수   |
-| `02-trd.md`               | 기술 스택/아키텍처 검증 | ✅ 필수   |
-| `07-coding-convention.md` | 코드 스타일 검증        | ✅ 필수   |
-| `03-user-flow.md`         | 사용자 흐름 검증        | 선택      |
-| `04-database-design.md`   | DB 스키마 검증          | 선택      |
+| 필드 | 용도 | 필수 여부 |
+|------|------|----------|
+| `purpose` | 프로젝트 목적 | ✅ 필수 |
+| `features` | 핵심 기능 목록 | ✅ 필수 |
+| `tech_stack` | 기술 스택 | ✅ 필수 |
+| `data_model` | 데이터 엔티티 | ✅ 권장 |
+| `api_contract` | API endpoint | ✅ 권장 |
+| `error_handling` | 예외 처리 | 선택 |
+| `performance` | 성능 목표 | 선택 |
+
+**옵션 B: Socrates 문서 (기존)**
+
+| 문서 | 용도 | 필수 여부 |
+|------|------|----------|
+| `01-prd.md` | 비즈니스 로직 검증 | ✅ 필수 |
+| `02-trd.md` | 기술 스택/아키텍처 검증 | ✅ 필수 |
+| `07-coding-convention.md` | 코드 스타일 검증 | ✅ 필수 |
+| `03-user-flow.md` | 사용자 흐름 검증 | 선택 |
+| `04-database-design.md` | DB 스키마 검증 | 선택 |
 
 **문서 없음 시 안내:**
 
@@ -83,18 +96,40 @@ ls docs/planning/*.md 2>/dev/null
 ⚠️ 기획 문서가 없습니다.
 
 감사를 진행하려면 기획 문서가 필요합니다.
-/socrates를 실행하여 기획 문서를 먼저 생성해주세요.
+
+옵션 1: /governance-setup → Mini-PRD 생성 (권장, 빠름)
+옵션 2: /socrates → Socrates 7개 문서 생성 (상세)
 ```
 
 ### 2단계: 컨텍스트 로딩 (Baseline Audit)
 
 가져온 코드와 비교할 **기준 문서**들을 읽습니다.
 
+**옵션 A: Mini-PRD 로드**
+
+```bash
+# Read 도구로 순차 로드
+management/mini-prd.md         # Mini-PRD 전체 (purpose, features, tech_stack, data_model, ...)
+```
+
+**옵션 B: Socrates 로드**
+
 ```bash
 # Read 도구로 순차 로드
 docs/planning/01-prd.md        # 비즈니스 로직
 docs/planning/02-trd.md        # 기술 스택 및 아키텍처
 docs/planning/07-coding-convention.md  # 코드 스타일
+```
+
+**자동 감지 로직:**
+```bash
+if [ -f "management/mini-prd.md" ]; then
+  source="mini-prd"
+elif [ -f "docs/planning/01-prd.md" ]; then
+  source="socrates"
+else
+  echo "⚠️ 기획 문서 없음"
+fi
 ```
 
 ### 3단계: 2단계 리뷰 (Two-Stage Review)
