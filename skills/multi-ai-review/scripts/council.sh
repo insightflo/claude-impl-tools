@@ -18,6 +18,12 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 JOB_SCRIPT="$SCRIPT_DIR/council-job.sh"
+CLEANUP_SCRIPT="$SCRIPT_DIR/cleanup.sh"
+
+# Auto-cleanup orphaned jobs on startup (silent)
+if [ -x "$CLEANUP_SCRIPT" ]; then
+  "$CLEANUP_SCRIPT" >/dev/null 2>&1 || true
+fi
 
 usage() {
   cat <<EOF
