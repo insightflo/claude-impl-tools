@@ -2,7 +2,7 @@
 # @TASK P6-T1 - Claude Project Team Install Script
 # @SPEC docs/design/PROJECT-TEAM-AGENTS.md#13-배포-구조
 #
-# Installs Claude Project Team hooks, agents, templates, and skills
+# Installs Claude Project Team hooks, agents, and templates
 # into a user's Claude Code environment.
 #
 # Usage:
@@ -10,7 +10,6 @@
 #   ./install.sh --global         # Global install (~/.claude/)
 #   ./install.sh --local          # Local install (.claude/)
 #   ./install.sh --hooks-only     # Install hooks only
-#   ./install.sh --skills-only    # Install skills only
 #   ./install.sh --dry-run        # Preview without changes
 #   ./install.sh --uninstall      # Remove installed files
 
@@ -44,7 +43,6 @@ fi
 INSTALL_MODE=""        # "global" | "local"
 MODE=""                # "lite" | "standard" | "full"
 HOOKS_ONLY=false
-SKILLS_ONLY=false
 DRY_RUN=false
 UNINSTALL=false
 FORCE=false
@@ -54,7 +52,6 @@ QUIET=false
 INSTALLED_HOOKS=0
 INSTALLED_AGENTS=0
 INSTALLED_TEMPLATES=0
-INSTALLED_SKILLS=0
 BACKED_UP=0
 ERRORS=0
 
@@ -108,7 +105,6 @@ ${BOLD}Configuration Mode:${NC}
 
 ${BOLD}Selective Install:${NC}
   --hooks-only      Install hooks only
-  --skills-only     Install skills only
 
 ${BOLD}Other Options:${NC}
   --dry-run         Preview what would be installed without making changes
@@ -141,7 +137,6 @@ parse_args() {
                 shift
                 ;;
             --hooks-only) HOOKS_ONLY=true ;;
-            --skills-only) SKILLS_ONLY=true ;;
             --dry-run)    DRY_RUN=true ;;
             --uninstall)  UNINSTALL=true ;;
             --force)      FORCE=true ;;
@@ -155,12 +150,6 @@ parse_args() {
         esac
         shift
     done
-
-    # Validate conflicting options
-    if [ "$HOOKS_ONLY" = true ] && [ "$SKILLS_ONLY" = true ]; then
-        log_error "--hooks-only and --skills-only cannot be used together."
-        exit 1
-    fi
 
     # Validate mode
     if [ -n "$MODE" ]; then
@@ -183,7 +172,6 @@ check_prerequisites() {
     header "Checking prerequisites"
 
     # Verify source directory has expected structure
-    # Note: skills are in root /skills/ directory, not in project-team/skills/
     local missing=0
     for dir in hooks agents templates; do
         if [ ! -d "${SCRIPT_DIR}/${dir}" ]; then
@@ -227,7 +215,7 @@ prompt_install_mode() {
     header "Installation Mode"
     printf "\n"
     printf "  ${BOLD}1)${NC} Global install  ${CYAN}(~/.claude/)${NC}\n"
-    printf "     Hooks, skills, and agents available in all projects.\n"
+    printf "     Hooks, agents, and templates available in all projects.\n"
     printf "\n"
     printf "  ${BOLD}2)${NC} Local install   ${CYAN}(.claude/)${NC}\n"
     printf "     Installed only in the current project directory.\n"
@@ -255,7 +243,6 @@ resolve_targets() {
             TARGET_HOOKS="${TARGET_BASE}/hooks"
             TARGET_AGENTS="${TARGET_BASE}/agents"
             TARGET_TEMPLATES="${TARGET_BASE}/templates"
-            TARGET_SKILLS="${TARGET_BASE}/skills"
             TARGET_SETTINGS="${TARGET_BASE}/settings.json"
             ;;
         local)
@@ -263,7 +250,6 @@ resolve_targets() {
             TARGET_HOOKS="${TARGET_BASE}/hooks"
             TARGET_AGENTS="${TARGET_BASE}/agents"
             TARGET_TEMPLATES="${TARGET_BASE}/templates"
-            TARGET_SKILLS="${TARGET_BASE}/skills"
             TARGET_SETTINGS="${TARGET_BASE}/settings.json"
             ;;
         *)
@@ -446,36 +432,6 @@ install_templates() {
 }
 
 # ---------------------------------------------------------------------------
-# Install skills
-# ---------------------------------------------------------------------------
-
-install_skills() {
-    header "Installing Skills"
-
-    local skills_src="${SCRIPT_DIR}/skills"
-    local count=0
-
-    while IFS= read -r -d '' skillfile; do
-        local relpath="${skillfile#${skills_src}/}"
-        local dest="${TARGET_SKILLS}/${relpath}"
-
-        install_file "$skillfile" "$dest"
-        count=$((count + 1))
-
-        if [ "$QUIET" = false ] && [ "$DRY_RUN" = false ]; then
-            log_success "  ${relpath}"
-        fi
-    done < <(find "$skills_src" -type f -print0 | sort -z)
-
-    INSTALLED_SKILLS=$count
-
-    if [ "$DRY_RUN" = true ]; then
-        log_dry "${count} skill(s) would be installed to ${TARGET_SKILLS}"
-    else
-        log_success "${count} skill(s) installed to ${TARGET_SKILLS}"
-    fi
-}
-
 # ---------------------------------------------------------------------------
 # Generate hook settings JSON
 # ---------------------------------------------------------------------------
@@ -659,7 +615,7 @@ verify_installation() {
     local ok=true
 
     # Check hooks
-    if [ "$SKILLS_ONLY" = false ]; then
+    if [ "$HOOKS_ONLY" = false ]; then
         local hook_count
         hook_count="$(find "$TARGET_HOOKS" -maxdepth 1 -name '*.js' 2>/dev/null | wc -l | tr -d ' ')"
         if [ "$hook_count" -gt 0 ]; then
@@ -682,24 +638,13 @@ verify_installation() {
     fi
 
     # Check agents
-    if [ "$HOOKS_ONLY" = false ] && [ "$SKILLS_ONLY" = false ]; then
+    if [ "$HOOKS_ONLY" = false ]; then
         local agent_count
         agent_count="$(find "$TARGET_AGENTS" -name '*.md' 2>/dev/null | wc -l | tr -d ' ')"
         if [ "$agent_count" -gt 0 ]; then
             log_success "Agents: ${agent_count} file(s) in ${TARGET_AGENTS}"
         else
             log_warn "Agents: no files found in ${TARGET_AGENTS}"
-        fi
-    fi
-
-    # Check skills
-    if [ "$HOOKS_ONLY" = false ]; then
-        local skill_count
-        skill_count="$(find "$TARGET_SKILLS" -name 'SKILL.md' 2>/dev/null | wc -l | tr -d ' ')"
-        if [ "$skill_count" -gt 0 ]; then
-            log_success "Skills: ${skill_count} file(s) in ${TARGET_SKILLS}"
-        else
-            log_warn "Skills: no files found in ${TARGET_SKILLS}"
         fi
     fi
 
@@ -741,15 +686,10 @@ print_summary() {
     printf "  ${BOLD}Version:${NC}    %s\n" "$VERSION"
     printf "\n"
 
-    if [ "$SKILLS_ONLY" = false ]; then
+    if [ "$HOOKS_ONLY" = false ]; then
         printf "  ${BOLD}Hooks:${NC}      %d installed\n" "$INSTALLED_HOOKS"
-    fi
-    if [ "$HOOKS_ONLY" = false ] && [ "$SKILLS_ONLY" = false ]; then
         printf "  ${BOLD}Agents:${NC}     %d installed\n" "$INSTALLED_AGENTS"
         printf "  ${BOLD}Templates:${NC}  %d installed\n" "$INSTALLED_TEMPLATES"
-    fi
-    if [ "$HOOKS_ONLY" = false ]; then
-        printf "  ${BOLD}Skills:${NC}     %d installed\n" "$INSTALLED_SKILLS"
     fi
     if [ "$BACKED_UP" -gt 0 ]; then
         printf "  ${BOLD}Backups:${NC}    %d file(s) backed up (suffix: %s)\n" "$BACKED_UP" "$BACKUP_SUFFIX"
@@ -779,13 +719,7 @@ print_next_steps() {
     printf "     claude\n"
     printf "     > /project-team init\n"
     printf "\n"
-    printf "  3. ${BOLD}Available skills${NC}:\n"
-    printf "     /impact analyze <file>    - Analyze change impact\n"
-    printf "     /deps show <domain>       - Show domain dependencies\n"
-    printf "     /changelog <domain>       - View change history\n"
-    printf "     /architecture <domain>    - View architecture docs\n"
-    printf "\n"
-    printf "  4. ${BOLD}Customize${NC}:\n"
+    printf "  3. ${BOLD}Customize${NC}:\n"
     printf "     Edit .claude/project-team.yaml to enable/disable hooks and agents.\n"
     printf "\n"
 
@@ -848,13 +782,6 @@ do_uninstall() {
         "templates/DomainDeveloper.md"
     )
 
-    local project_team_skills=(
-        "impact/SKILL.md"
-        "deps/SKILL.md"
-        "changelog/SKILL.md"
-        "architecture/SKILL.md"
-    )
-
     printf "\n${BOLD}The following will be removed:${NC}\n\n"
 
     local total=0
@@ -871,15 +798,6 @@ do_uninstall() {
     # List agents
     for f in "${project_team_agents[@]}"; do
         local target="${TARGET_AGENTS}/${f}"
-        if [ -e "$target" ]; then
-            printf "  ${RED}x${NC} %s\n" "$target"
-            total=$((total + 1))
-        fi
-    done
-
-    # List skills
-    for f in "${project_team_skills[@]}"; do
-        local target="${TARGET_SKILLS}/${f}"
         if [ -e "$target" ]; then
             printf "  ${RED}x${NC} %s\n" "$target"
             total=$((total + 1))
@@ -935,16 +853,6 @@ do_uninstall() {
     # Clean empty agent template dir
     rmdir "${TARGET_AGENTS}/templates" 2>/dev/null || true
 
-    # Remove skills (and empty parent dirs)
-    for f in "${project_team_skills[@]}"; do
-        local target="${TARGET_SKILLS}/${f}"
-        if [ -e "$target" ]; then
-            rm -f "$target"
-            removed=$((removed + 1))
-            rmdir "$(dirname "$target")" 2>/dev/null || true
-        fi
-    done
-
     # Remove templates directory
     if [ -d "$TARGET_TEMPLATES" ]; then
         rm -rf "$TARGET_TEMPLATES"
@@ -981,15 +889,12 @@ do_install() {
     printf "  ${BOLD}Target:${NC}  %s\n" "$TARGET_BASE"
     printf "\n"
     printf "  ${BOLD}Components:${NC}\n"
-    if [ "$SKILLS_ONLY" = false ]; then
+    if [ "$HOOKS_ONLY" = false ]; then
         printf "    - Hooks      -> %s\n" "$TARGET_HOOKS"
     fi
-    if [ "$HOOKS_ONLY" = false ] && [ "$SKILLS_ONLY" = false ]; then
+    if [ "$HOOKS_ONLY" = false ]; then
         printf "    - Agents     -> %s\n" "$TARGET_AGENTS"
         printf "    - Templates  -> %s\n" "$TARGET_TEMPLATES"
-    fi
-    if [ "$HOOKS_ONLY" = false ]; then
-        printf "    - Skills     -> %s\n" "$TARGET_SKILLS"
     fi
     printf "    - Settings   -> %s\n" "$TARGET_SETTINGS"
     printf "\n"
@@ -1002,23 +907,17 @@ do_install() {
     fi
 
     # Execute installation
-    if [ "$SKILLS_ONLY" = false ]; then
+    if [ "$HOOKS_ONLY" = false ]; then
         install_hooks
     fi
 
-    if [ "$HOOKS_ONLY" = false ] && [ "$SKILLS_ONLY" = false ]; then
+    if [ "$HOOKS_ONLY" = false ]; then
         install_agents
         install_templates
     fi
 
-    if [ "$HOOKS_ONLY" = false ]; then
-        install_skills
-    fi
-
-    # Always configure settings (for hooks or skills that need it)
-    if [ "$SKILLS_ONLY" = false ]; then
-        configure_settings
-    fi
+    # Always configure settings (for hooks that need it)
+    configure_settings
 
     # Verify
     if [ "$DRY_RUN" = false ]; then
@@ -1040,7 +939,7 @@ print_banner() {
     fi
     printf "\n"
     printf "${BOLD}  Claude Project Team Installer v${VERSION}${NC}\n"
-    printf "  Team-based hooks, agents, and skills for Claude Code\n"
+    printf "  Team-based hooks, agents, and templates for Claude Code\n"
     printf "\n"
 }
 
