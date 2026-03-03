@@ -186,8 +186,11 @@ Start
 | Task count | Recommended | Code written by | Agent team |
 |------------|-------------|-----------------|------------|
 | ≤ 30 | `/agile auto` | Claude directly | No |
-| 30-50 | `/orchestrate-standalone` | Specialist agents | Optional |
-| 50+ | `/orchestrate-standalone` | Specialist agents | Recommended |
+| 30-80 | `/orchestrate-standalone` | Specialist agents | Optional |
+| 80-200 | `/orchestrate --mode=wave` | Domain-parallel agents | Recommended |
+| 200+ | Split into sub-projects | Domain-parallel agents | Required |
+
+**v2.0 Hybrid Wave Architecture**: For 80+ tasks, use `--mode=wave` for Contract-First + Domain Parallelism + Cross-Review gates. This ensures consistency even at scale.
 
 ---
 
@@ -286,7 +289,8 @@ Choose a mode:
 
 | Version | Date | Changes |
 |---------|------|---------|
-| **v3.5.0** | 2026-03-03 | Context Optimize skill (`/compress`), install.sh fix, 18 skills, 9 agents, 16 hooks |
+| **v3.6.0** | 2026-03-03 | Hybrid Wave Architecture for 80-200 tasks (`/orchestrate --mode=wave`), Contract-First template |
+| v3.5.0 | 2026-03-03 | Context Optimize skill (`/compress`), install.sh fix, 18 skills, 9 agents, 16 hooks |
 | v3.4.0 | 2026-03-03 | Long Context optimization (H2O, Compressive Context, RAG Hybrid) |
 | v3.3.0 | 2026-03-03 | Standalone-first architecture |
 | v3.2.0 | 2026-02-21 | Tmux parallel mode, Progressive Disclosure |

@@ -186,8 +186,11 @@ project-team/
 | 태스크 수 | 추천 | 코드 작성 | 에이전트 팀 |
 |-----------|------|-----------|------------|
 | ≤ 30 | `/agile auto` | Claude 직접 | 불필요 |
-| 30-50 | `/orchestrate-standalone` | 전문가 에이전트 | 선택 |
-| 50+ | `/orchestrate-standalone` | 전문가 에이전트 | 권장 |
+| 30-80 | `/orchestrate-standalone` | 전문가 에이전트 | 선택 |
+| 80-200 | `/orchestrate --mode=wave` | 도메인 병렬 에이전트 | 권장 |
+| 200+ | 하위 프로젝트 분할 | 도메인 병렬 에이전트 | 필수 |
+
+**v2.0 Hybrid Wave Architecture**: 80개 이상 태스크는 `--mode=wave`를 사용하세요. Contract-First + 도메인 병렬 + Cross-Review 게이트로 대규모에서도 일관성을 보장합니다.
 
 ---
 
@@ -286,7 +289,8 @@ cd project-team
 
 | 버전 | 날짜 | 변경사항 |
 |------|------|----------|
-| **v3.5.0** | 2026-03-03 | Context Optimize 스킬 (`/compress`), install.sh 수정, 18개 스킬, 9개 에이전트, 16개 훅 |
+| **v3.6.0** | 2026-03-03 | Hybrid Wave Architecture (80-200개 태스크용 `/orchestrate --mode=wave`), Contract-First 템플릿 |
+| v3.5.0 | 2026-03-03 | Context Optimize 스킬 (`/compress`), install.sh 수정, 18개 스킬, 9개 에이전트, 16개 훅 |
 | v3.4.0 | 2026-03-03 | Long Context 최적화 (H2O, Compressive Context, RAG Hybrid) |
 | v3.3.0 | 2026-03-03 | 독립형 아키텍처 |
 | v3.2.0 | 2026-02-21 | Tmux 병렬 모드, Progressive Disclosure |

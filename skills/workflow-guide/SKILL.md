@@ -239,6 +239,8 @@ ls .claude/agents/*.md 2>/dev/null | wc -l  # 3개 이상이면 팀 구성됨
 ├─ 구현 시작?
 │   ├─ ≤30개 태스크 ──────────────────── /agile auto
 │   ├─ 30~80개 태스크 ───────────────── /orchestrate
+│   ├─ 80~200개 태스크 ──────────────── /orchestrate --mode=wave (NEW)
+│   ├─ 200개+ 태스크 ───────────────── 하위 프로젝트 분할 → wave
 │   └─ 수정/변경 ─────────────────────── /agile iterate
 │
 ├─ 검증 필요?
@@ -267,8 +269,11 @@ ls .claude/agents/*.md 2>/dev/null | wc -l  # 3개 이상이면 팀 구성됨
 |-----------|-----------|---------------|------------|-----------|
 | **1~10개** | `/agile run` + `/agile done` | Claude 직접 | ❌ 불필요 | - |
 | **10~30개** | `/agile auto` | Claude 직접 | ❌ 불필요 | - |
-| **30~80개** | `/orchestrate` | 전문가 에이전트 | ✅ 권장 | `/governance-setup` |
-| **80개+** | 30개 단위 스프린트 분할 (`/agile auto` 반복) | Claude 직접 | ❌ 불필요 | - |
+| **30~80개** | `/orchestrate` | 전문가 에이전트 | ✅ 선택 | `/governance-setup` |
+| **80~200개** | `/orchestrate --mode=wave` | 도메인 병렬 에이전트 | ✅ 권장 | `/governance-setup` |
+| **200개+** | 하위 프로젝트 분할 → `/orchestrate --mode=wave` | 도메인 병렬 에이전트 | ✅ 필수 | `/governance-setup` |
+
+> **v2.0 Hybrid Wave Architecture**: 80개 이상 태스크는 `--mode=wave`로 Contract-First + 도메인 병렬 + Cross-Review 게이트를 적용하여 대규모에서도 일관성을 보장합니다.
 
 ### 거버넌스 권장 기준 (실행 규모와 별개)
 
@@ -304,10 +309,17 @@ ls .claude/agents/*.md 2>/dev/null | wc -l  # 3개 이상이면 팀 구성됨
 │ 🏢 중규모 (30~80개)                                      │
 │   └─ /orchestrate (의존성 기반 병렬 실행)                │
 │                                                         │
+│ 🌊 대규모 (80~200개) - Hybrid Wave Architecture          │
+│   └─ /orchestrate --mode=wave                          │
+│       Phase 0: Contract-First (계약 확정)               │
+│       Phase 1: Domain Parallelism (병렬 실행)           │
+│       Phase 2: Cross-Review Gate (상호 검토)            │
+│       Phase 3: Integration & Polish (통합)              │
+│                                                         │
 │ 🏛️ 거버넌스 (태스크 10+ + 복잡/협업 조건)                │
 │   └─ /governance-setup (Phase 0: PM/Architect/QA/DBA)   │
 │       ↓                                                 │
-│   └─ 30개 단위 스프린트 분할 → /agile auto 반복          │
+│   └─ 규모에 따라 /agile auto 또는 /orchestrate --mode=wave │
 └─────────────────────────────────────────────────────────┘
     ↓
 /checkpoint (태스크 완료 시 리뷰)
@@ -415,7 +427,10 @@ A: 권장하지 않습니다. 각 스킬은 순차적으로 실행하고, 완료
 A: `/recover`를 실행하여 중단된 작업을 복구하세요.
 
 ### Q: 대규모 프로젝트는 어떻게 관리하나요?
-A: 태스크가 **10개 이상**이고(특히 **2+도메인/2+팀원/외부 API 3+** 등 복잡·협업 조건이면) 구현 전에 `/governance-setup`을 먼저 권장합니다. 구현 실행은 30개 단위 스프린트로 분할하여 `/agile auto`를 반복하세요.
+A: 태스크 규모에 따라:
+- **80~200개**: `/orchestrate --mode=wave`로 Hybrid Wave Architecture 사용. Contract-First + 도메인 병렬 + Cross-Review로 일관성 보장.
+- **200개+**: 하위 프로젝트로 분할 후 각각 wave 모드 적용.
+- 구현 전 `/governance-setup`으로 거버넌스(PM/Architect/QA/DBA) 문서 생성 권장.
 
 ### Q: 거버넌스와 에이전트 팀의 차이는?
 A: `/governance-setup`은 **거버넌스 팀**(PM, Architect, Designer, QA, DBA)이 표준/정책 문서를 생성합니다. 소규모(≤30개)는 `/agile auto`가 Claude 직접 작성 방식이라 거버넌스 없이도 됩니다.
@@ -427,4 +442,4 @@ A: `/compress`를 사용하여 H2O 패턴으로 핵심 정보를 추출하세요
 
 ---
 
-**Last Updated**: 2026-03-03 (v4.3.0 - Context Optimize 스킬 추가, 15개 핵심 스킬)
+**Last Updated**: 2026-03-03 (v4.4.0 - Hybrid Wave Architecture 추가, 대규모 프로젝트 지원 강화)

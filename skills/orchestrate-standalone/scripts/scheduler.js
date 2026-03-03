@@ -156,7 +156,6 @@ function createLayers(sortedTasks, graph) {
     // Find the first layer where all dependencies are placed
     let layerIndex = 0;
     for (const layer of layers) {
-      const layerTaskIds = new Set(layer.map(t => t.id));
       if (deps.every(d => placed.has(d))) {
         // Found layer, but check for conflicts
         if (!hasConflicts(task, layer)) {
@@ -232,33 +231,179 @@ function detectConflicts(tasks) {
 }
 
 // ---------------------------------------------------------------------------
+// Wave-based Scheduling (Hybrid Wave Architecture v2.0)
+// ---------------------------------------------------------------------------
+
+/**
+ * Create waves for Hybrid Wave Architecture
+ * Each wave contains 20-40 tasks grouped by domain
+ *
+ * @param {Array} sortedTasks - Topologically sorted tasks
+ * @param {number} waveSize - Target tasks per wave (default: 30)
+ * @returns {Array} Array of waves, each containing domain-grouped tasks
+ */
+function createWaves(sortedTasks, waveSize = 30) {
+  const waves = [];
+  let currentWave = { tasks: [], domains: {} };
+  let taskCount = 0;
+
+  for (const task of sortedTasks) {
+    const domain = task.domain || 'shared';
+
+    // Initialize domain in current wave if not exists
+    if (!currentWave.domains[domain]) {
+      currentWave.domains[domain] = [];
+    }
+
+    currentWave.domains[domain].push(task);
+    currentWave.tasks.push(task);
+    taskCount++;
+
+    // Start new wave when size reached
+    if (taskCount >= waveSize) {
+      waves.push(currentWave);
+      currentWave = { tasks: [], domains: {} };
+      taskCount = 0;
+    }
+  }
+
+  // Add remaining tasks as final wave
+  if (currentWave.tasks.length > 0) {
+    waves.push(currentWave);
+  }
+
+  return waves;
+}
+
+/**
+ * Create Wave execution plan with phases
+ *
+ * Phase 0: Contract generation (single agent)
+ * Phase 1: Domain parallelism with mid-wave validation
+ * Phase 2: Cross-review gate
+ * Phase 3: Integration & polish
+ */
+function createWavePlan(tasks, options = {}) {
+  const { waveSize = 30 } = options;
+  const { sorted } = buildDAG(tasks);
+  const waves = createWaves(sorted, waveSize);
+
+  // Identify domains
+  const domains = [...new Set(tasks.map(t => t.domain || 'shared'))];
+
+  return {
+    mode: 'wave',
+    phases: [
+      {
+        id: 0,
+        name: 'Shared Foundation',
+        description: 'Generate contracts (API, Type, Design, Domain)',
+        agent: 'single',
+        tasks: ['Generate contracts from templates/contract-first.yaml'],
+        validation: ['contract files exist', 'all domains defined']
+      },
+      {
+        id: 1,
+        name: 'Domain Parallelism',
+        description: 'Execute waves with domain-parallel agents',
+        agent: 'multi',
+        waves: waves.map((wave, i) => ({
+          id: i + 1,
+          taskCount: wave.tasks.length,
+          domains: Object.keys(wave.domains),
+          midValidation: i < waves.length - 1  // Mid-wave validation except last
+        })),
+        validation: ['contract compliance', 'no duplicate utils']
+      },
+      {
+        id: 2,
+        name: 'Cross-Review Gate',
+        description: 'Each domain agent reviews other domains',
+        agent: 'multi',
+        reviews: domains.map(d => ({
+          reviewer: d,
+          targets: domains.filter(t => t !== d)
+        })),
+        validation: ['cross-domain review passed', 'integration tests']
+      },
+      {
+        id: 3,
+        name: 'Integration & Polish',
+        description: 'Merge common modules, final quality audit',
+        agent: 'single',
+        tasks: ['Deduplicate utils', 'Run /quality-auditor'],
+        validation: ['full test suite', 'security scan']
+      }
+    ],
+    summary: {
+      totalTasks: tasks.length,
+      totalWaves: waves.length,
+      domains,
+      estimatedParallelism: domains.length
+    }
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Main Export
 // ---------------------------------------------------------------------------
 
 if (require.main === module) {
   const tasksPath = process.argv[2] || 'TASKS.md';
+  const mode = process.argv[3] || 'standard';  // standard | wave
+  const waveSize = parseInt(process.argv[4]) || 30;
 
   try {
     const tasks = parseTasks(tasksPath);
     console.log(`Parsed ${tasks.length} tasks`);
 
-    const { sorted, graph } = buildDAG(tasks);
-    console.log(`Topological sort: ${sorted.map(t => t.id).join(' -> ')}`);
+    if (mode === 'wave') {
+      // Wave mode (Hybrid Wave Architecture)
+      console.log(`\n🌊 Wave Mode (size: ${waveSize})`);
+      const plan = createWavePlan(tasks, { waveSize });
 
-    const layers = createLayers(sorted, graph);
-    console.log(`\nExecution layers: ${layers.length}`);
-    layers.forEach((layer, i) => {
-      console.log(`  Layer ${i + 1}: ${layer.map(t => t.id).join(', ')}`);
-    });
+      console.log(`\nPhases:`);
+      for (const phase of plan.phases) {
+        console.log(`  Phase ${phase.id}: ${phase.name} (${phase.agent} agent)`);
+        if (phase.waves) {
+          phase.waves.forEach(w => {
+            console.log(`    Wave ${w.id}: ${w.taskCount} tasks [${w.domains.join(', ')}]`);
+          });
+        }
+      }
 
-    const conflicts = detectConflicts(tasks);
-    console.log(`\nConflicts detected: ${Object.keys(conflicts.fileMap).length} files, ${Object.keys(conflicts.domainMap).length} domains`);
+      console.log(`\nSummary:`);
+      console.log(`  Total tasks: ${plan.summary.totalTasks}`);
+      console.log(`  Total waves: ${plan.summary.totalWaves}`);
+      console.log(`  Domains: ${plan.summary.domains.join(', ')}`);
+      console.log(`  Estimated parallelism: ${plan.summary.estimatedParallelism}x`);
 
-    // Output layers as JSON for orchestrate.sh
-    const outputPath = path.join(path.dirname(tasksPath), '.claude', 'task-layers.json');
-    fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-    fs.writeFileSync(outputPath, JSON.stringify({ layers, tasks: sorted }, null, 2));
-    console.log(`\nLayers written to: ${outputPath}`);
+      // Output wave plan
+      const outputPath = path.join(path.dirname(tasksPath), '.claude', 'wave-plan.json');
+      fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+      fs.writeFileSync(outputPath, JSON.stringify(plan, null, 2));
+      console.log(`\nWave plan written to: ${outputPath}`);
+
+    } else {
+      // Standard mode (legacy)
+      const { sorted, graph } = buildDAG(tasks);
+      console.log(`Topological sort: ${sorted.map(t => t.id).join(' -> ')}`);
+
+      const layers = createLayers(sorted, graph);
+      console.log(`\nExecution layers: ${layers.length}`);
+      layers.forEach((layer, i) => {
+        console.log(`  Layer ${i + 1}: ${layer.map(t => t.id).join(', ')}`);
+      });
+
+      const conflicts = detectConflicts(tasks);
+      console.log(`\nConflicts detected: ${Object.keys(conflicts.fileMap).length} files, ${Object.keys(conflicts.domainMap).length} domains`);
+
+      // Output layers as JSON for orchestrate.sh
+      const outputPath = path.join(path.dirname(tasksPath), '.claude', 'task-layers.json');
+      fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+      fs.writeFileSync(outputPath, JSON.stringify({ layers, tasks: sorted }, null, 2));
+      console.log(`\nLayers written to: ${outputPath}`);
+    }
 
   } catch (error) {
     console.error(`Error: ${error.message}`);
@@ -270,5 +415,7 @@ module.exports = {
   parseTasks,
   buildDAG,
   createLayers,
-  detectConflicts
+  detectConflicts,
+  createWaves,
+  createWavePlan
 };
