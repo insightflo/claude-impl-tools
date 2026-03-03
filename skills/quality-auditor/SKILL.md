@@ -18,7 +18,7 @@ updated: 2026-03-01
 > | **`/audit` (이 스킬)** | **배포 전** | **기획 정합성 + DDD + 보안 + 테스트 + 브라우저 검증** |
 > | `/multi-ai-review` | 심층 검토 필요 시 | 3개 AI 협업 리뷰 |
 >
-> **v2.4.0 업데이트**: `/security-review` 연동 보안 검증 추가 + vibelab v1.9.2 Hook 시스템 연동
+> **v2.5.0 업데이트**: `/security-review` 연동 + project-team Hook 시스템 (quality-gate, standards-validator)
 
 ---
 

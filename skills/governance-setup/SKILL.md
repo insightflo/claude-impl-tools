@@ -1,19 +1,24 @@
 ---
 name: governance-setup
-description: 대규모 프로젝트의 거버넌스 팀(PM, Architect, Designer, QA, DBA)이 구현 전 선행 작업을 수행합니다. /governance-setup, "거버넌스 구성", "프로젝트 팀 셋업" 트리거.
-version: 1.2.0
-updated: 2026-02-21
+description: 대규모 프로젝트의 거버넌스 팀(PM, Architect, Designer, QA, DBA)이 구현 전 선행 작업을 수행합니다.
+trigger: /governance-setup, "거버넌스 구성", "프로젝트 팀 셋업"
+version: 1.3.0
+updated: 2026-03-03
 ---
+
+> **v1.3.0**: `/project-bootstrap` 의존 제거, 거버넌스 완료 후 **프로젝트 팀 로컬 초기화(standalone)** 경로 추가 (install + project-team.yaml + 도메인 에이전트 + TASKS 스캐폴딩)
 
 # 🏛️ Governance Setup (Phase 0)
 
 > **목적**: 대규모 프로젝트에서 구현 전에 거버넌스 팀이 표준과 품질 기준을 확립합니다.
 >
+> **🎯 Standalone 목표(중요)**: 이 프로젝트는 **구현을 돕는 스킬 + 에이전트 팀(Project Team)**을 제공하며, 기존 **VibeLab skills에 의존하거나 그 영향력에 종속되지 않고 standalone으로 동작**하는 것을 목표로 합니다.
+>
 > **⚠️ 핵심 원칙**: 이 스킬은 **구현 코드를 작성하지 않습니다**. 오직 **거버넌스 문서와 표준**만 생성합니다.
 >
-> **전제 조건**: TASKS.md가 존재해야 합니다. 없으면 `/tasks-generator` 먼저 실행.
+> **전제 조건**: TASKS.md가 있으면 좋습니다. 없다면 (1) 거버넌스 완료 후 **프로젝트 팀 로컬 초기화(standalone)** 단계에서 **TASKS 스캐폴딩**을 먼저 수행하거나, (선택) 외부 도구/스킬로 TASKS를 생성하세요.
 >
-> **v1.2.0**: Progressive Disclosure 적용, `/eros` 연동 추가
+> **v1.2.1**: Frontmatter `trigger` 정리, `/audit` 연동 보강, Phase 실행 템플릿 구체화 (v1.3.0에서 standalone 경로 강화)
 
 ---
 
@@ -36,11 +41,14 @@ updated: 2026-02-21
 ### 0단계: 전제 조건 확인
 
 ```bash
+# TASKS 파일은 프로젝트에 따라 루트(TASKS.md) 또는 docs/planning/06-tasks.md에 있을 수 있습니다.
 ls docs/planning/06-tasks.md 2>/dev/null || ls TASKS.md 2>/dev/null
 ls management/project-plan.md management/decisions/ADR-*.md 2>/dev/null
 ```
 
-**TASKS.md가 없으면** → `/tasks-generator` 먼저 안내
+**TASKS.md가 없으면**:
+- 레거시 파일(`docs/planning/06-tasks.md`)만 있으면 → `/tasks-migrate` 먼저 안내 (TASKS.md로 통합)
+- 태스크 파일 자체가 없으면 → `/tasks-generator` 먼저 안내
 
 ---
 
@@ -56,8 +64,17 @@ ls management/project-plan.md management/decisions/ADR-*.md 2>/dev/null
 
 ### 각 Phase 진입 시
 1. 해당 `references/phase-N-*.md` 파일을 Read
-2. Task 호출 템플릿에 따라 에이전트 실행
+2. 아래 템플릿으로 Task 호출 (예시)
+   ```js
+   Task({
+     subagent_type: "orchestrator", // phase 파일의 안내에 따름
+     description: "PM: 프로젝트 계획 수립",
+     prompt: "`references/phase-1-pm.md` 지침에 따라 `management/project-plan.md`를 작성하세요. 필요한 입력 정보는 사용자에게 질문하세요."
+   })
+   ```
 3. 완료 조건 확인 후 다음 단계로
+
+> 주의: Phase별 `subagent_type`은 `references/phase-N-*.md`에 정의된 값을 우선합니다.
 
 ---
 
@@ -94,10 +111,10 @@ database/
     "question": "✅ 거버넌스 셋업 완료! 다음 단계를 선택하세요:",
     "header": "다음 단계",
     "options": [
-      {"label": "⭐ 에이전트 팀 생성 (권장)", "description": "/project-bootstrap - backend, frontend, test 전문가 생성"},
+      {"label": "⭐ 프로젝트 팀 로컬 초기화 (권장)", "description": "(standalone) project-team install + .claude/project-team.yaml 생성 + 도메인 에이전트 + TASKS 스캐폴딩"},
+      {"label": "거버넌스 품질 초기 감사", "description": "/audit - 설정된 표준과 품질 게이트를 종합 점검"},
       {"label": "결핍 분석 먼저", "description": "/eros - 숨겨진 가정과 결핍 검증 (v1.10.0)"},
-      {"label": "직접 구현 시작", "description": "/agile auto - Claude가 직접 코드 작성 (소규모만)"},
-      {"label": "다른 워크플로우", "description": "/workflow - 전체 스킬 목록에서 선택"}
+      {"label": "직접 구현 시작", "description": "/agile auto - Claude가 직접 코드 작성 (소규모만)"}
     ],
     "multiSelect": false
   }]
@@ -108,10 +125,10 @@ database/
 
 | 선택 | 실행 |
 |------|------|
-| "에이전트 팀 생성" | `Skill({ skill: "project-bootstrap" })` |
+| "프로젝트 팀 로컬 초기화" | 아래 **Standalone Init** 섹션 수행 |
+| "거버넌스 품질 초기 감사" | `Skill({ skill: "quality-auditor" })` |
 | "결핍 분석 먼저" | `Skill({ skill: "eros" })` |
 | "직접 구현 시작" | `Skill({ skill: "agile" })` |
-| "다른 워크플로우" | `Skill({ skill: "workflow-guide" })` |
 
 ---
 

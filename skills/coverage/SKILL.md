@@ -17,7 +17,7 @@ updated: 2026-02-07
 > | `/quality-gate` | Phase 완료 시 | 품질 게이트 통과/실패 |
 > | `/impact` | 수정 전 | 영향도 분석 |
 >
-> **v2.2.0 업데이트**: vibelab v1.9.2 Hook 시스템 연동
+> **v2.3.0 업데이트**: Standalone 모드 지원
 
 ---
 

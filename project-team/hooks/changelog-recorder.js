@@ -8,7 +8,7 @@
  * changelog file at .claude/changelog/{YYYY-MM}.yaml.
  *
  * @TASK P3-T4 - Changelog Recorder Hook
- * @SPEC claude-project-team/hooks (Section 12.6)
+ * @SPEC project-team/hooks (Section 12.6)
  *
  * Claude Code Hook Protocol (PostToolUse):
  *   - stdin: JSON { tool_name, tool_input: { file_path, content, old_string, new_string },

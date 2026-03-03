@@ -19,7 +19,7 @@
 - **담당**: orchestrator
 - **산출물**:
   ```
-  claude-project-team/
+  project-team/
   ├── install.sh
   ├── hooks/
   ├── agents/

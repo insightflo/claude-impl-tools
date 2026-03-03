@@ -7,7 +7,7 @@
  * creates YAML notification files for affected consumer domains.
  *
  * @TASK P2-T6 - Cross-Domain Notifier Hook
- * @SPEC claude-project-team/hooks/cross-domain-notifier.js
+ * @SPEC project-team/hooks/cross-domain-notifier.js
  *
  * Claude Code Hook Protocol (PostToolUse):
  *   - stdin: JSON { tool_name, tool_input: { file_path, content, ... },

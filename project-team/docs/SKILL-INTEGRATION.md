@@ -633,7 +633,7 @@ architecture-updater hook (updates API contract docs)
 
 1. **Install Claude Project Team** (if not already done):
    ```bash
-   cd /path/to/claude-project-team
+   cd /path/to/project-team
    ./install.sh --global
    # or --local for project-specific installation
    ```
@@ -646,7 +646,7 @@ architecture-updater hook (updates API contract docs)
 
 3. **Verify Vibelab Extension Skills** (already in place):
    ```bash
-   ls /path/to/vibelab-extention/skills/
+   ls /path/to/claude-imple-skills/skills/
    # Should show: agile/, multi-ai-review/, quality-auditor/, recover/, workflow-guide/
    ```
 
@@ -718,8 +718,8 @@ architecture-updater hook (updates API contract docs)
 export GLM_API_KEY="your_glm_api_key"
 
 # Optional: Custom skill paths
-export VIBELAB_SKILLS_PATH="/path/to/vibelab-extention/skills"
-export VIBELAB_HOOKS_PATH="/path/to/vibelab-extention/.claude/hooks"
+export VIBELAB_SKILLS_PATH="/path/to/claude-imple-skills/skills"
+export VIBELAB_HOOKS_PATH="/path/to/claude-imple-skills/.claude/hooks"
 ```
 
 ---
@@ -873,10 +873,10 @@ tail -f ~/.claude/logs/hooks.log
 grep "skill-router" ~/.claude/settings.json
 
 # 2. Check skill paths
-ls /path/to/vibelab-extention/skills/agile/
+ls /path/to/claude-imple-skills/skills/agile/
 
 # 3. Manually specify skill path if needed
-export VIBELAB_SKILLS_PATH="/path/to/vibelab-extention/skills"
+export VIBELAB_SKILLS_PATH="/path/to/claude-imple-skills/skills"
 
 # 4. Restart Claude Code
 ```
@@ -941,13 +941,13 @@ If migrating from pure vibelab to integrated vibelab + Claude Project Team:
 
 ### Step 1: Install Claude Project Team
 ```bash
-cd /path/to/claude-project-team
+cd /path/to/project-team
 ./install.sh --global
 ```
 
 ### Step 2: Verify Hook Activation
 ```bash
-# Should show both vibelab hooks AND claude-project-team hooks
+# Should show both vibelab hooks AND project-team hooks
 ls ~/.claude/hooks/ | wc -l
 # Expected: 14+ hooks
 ```

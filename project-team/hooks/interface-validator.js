@@ -7,7 +7,7 @@
  * affected consumer domains.
  *
  * @TASK P2-T5 - Interface Contract Validator Hook
- * @SPEC claude-project-team/hooks/interface-validator.js
+ * @SPEC project-team/hooks/interface-validator.js
  *
  * Claude Code Hook Protocol (PostToolUse):
  *   - stdin: JSON { tool_name, tool_input: { file_path, content, ... },

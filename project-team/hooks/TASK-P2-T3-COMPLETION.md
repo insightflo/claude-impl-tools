@@ -4,12 +4,12 @@
 - **Task ID**: P2-T3
 - **Title**: Design Validator Hook Implementation
 - **Phase**: 2
-- **Worktree**: `/Users/kwak/Projects/ai/vibelab-extention/worktree/phase-2-hooks`
+- **Worktree**: `/Users/kwak/Projects/ai/claude-imple-skills/worktree/phase-2-hooks`
 
 ## Deliverables
 
 ### 1. design-validator.js
-**Location**: `claude-project-team/hooks/design-validator.js`
+**Location**: `project-team/hooks/design-validator.js`
 **Size**: 12K
 **Permissions**: `rwxr-xr-x` (executable)
 
@@ -25,7 +25,7 @@
 - ✅ stdin/stdout protocol (Claude Code Hook)
 
 ### 2. design-validator.test.js
-**Location**: `claude-project-team/hooks/__tests__/design-validator.test.js`
+**Location**: `project-team/hooks/__tests__/design-validator.test.js`
 **Size**: 13K
 
 **Test Coverage**:
@@ -40,7 +40,7 @@
 - ✅ Integration tests (complex components)
 
 ### 3. README.md
-**Location**: `claude-project-team/hooks/README.md`
+**Location**: `project-team/hooks/README.md`
 **Size**: 6.7K
 
 **Documentation Includes**:
@@ -231,7 +231,7 @@ var(--font-size-lg)
 
 ```bash
 # 1. Copy hook to project
-cp claude-project-team/hooks/design-validator.js .claude/hooks/
+cp project-team/hooks/design-validator.js .claude/hooks/
 
 # 2. Set executable permission
 chmod +x .claude/hooks/design-validator.js

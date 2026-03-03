@@ -7,7 +7,7 @@
  * to provide risk assessment and recommended test commands.
  *
  * @TASK P3-T1 - Pre-Edit Impact Check Hook
- * @SPEC claude-project-team/hooks (Section 12.3)
+ * @SPEC project-team/hooks (Section 12.3)
  *
  * Claude Code Hook Protocol (PreToolUse):
  *   - stdin: JSON { tool_name, tool_input: { file_path, ... } }

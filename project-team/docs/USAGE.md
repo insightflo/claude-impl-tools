@@ -1035,7 +1035,7 @@ No handler found for /impact
 **Solution:**
 ```bash
 # Reinstall skills
-cd /path/to/claude-project-team
+cd /path/to/project-team
 ./install.sh --skills-only --global --force
 
 # Restart Claude Code

@@ -7,7 +7,7 @@
  * clear guidance on proper escalation paths.
  *
  * @TASK P2-T1 - Agent Permission Checker Hook
- * @SPEC claude-project-team/agents/*.md (access_rights sections)
+ * @SPEC project-team/agents/*.md (access_rights sections)
  *
  * Claude Code Hook Protocol:
  *   - stdin: JSON { tool_name, tool_input: { file_path, ... } }

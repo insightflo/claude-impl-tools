@@ -7,7 +7,7 @@
  * endpoints, and import dependencies to keep docs in sync with code.
  *
  * @TASK P3-T3 - Architecture Updater Hook
- * @SPEC claude-project-team/hooks (Section 12.2)
+ * @SPEC project-team/hooks (Section 12.2)
  *
  * Claude Code Hook Protocol (PostToolUse):
  *   - stdin: JSON { tool_name, tool_input: { file_path, content, ... },

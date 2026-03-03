@@ -8,7 +8,7 @@
  * Shows confirmation checklists and required reviewers for high-risk edits.
  *
  * @TASK P3-T2 - Risk Area Warning Hook
- * @SPEC claude-project-team/hooks (Section 12.4)
+ * @SPEC project-team/hooks (Section 12.4)
  *
  * Claude Code Hook Protocol (PreToolUse):
  *   - stdin: JSON { tool_name, tool_input: { file_path, ... } }

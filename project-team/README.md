@@ -2,7 +2,7 @@
 
 > An enterprise-grade agent coordination system for managing large-scale AI-driven projects with structured governance, role-based permissions, and automated quality gates.
 
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/vibelab/claude-project-team)
+[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/vibelab/project-team)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node.js-20%2B-brightgreen.svg)](https://nodejs.org/)
 [![Status](https://img.shields.io/badge/status-stable-success.svg)](#)
@@ -76,7 +76,7 @@ Domain Level (per domain: 3 agents)
 Install into your global Claude configuration:
 
 ```bash
-cd /path/to/claude-project-team
+cd /path/to/project-team
 ./install.sh --global
 ```
 
@@ -85,7 +85,7 @@ cd /path/to/claude-project-team
 Install into a specific project's `.claude/` directory:
 
 ```bash
-cd /path/to/claude-project-team
+cd /path/to/project-team
 ./install.sh --local
 ```
 
@@ -120,7 +120,7 @@ claude mcp list
 ## Project Structure
 
 ```
-claude-project-team/
+project-team/
 ├── agents/                      # 9 AI agent definitions
 │   ├── ProjectManager.md        # Project coordination
 │   ├── ChiefArchitect.md        # Architecture & standards

@@ -9,7 +9,7 @@
  * - Non-standard spacing (must be 4px multiples: 4, 8, 16, 24, 32, 48)
  *
  * @TASK P2-T3 - Design Validator Hook
- * @SPEC claude-project-team/hooks/design-validator.js
+ * @SPEC project-team/hooks/design-validator.js
  *
  * Claude Code Hook Protocol:
  *   - stdin: JSON { tool_name, tool_input: { file_path, content, ... } }

@@ -169,7 +169,7 @@ check_prerequisites() {
         fi
     done
     if [ "$missing" -gt 0 ]; then
-        log_error "Source directory appears incomplete. Run from the claude-project-team root."
+        log_error "Source directory appears incomplete. Run from the project-team root."
         exit 1
     fi
     log_success "Source directory verified: ${SCRIPT_DIR}"

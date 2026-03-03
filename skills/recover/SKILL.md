@@ -13,7 +13,7 @@ updated: 2026-02-21
 > - 바이브랩스킬의 `/auto-orchestrate --resume`은 **orchestrate 상태만** 복구
 > - **이 스킬은 모든 유형의 중단된 작업을 탐지**하고 적절한 복구 경로를 안내
 >
-> **v2.2.0 업데이트**: vibelab v1.9.2 Hook 시스템 연동 (error-recovery-advisor, session-summary-saver)
+> **v2.4.0 업데이트**: TASKS.md 우선 복구 + project-team Hook 연동
 
 ---
 
@@ -32,25 +32,29 @@ updated: 2026-02-21
 
 이 스킬이 발동되면 다음 순서로 작업을 수행합니다:
 
-### 1️⃣ 상태 파일 및 Artifact 점검 (v1.7.4)
+### 1️⃣ 상태 파일 및 Artifact 점검 (Standalone v2.4)
 
-이전 작업의 흔적을 순차적으로 탐색합니다:
+이전 작업의 흔적을 **TASKS.md 우선**으로 탐색합니다:
 
-| 소스 | 파일 경로 | 설명 |
-|------|-----------|------|
-| **Orchestrate State** | `.claude/orchestrate-state.json` | 마지막 완료 태스크 및 병렬 실행 상태 (v1.7.4) |
-| **Progress Log** | `.claude/progress.txt` | 이전 작업의 주요 의사결정 및 이슈 기록 (v1.7.4) |
-| **Task Tracker** | `task.md` | `[ ]` 또는 `[/]` 상태의 태스크 목록 (전통적 방식) |
+| 우선순위 | 소스 | 파일 경로 | 설명 |
+|----------|------|-----------|------|
+| **1 (최우선)** | Task Tracker | `TASKS.md` | `[ ]`, `[/]`, `[x]` 상태의 태스크 목록 |
+| 2 | Task Tracker (레거시) | `docs/planning/06-tasks.md`, `task.md` | 레거시 태스크 파일 |
+| 3 | Progress Log | `.claude/progress.txt` | 의사결정 및 이슈 기록 |
+| 4 (선택적) | Orchestrate State | `.claude/orchestrate-state.json` | VibeLab 자동화 상태 (있을 경우) |
 
-- **v1.7.4 우선순위**: `orchestrate-state.json`의 `last_task_id`를 최우선으로 확인합니다.
+- **Standalone 우선순위**: `TASKS.md`의 미완료 태스크(`[ ]`, `[/]`)를 최우선으로 확인합니다.
 - 발견 시, 해당 항목 목록을 사용자에게 보고합니다.
 
 ```bash
 # 예시 출력
-## 🚧 중단된 자동화 작업 발견 (v1.7.4)
-- **마지막 태스크**: T2.1 (Dashboard UI 구현)
-- **상태**: Phase 2 중간 중단됨
-- **권장**: `/auto-orchestrate --resume` 실행
+## 🚧 중단된 작업 발견
+
+**TASKS.md 미완료 태스크:**
+- [/] T1.2: Dashboard UI 구현 (진행 중)
+- [ ] T1.3: API 연동
+
+**권장**: `/agile run T1.2` 또는 `/agile auto` 실행
 ```
 
 ### 2️⃣ 최근 대화 히스토리 확인
@@ -180,23 +184,22 @@ ls /tmp/task-*-result.md 2>/dev/null
 | 모두 `.done` 없음 | 전체 실패 | `/auto-orchestrate --tmux --resume` |
 | tmux 세션 남음 | 프로세스 아직 실행 중 | `tmux attach` 로 상태 확인 |
 
-### 🪝 Hook 연동 (v1.9.2)
+### 🪝 Hook 연동 (Standalone v2.4)
 
 | Hook | 효과 |
 |------|------|
-| `skill-router` | `/recover` 키워드 자동 감지 |
-| `error-recovery-advisor` | 에러 발생 시 자동 복구 제안 (KB 기반) |
-| `session-summary-saver` | 세션 종료 시 미완료 TODO 저장 → 다음 세션 복구 용이 |
-| `session-memory-loader` | 세션 시작 시 이전 상태 자동 로드 |
+| `task-sync` | TASKS.md 상태 변경 감지 및 동기화 |
+| `quality-gate` | 복구 후 품질 검증 자동 트리거 |
+
+> **참고**: project-team Hook 시스템(`project-team/hooks/`) 사용
 
 ---
 
 ## 💡 예방 팁 (Prevention Tips)
 
 1. **자주 커밋하기**: 작은 단위로 커밋하면 복구가 쉬워집니다.
-2. **TASKS.md 활용**: `/tasks-generator`로 태스크를 문서화하면 진행 상황 추적이 용이합니다.
-3. **상태 파일 확인**: `.claude/orchestrate-state.json`이 자동으로 진행 상황을 저장합니다.
-4. **Worktree 사용**: Phase별 Worktree를 사용하면 작업 분리가 명확해집니다.
+2. **TASKS.md 활용**: `/tasks-init`으로 태스크를 문서화하면 진행 상황 추적이 용이합니다.
+3. **Worktree 사용**: Phase별 Worktree를 사용하면 작업 분리가 명확해집니다.
 
 ---
 

@@ -243,6 +243,37 @@ Patterns that trigger recovery suggestions:
 - TODO markers (`// TODO:`, `# FIXME:`)
 - Stub implementations (`pass`, `throw new Error('Not implemented')`)
 
+## Task File & ID Policy
+
+### Canonical Task File
+
+| Priority | Path | Description |
+|----------|------|-------------|
+| **1 (Canonical)** | `./TASKS.md` | 프로젝트 루트의 표준 태스크 파일 |
+| 2 (Legacy) | `docs/planning/06-tasks.md` | VibeLab 컨벤션 |
+| 3 (Legacy) | `task.md`, `*tasks*.md` | 기타 레거시 형식 |
+
+> **Rule**: 신규 프로젝트는 루트 `TASKS.md`만 사용. 레거시 파일이 있으면 `/tasks-migrate`로 통합.
+
+### Task ID Policy
+
+두 가지 ID 형식 모두 허용:
+
+| Format | Pattern | Use Case | Example |
+|--------|---------|----------|---------|
+| **Phase-based** | `P{n}-T{m}`, `P{n}-S{m}-T{k}` | 프로젝트/Phase 관리 | `P1-T1`, `P2-S1-T3` |
+| **Agile Layer** | `T{layer}.{seq}` | 스프린트/레이어 작업 | `T0.1`, `T1.2`, `T3.4` |
+
+**Agile Layer 의미:**
+- `T0.*` — Skeleton (구조, 레이아웃)
+- `T1.*` — Muscles (핵심 기능)
+- `T2.*` — Muscles Advanced (고급 기능)
+- `T3.*` — Skin (UI 다듬기, 애니메이션)
+
+**권장 사용:**
+- 신규 스프린트/구현: `T*` (agile layer)
+- 대규모 프로젝트/Phase 확장: `P*-T*`
+
 ## Important Constraints
 
 ### What Skills DON'T Do

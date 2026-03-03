@@ -11,7 +11,7 @@
  * Finds TASKS.md regardless of location:
  *   - TASKS.md (root)
  *   - docs/planning/06-tasks.md (VibeLab convention)
- *   - **/tasks.md, **/*-tasks.md
+ *   - any tasks.md or *-tasks.md files
  *
  * Claude Code Hook Protocol (PostToolUse):
  *   - stdin: JSON { tool_name, tool_input, tool_result, hook_event_name }
@@ -42,9 +42,12 @@ const TASK_FILE_PATTERNS = [
 
 /**
  * Task ID patterns to detect in code/comments.
- * Captures: P{phase}-T{task} or P{phase}-S{screen}-T{task} or P{phase}-R{resource}
+ * Captures:
+ *   - Phase-based: P{phase}-T{task} or P{phase}-S{screen}-T{task} or P{phase}-R{resource}
+ *   - Agile layer: T{layer}.{seq} (e.g., T0.1, T1.2, T3.4)
  */
 const TASK_ID_PATTERNS = [
+  // === Phase-based IDs (P*-T*) ===
   // @TASK P1-T1, @TASK P2-S1-T3
   /@TASK\s+(P\d+(?:-[A-Z]\d+)?(?:-T\d+)?)/gi,
   // #P1-T1, #P2-S1-T3
@@ -52,7 +55,17 @@ const TASK_ID_PATTERNS = [
   // Task P1-T1 completed, Task P2-S1-T3 done
   /Task\s+(P\d+(?:-[A-Z]\d+)?(?:-T\d+)?)\s+(?:completed|done|finished)/gi,
   // [P1-T1] in commit messages
-  /\[(P\d+(?:-[A-Z]\d+)?(?:-T\d+)?)\]/g
+  /\[(P\d+(?:-[A-Z]\d+)?(?:-T\d+)?)\]/g,
+
+  // === Agile layer IDs (T*.*) ===
+  // @TASK T0.1, @TASK T1.2
+  /@TASK\s+(T\d+(?:\.\d+)+)/gi,
+  // #T0.1, #T1.2
+  /#(T\d+(?:\.\d+)+)\b/g,
+  // Task T0.1 completed, Task T1.2 done
+  /Task\s+(T\d+(?:\.\d+)+)\s+(?:completed|done|finished)/gi,
+  // [T0.1], [T1.2] in commit messages
+  /\[(T\d+(?:\.\d+)+)\]/g
 ];
 
 /**

@@ -1,19 +1,331 @@
-# Inflo's VibeLab Extension
+# claude-imple-skills
 
-**VibeLab Skills 위에서 더 안전하고 정밀한 구현을 돕는 확장 스킬 팩 v3.2.0**
+[English](./README.md) | [한국어](./README_ko.md)
 
-> **필수 요구사항**: 이 확장팩은 [VibeLab Skills v1.10.0+](https://vibelabs.kr/skills/new)가 설치된 환경에서만 정상 작동합니다.
+**Implementation skill pack v3.2.0 — standalone-first skill + agent team pack**
 
-VibeLab의 `/socrates`와 `/tasks-generator`가 만들어낸 기획 문서와 태스크 목록을 기반으로, **레이어별 점진적 구현**, **맥락 복구**, **품질 감사**, **워크플로우 라우팅**, 그리고 **v3.0에서 새로 추가된 Claude Project Team 시스템**을 제공합니다.
+> **Goal**: Provide an implementation-oriented **skills + agent team (Project Team)** that can run **standalone**, without being coupled to (or overridden by) existing VibeLab skills.
+
+This repo provides **layered incremental implementation**, **context recovery**, **pre-deployment auditing**, **workflow routing**, and the **Project Team system** introduced in v3.0. VibeLab skills may be used optionally, but this project is designed to remain functional when VibeLab skills are not present.
 
 ---
 
-## v3.0 NEW: Claude Project Team
+## v3.0 NEW: Project Team
+
+**An AI agent collaboration system for large projects**
+
+```
+project-team/
+├── agents/       # 9 agents (PM, Architect, Designer, QA, DBA...)
+├── hooks/        # 10 automation hooks (permission, quality, impact checks)
+├── skills/       # 5 maintenance skills (/impact, /deps, /changelog...)
+└── templates/    # protocol, ADR, contract templates
+```
+
+### Key features
+
+| Component | Count | Purpose |
+|----------|------:|---------|
+| **Agents** | 9 | Role-based collaboration (Project Manager, Chief Architect, QA Manager, etc.) |
+| **Hooks** | 10 | Automatic validations before/after edits (permissions, standards, impact, quality) |
+| **Skills** | 5 | Maintenance analysis (`/impact`, `/deps`, `/changelog`, `/coverage`, `/architecture`) |
+| **Templates** | 7 | Inter-agent protocol, ADR, interface contract |
+
+### Install
+
+```bash
+cd project-team
+./install.sh --global    # global install
+./install.sh --local     # per-project install
+```
+
+See [project-team/README.md](./project-team/README.md) for details (formerly `claude-project-team/`, now `project-team/`).
+
+---
+
+## VibeLab skills vs this repo (role division)
+
+| Group | Skill | Role | When |
+|------|------|------|------|
+| **VibeLab** | `/neurion` | AI brainstorming | Idea discovery |
+| **VibeLab** | `/socrates` | Planning consultation | Project start |
+| **VibeLab** | `/tasks-generator` | Task generation | After planning |
+| **VibeLab** | `/auto-orchestrate` | Full automation (30–200 tasks) | Large implementations |
+| **VibeLab** | `/trinity` | Five-pillar code quality evaluation | Phase completion |
+| **VibeLab** | `/code-review` | Two-stage code review | Feature completion |
+| **This repo** | `/workflow` | Meta hub — routes across skills | Anytime |
+| **This repo** | `/governance-setup` | Phase 0 governance team setup (v3.1) | Large-project kickoff |
+| **This repo** | `/agile` | Layered sprints (1–30 tasks) | Small implementations |
+| **This repo** | `/recover` | Universal recovery hub | After interruptions |
+| **This repo** | `/audit` | Comprehensive pre-deploy audit | Before deployment |
+| **This repo** | `/multi-ai-review` | Consensus review (Claude + Gemini CLI + Codex CLI) | Before merge/deploy |
+| **This repo** | `/impact` | Change impact analysis (v3.0) | Before edits |
+| **This repo** | `/deps` | Dependency graph & cycle detection (v3.0) | Before refactors |
+| **This repo** | `/changelog` | Changelog query (v3.0) | For tracking |
+| **This repo** | `/coverage` | Test coverage map (v3.0) | For quality checks |
+| **This repo** | `/architecture` | Architecture map (v3.0) | For structure analysis |
+
+---
+
+## Extension skills (v3.2.0)
+
+### Existing skills (5)
+
+#### 1) Workflow Guide (`/workflow`) — meta hub
+
+Routes to the best next skill based on your project state.
+
+```
+/workflow
+```
+
+- Manages the full skill catalog (VibeLab skills + this repo’s skills)
+- Automatically detects session progress and suggests the next step (v3.1.2)
+- Includes maintenance workflows (bugfix, refactor, health checks)
+- Integrates with the Project Team hook/agent system
+
+#### 2) Agile Sprint Master (`/agile`)
+
+Layered incremental implementation (Skeleton → Muscles → Skin)
+
+```bash
+/agile auto                 # run all layers sequentially
+/agile iterate "change"      # update only impacted layers
+```
+
+#### 3) Context Recover (`/recover`)
+
+Recover from interrupted work of any kind.
+
+```
+/recover
+```
+
+#### 4) Quality Auditor (`/audit`)
+
+Pre-deployment spec compliance + dynamic verification.
+
+```
+/audit
+```
+
+#### 5) Multi-AI Review (`/multi-ai-review`)
+
+Consensus review with Claude (orchestrator) + Gemini CLI + Codex CLI.
+
+```
+/multi-ai-review
+```
+
+- 3 stages: Initial Opinions → Cross-Review → Chairman Synthesis
+- Runs via CLIs (no MCP required; uses your CLI subscriptions)
+
+### v3.1 NEW: Phase 0 governance
+
+#### 6) Governance Setup (`/governance-setup`)
+
+Sets up a governance team before starting a large project.
+
+```bash
+/governance-setup
+```
+
+- Runs PM → Chief Architect → Designer → QA Manager → DBA
+- Each agent produces prerequisite artifacts (plan, ADR, design system, quality bar, DB standards)
+- “Large” typically means: 10+ tasks, 2+ domains, 2+ team members
+
+### v3.0 NEW: Maintenance skills (5)
+
+#### 7) Impact Analyzer (`/impact`)
+
+```bash
+/impact src/services/user_service.py
+```
+
+#### 8) Dependency Graph (`/deps`)
+
+```bash
+/deps          # full dependency graph
+/deps --cycles # cycles only
+```
+
+#### 9) Changelog Query (`/changelog`)
+
+```bash
+/changelog
+/changelog --domain user
+```
+
+#### 10) Coverage Map (`/coverage`)
+
+```bash
+/coverage
+/coverage --uncovered
+```
+
+#### 11) Architecture Map (`/architecture`)
+
+```bash
+/architecture
+/architecture domains
+```
+
+---
+
+## Recommended workflow (v3.1)
+
+```
+Start
+  |
+  |- "What should I do first?" -------- /workflow (this repo)
+  |
+  |- Brainstorming --------------------- /neurion (VibeLab)
+  |
+  |- Planning complete ----------------- /tasks-generator (VibeLab)
+  |
+  |- Implementation (choose by scale)
+  |   |
+  |   |- Small (<= 30 tasks) ----------- /agile auto
+  |   |
+  |   |- Medium (30–50 tasks) ---------- /project-bootstrap -> /auto-orchestrate
+  |   |
+  |   `- Large (50+ tasks or 2+ domains)
+  |       |- /governance-setup
+  |       |- /project-bootstrap
+  |       `- /auto-orchestrate --ultra-thin
+  |
+  |- Maintenance / refactoring
+  |   |- Impact before edits ----------- /impact
+  |   |- Dependency review ------------- /deps
+  |   `- Change history ---------------- /changelog
+  |
+  |- Quality checks
+  |   |- Coverage ---------------------- /coverage
+  |   |- Architecture ------------------ /architecture
+  |   `- Evaluation -------------------- /trinity (VibeLab)
+  |
+  |- Pre-deploy audit ------------------ /audit
+  |
+  `- If interrupted -------------------- /recover
+```
+
+### Do you need an agent team?
+
+| Task count | Recommended skill | Who writes code | Agent team |
+|-----------:|-------------------|----------------|------------|
+| <= 30 | `/agile auto` | Claude directly | No |
+| 30–50 | `/auto-orchestrate` | Specialist agents | Recommended |
+| 50+ | `/ultra-thin-orchestrate` | Specialist agents | Required |
+
+---
+
+## Repository layout
+
+```
+claude-imple-skills/
+├── skills/                       # this repo skills (11)
+│   ├── workflow-guide/
+│   ├── governance-setup/
+│   ├── agile/
+│   ├── recover/
+│   ├── quality-auditor/
+│   ├── multi-ai-review/
+│   └── coverage/
+│
+├── project-team/                 # AI team collaboration system
+│   ├── install.sh
+│   ├── README.md
+│   ├── hooks/
+│   ├── agents/
+│   ├── skills/
+│   ├── templates/
+│   ├── examples/
+│   └── docs/
+│
+├── scripts/
+│   ├── install-windows.ps1
+│   └── install-unix.sh
+│
+├── LICENSE
+└── README.md
+```
+
+---
+
+## Installation
+
+### 1) Install VibeLab first
+
+https://vibelabs.kr/skills/new
+
+### 2) Install this extension
+
+**macOS / Linux**
+
+```bash
+chmod +x ./scripts/install-unix.sh && ./scripts/install-unix.sh
+```
+
+**Windows (PowerShell)**
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\install-windows.ps1
+```
+
+### 3) Install Project Team (optional)
+
+```bash
+cd project-team
+./install.sh --global
+```
+
+---
+
+## MCP dependencies
+
+| Skill | Required MCP | Notes |
+|------|--------------|------|
+| `/workflow` | None | Uses basic tools only |
+| `/agile` | playwright (optional) | Only for screenshots |
+| `/recover` | None | Uses basic tools only |
+| `/audit` | playwright (optional) | Only for browser verification |
+| `/multi-ai-review` | None (CLIs required) | Requires gemini/codex CLI for consensus review |
+| `/impact`, `/deps`, `/changelog`, `/coverage`, `/architecture` | None | Uses basic tools only |
+
+---
+
+## Version history
+
+| Version | Date | Highlights |
+|--------:|------|------------|
+| **v3.2.0** | 2026-02-21 | VibeLab v1.10.0 integration + expanded skill support, tmux parallel mode, Progressive Disclosure |
+| **v3.1.2** | 2026-02-11 | Better workflow continuity: auto-detect progress even after interruptions |
+| v3.1.0 | 2026-02-11 | Added `governance-setup`, improved `workflow-guide` (clearer team requirement) |
+| v3.0.0 | 2026-03-02 | `multi-ai-review`: migrated to CLI council workflow (Gemini/Codex) |
+| v3.0.0 | 2026-02-08 | Added Project Team: 9 agents, 10 hooks, 5 maintenance skills |
+| v2.2.0 | 2026-02-02 | Integrated VibeLab v1.8.1 (trinity, reverse, sync, cost-router) |
+| v2.1.0 | 2026-01-28 | Added `multi-ai-review` |
+| v2.0.0 | 2026-01-27 | Removed MCP dependency, improved `workflow-guide` |
+
+---
+
+## License
+
+MIT License - Copyright (c) 2026 Insightflo Team
+
+---
+
+**Insightflo Team**
+_Enhancing VibeLab with Precision Engineering._
+
+---
+
+## v3.0 NEW: Project Team
 
 **대규모 프로젝트를 위한 AI 에이전트 팀 협업 시스템**
 
 ```
-claude-project-team/
+project-team/
 ├── agents/       # 9개 에이전트 (PM, Architect, Designer, QA, DBA...)
 ├── hooks/        # 10개 자동화 Hook (권한, 품질, 영향도 검증)
 ├── skills/       # 5개 유지보수 스킬 (/impact, /deps, /changelog...)
@@ -32,12 +344,12 @@ claude-project-team/
 ### 설치
 
 ```bash
-cd claude-project-team
+cd project-team
 ./install.sh --global    # 전역 설치
 ./install.sh --local     # 프로젝트별 설치
 ```
 
-자세한 내용은 [claude-project-team/README.md](./claude-project-team/README.md) 참조
+자세한 내용은 [project-team/README.md](./project-team/README.md) 참조 (formerly `claude-project-team/`, now `project-team/`)
 
 ---
 
@@ -51,7 +363,7 @@ cd claude-project-team
 | **바이브랩** | `/auto-orchestrate` | 완전 자동화 (30~200개) | 대규모 구현 |
 | **바이브랩** | `/trinity` | 五柱 코드 품질 평가 | Phase 완료 |
 | **바이브랩** | `/code-review` | 2단계 코드 리뷰 | 기능 완료 |
-| **우리스킬** | `/workflow` | **메타 허브** - 52개 스킬 라우팅 | 언제든지 |
+| **우리스킬** | `/workflow` | **메타 허브** - 스킬 라우팅 | 언제든지 |
 | **우리스킬** | `/governance-setup` | Phase 0 거버넌스 팀 구성 **(v3.1 NEW)** | 대규모 프로젝트 시작 |
 | **우리스킬** | `/agile` | 레이어별 스프린트 (1~30개) | 소규모 구현 |
 | **우리스킬** | `/recover` | 범용 복구 허브 | 작업 중단 시 |
@@ -71,7 +383,7 @@ cd claude-project-team
 
 #### 1. Workflow Guide (`/workflow`) - 메타 허브
 
-**63개 스킬 중 최적의 스킬을 자동 추천** (바이브랩 46개 + Editor-K 6개 + 우리스킬 11개)
+**58개 스킬 중 최적의 스킬을 자동 추천** (바이브랩 46개 + 우리스킬 12개)
 
 ```
 /workflow
@@ -80,7 +392,7 @@ cd claude-project-team
 - 바이브랩스킬 + 우리스킬 전체 카탈로그 관리
 - **세션 중단 후 자동 복구** - 진행 상태 감지 후 다음 단계 안내 **(v3.1.2)**
 - 유지보수 워크플로우 추가 (버그 수정, 리팩토링, 건강 점검)
-- Claude Project Team Hook/Agent 시스템 연동
+- Project Team Hook/Agent 시스템 연동
 
 #### 2. Agile Sprint Master (`/agile`)
 
@@ -180,7 +492,7 @@ cd claude-project-team
 
 ---
 
-## Claude Project Team Hook 시스템
+## Project Team Hook 시스템
 
 자동으로 코드 품질을 검증하는 10개의 Hook:
 
@@ -251,9 +563,9 @@ cd claude-project-team
 ## 프로젝트 구조
 
 ```
-vibelab-extension/
+claude-imple-skills/
 ├── skills/                       # 우리스킬 (11개)
-│   ├── workflow-guide/           # v3.1.0 - 메타 허브 (52개 스킬)
+│   ├── workflow-guide/           # v3.1.0 - 메타 허브
 │   ├── governance-setup/         # v1.0.0 - Phase 0 거버넌스 (NEW)
 │   ├── agile/                    # v1.9.0 - 레이어별 스프린트
 │   ├── recover/                  # v1.9.0 - 범용 복구
@@ -261,7 +573,7 @@ vibelab-extension/
 │   ├── multi-ai-review/          # v3.0.0 - CLI council 리뷰 (Gemini/Codex)
 │   └── coverage/                 # v2.2.0 - 테스트 커버리지
 │
-├── claude-project-team/          # v1.0.0 - AI 팀 협업 시스템 (NEW)
+├── project-team/                # v1.0.0 - AI 팀 협업 시스템 (NEW)
 │   ├── install.sh                # 설치 스크립트
 │   ├── README.md                 # 상세 문서
 │   ├── hooks/                    # 10개 Hook
@@ -305,10 +617,10 @@ chmod +x ./scripts/install-unix.sh && ./scripts/install-unix.sh
 powershell -ExecutionPolicy Bypass -File .\scripts\install-windows.ps1
 ```
 
-### 3. Claude Project Team 설치 (선택)
+### 3. Project Team 설치 (선택)
 
 ```bash
-cd claude-project-team
+cd project-team
 ./install.sh --global    # 전역 설치 (권장)
 ```
 
@@ -335,7 +647,7 @@ cd claude-project-team
 | **v3.1.2** | 2026-02-11 | **워크플로우 연속성 강화** - 세션 중단 후에도 진행 상태 자동 감지, 기획/거버넌스 진행 중 상태 판별 |
 | v3.1.0 | 2026-02-11 | governance-setup 스킬 추가, workflow-guide 개선 (에이전트 팀 필요 여부 명확화) |
 | v3.0.0 | 2026-03-02 | multi-ai-review: CLI council 워크플로우(Gemini/Codex)로 전환 |
-| v3.0.0 | 2026-02-08 | Claude Project Team 추가 - 9 에이전트, 10 Hook, 5 유지보수 스킬 |
+| v3.0.0 | 2026-02-08 | Project Team 추가 - 9 에이전트, 10 Hook, 5 유지보수 스킬 |
 | v2.2.0 | 2026-02-02 | VibeLab v1.8.1 통합 (trinity, reverse, sync, cost-router) |
 | v2.1.0 | 2026-01-28 | multi-ai-review 스킬 추가 |
 | v2.0.0 | 2026-01-27 | MCP 의존성 제거, workflow-guide 강화 |
@@ -344,9 +656,9 @@ cd claude-project-team
 
 ## 라이선스
 
-MIT License - Copyright (c) 2026 Inflo Team
+MIT License - Copyright (c) 2026 Insightflo Team
 
 ---
 
-**Inflo Team**
+**Insightflo Team**
 _Enhancing VibeLab with Precision Engineering._

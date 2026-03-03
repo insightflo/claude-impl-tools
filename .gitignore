@@ -21,6 +21,10 @@ worktree/
 # 내부 설계 문서 (개발용)
 docs/design/
 
+# 개발용 에이전트 가이드/태스크 (배포 불필요)
+AGENTS.md
+TASKS.md
+
 # 로컬 참고 자료 (배포 불필요)
 ref/
 

@@ -160,7 +160,7 @@ Check for and install updates:
 
 ```bash
 # Check for updates
-cd /path/to/claude-project-team
+cd /path/to/project-team
 git fetch origin
 git log --oneline origin/main ^main | head -10
 

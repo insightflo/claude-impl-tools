@@ -2,51 +2,81 @@
 name: workflow-guide
 description: 여러 플러그인 중 상황에 맞는 워크플로우를 안내합니다. /workflow, "어떤 스킬을 써야 해?", "워크플로우 추천" 트리거.
 trigger: /workflow, /workflow-guide, "뭐해야해?", "어떤 스킬", "워크플로우 추천"
-version: 3.3.0
-updated: 2026-03-01
+version: 4.0.0
+updated: 2026-03-03
+
 ---
 
 # 🧭 워크플로우 선택 가이드 (Meta Hub)
 
-> **목적**: 64개 스킬(바이브랩 46개 + Editor-K 6개 + 우리스킬 12개) 중 현재 상황에 가장 적합한 스킬을 **단 하나만** 추천하는 메타 허브입니다.
+> **목적**: 상황에 맞는 최적의 스킬을 **단 하나만** 추천하는 메타 허브입니다.
 >
-> **⚠️ 핵심 원칙**: 이 스킬은 **코드를 작성하지 않습니다**. 오직 **상황 진단 → 스킬 추천 → 사용자 확인**만 수행합니다.
+> **⚠️ 핵심 원칙**: 이 스킬은 **구현 코드를 작성하지 않습니다**. 오직 **상황 진단 → 스킬 추천 → 사용자 확인**만 수행합니다.
 >
-> **v3.3.0 업데이트**: `/security-review` 추가, 보안 검사 라우팅 강화, v1.10.0 tmux/에로스 연동 유지
+> **v4.0.0**: Standalone Mode 기본값. VibeLab 스킬 없이 완전한 파이프라인 제공.
 
 ---
 
-## 📊 전체 스킬 카탈로그 (64개)
+## ⚡ 실행 모드 (중요)
 
-### 우리스킬 (12개) - 프로젝트 확장
+| 모드 | 설명 | 스킬 수 |
+|------|------|---------|
+| **Standalone (기본)** | VibeLab 없이 독립 실행 | 14개 |
+| **VibeLab 확장** | VibeLab 설치 시 추가 기능 | +46개 |
 
-| 스킬 | 트리거 | 고유 역할 |
-|------|--------|-----------|
+### Standalone 파이프라인 (완전 독립)
+
+```
+기획 시작 ──────────── /governance-setup (Mini-PRD 내장)
+     ↓
+태스크 생성 ─────────── /tasks-init (TASKS.md 스캐폴딩)
+     ↓                  /tasks-migrate (레거시 통합)
+     ↓
+구현 ────────────────── /agile auto (≤30개)
+     │                  /multi-ai-run (모델 라우팅)
+     ↓
+검증 ────────────────── /security-review (보안)
+     │                  /quality-auditor (종합 감사)
+     ↓
+복구 (필요시) ────────── /recover
+     ↓
+분석 ────────────────── /impact, /deps, /coverage, /changelog, /architecture
+     ↓
+심층 리뷰 ───────────── /multi-ai-review (3-AI 컨센서스)
+```
+
+---
+
+## 📊 Standalone 스킬 카탈로그 (14개)
+
+### 핵심 스킬
+
+| 스킬 | 트리거 | 역할 |
+|------|--------|------|
 | **`/workflow`** | `/workflow`, "뭐해야해?" | 메타 허브 - 스킬 라우팅 |
-| **`/agile`** | `/agile auto`, `/agile iterate` | 레이어 기반 스프린트 (Skeleton→Muscles→Skin) |
-| **`/recover`** | `/recover`, "작업 복구" | 범용 복구 허브 |
-| **`/audit`** | `/audit`, "품질 검사" | 배포 전 종합 감사 (DDD/테스트/브라우저/보안) |
-| **`/security-review`** | `/security-review --deep`, "보안 검사" | **보안 취약점 분석 (OWASP TOP 10)** **(v3.3 NEW)** |
-| **`/multi-ai-review`** | `/multi-ai-review`, "심층 리뷰" | Claude + Gemini CLI + Codex CLI 컨센서스 리뷰 |
-| **`/governance-setup`** | `/governance-setup`, "거버넌스 구성" | 대규모 프로젝트 Phase 0 거버넌스 **(v3.1 NEW)** |
-| **`/impact`** | `/impact <file>`, "영향도 분석" | 파일 변경 전 의존성/위험도 분석 |
-| **`/deps`** | `/deps`, "의존성 그래프" | 순환 감지, Mermaid 시각화 |
-| **`/changelog`** | `/changelog`, "변경 이력" | 기간/도메인/유형별 필터링 |
-| **`/coverage`** | `/coverage`, "테스트 커버리지" | 미커버 영역, 트렌드 |
-| **`/architecture`** | `/architecture`, "아키텍처 맵" | 도메인 구조, API 카탈로그 |
+| **`/governance-setup`** | `/governance-setup` | 거버넌스 + Mini-PRD 기획 |
+| **`/tasks-init`** | `/tasks-init` | TASKS.md 스캐폴딩 **(v4.0 NEW)** |
+| **`/tasks-migrate`** | `/tasks-migrate` | 레거시 태스크 통합 |
+| **`/agile`** | `/agile auto` | 레이어 기반 스프린트 |
+| **`/multi-ai-run`** | `/multi-ai-run` | 역할별 모델 라우팅 |
+| **`/recover`** | `/recover` | 작업 복구 허브 |
+| **`/security-review`** | `/security-review` | OWASP TOP 10 보안 검사 |
+| **`/audit`** | `/audit` | 배포 전 종합 감사 |
+| **`/multi-ai-review`** | `/multi-ai-review` | 3-AI 컨센서스 리뷰 |
+| **`/impact`** | `/impact <file>` | 변경 영향도 분석 |
+| **`/deps`** | `/deps` | 의존성 그래프 |
+| **`/coverage`** | `/coverage` | 테스트 커버리지 |
+| **`/changelog`** | `/changelog` | 변경 이력 |
+| **`/architecture`** | `/architecture` | 아키텍처 맵 |
 
-### Editor-K 스킬 (6개) - 글쓰기/편집
+---
 
-| 스킬 | 트리거 | 고유 역할 |
-|------|--------|-----------|
-| **`/draft-assist`** | `/draft-assist` | 초안 작성 지원 (질문으로 유도) |
-| **`/red-pen`** | `/red-pen` | 편집장 K의 빨간펜 (16가지 기준 교정) |
-| **`/research`** | `/research` | 주제 기반 자료 수집 (4종 카테고리) |
-| **`/soul-drill`** | `/soul-drill` | 영혼 굴착기 (Why 질문으로 진짜 이야기 발굴) |
-| **`/structure`** | `/structure` | 글 구조 설계 (도입-전개-결론) |
-| **`/style-learn`** | `/style-learn` | 작가 스타일 학습 (25개 항목 프로파일) |
+## 📚 VibeLab 확장 스킬 (선택적)
 
-### 바이브랩스킬 (46개) - 핵심 기능
+> **참고**: 아래 스킬은 VibeLab Skills 설치 시에만 사용 가능합니다.
+> 설치: https://vibelabs.kr/skills/new
+
+### 바이브랩스킬 (46개)
 
 #### 💡 아이디어 & 브레인스토밍
 
@@ -219,7 +249,8 @@ updated: 2026-03-01
 ls docs/planning/*.md 2>/dev/null
 
 # 2. 태스크 파일 확인 (둘 중 하나만 있어도 OK)
-ls docs/planning/06-tasks.md 2>/dev/null || ls TASKS.md 2>/dev/null
+# 권장: 루트 TASKS.md / 레거시: docs/planning/06-tasks.md
+ls TASKS.md 2>/dev/null || ls docs/planning/06-tasks.md 2>/dev/null
 
 # 3. 코드 베이스 확인
 ls package.json pyproject.toml requirements.txt 2>/dev/null
@@ -235,8 +266,9 @@ git worktree list 2>/dev/null
 # 6. specs/ 폴더 확인 (v1.8.1)
 ls specs/screens/*.yaml 2>/dev/null
 
-# 7. 기획 문서 개수 확인 (v3.1.1 NEW)
-ls docs/planning/*.md 2>/dev/null | wc -l  # 6개면 완료
+# 7. 기획 문서 개수 확인 (v3.4.0)
+# Socrates 호환 최소 세트: 7개(01~07). 추가 문서(product-brief 등)는 '보강용'입니다.
+ls docs/planning/*.md 2>/dev/null | wc -l  # 7개 이상이면 기획(문서) 준비 완료로 간주
 
 # 8. 거버넌스 산출물 확인 (v3.1.1 NEW)
 # PM 산출물
@@ -262,11 +294,12 @@ ls .claude/agents/*.md 2>/dev/null | wc -l  # 3개 이상이면 팀 구성됨
 |-----------|---------------|-----------|
 | orchestrate-state.json 존재 | 🔄 **자동화 중단** | `/recover` → `/auto-orchestrate --resume` |
 | Git 충돌/dirty 상태 | ⚠️ **복구 필요** | `/recover` |
-| 아이디어만 있음 | 💡 **브레인스토밍** | `/neurion` → `/socrates` |
-| docs/planning/ 없음 | 🌱 **기획 시작** | `/socrates` |
-| docs/planning/ 일부만 존재 (1~5개) | 📝 **기획 진행 중** | `/socrates` (이어서 진행) |
+| 아이디어만 있음 | 💡 **브레인스토밍** | `/neurion` → (`/socrates` 또는 Mini-PRD) |
+| docs/planning/ 없음 | 🌱 **기획 시작** | **Plan Provider 선택** → (`/socrates` 또는 **Mini-PRD(내장)**) |
+| docs/planning/ 일부만 존재 | 📝 **기획 진행 중** | **Plan Provider 선택** → (`/socrates` 또는 **Mini-PRD(내장)**, 보완 모드) |
 | 기존 코드만 있음 (명세 없음) | 🔄 **역추출 필요** | `/reverse` |
-| 기획 있음 + 태스크 파일 없음 (06-tasks.md/TASKS.md) | 📋 **기획 완료** | `/tasks-generator` |
+| 기획 있음 + TASKS.md 없음 + 레거시(06-tasks.md)만 존재 | 📋 **마이그레이션 필요** | `/tasks-migrate` (루트 TASKS.md로 통합) |
+| 기획 있음 + 태스크 파일 없음 | 📋 **기획 완료** | `/tasks-generator` |
 | 태스크 있음 + **거버넌스 권장 조건 충족** + 거버넌스 없음 | 🏛️ **거버넌스 필요** | `/governance-setup` |
 | 거버넌스 일부만 존재 | 🏛️ **거버넌스 진행 중** | `/governance-setup` (이어서 진행) |
 | 거버넌스 완료 + 에이전트 팀 없음 | 👥 **팀 구성 필요** | `/project-bootstrap` |
@@ -277,9 +310,9 @@ ls .claude/agents/*.md 2>/dev/null | wc -l  # 3개 이상이면 팀 구성됨
 
 ### 2-1단계: 부분 완료 상태 판단 기준
 
-**기획 완료 기준** (6개 문서):
-- `01-prd.md`, `02-trd.md`, `03-uxd.md`, `04-database-design.md`, `05-resources.md`, `06-tasks.md`
-- 6개 미만 → "기획 진행 중"
+**기획 완료 기준** (Socrates 기준 7개 문서):
+- `01-prd.md`, `02-trd.md`, `03-uxd.md`, `04-database-design.md`, `05-resources.md`, `06-tasks.md`, `07-acceptance-criteria.md`
+- 7개 미만 → "기획 진행 중"
 
 **거버넌스 완료 기준** (5개 산출물):
 - `management/project-plan.md` (PM)
@@ -321,39 +354,35 @@ ls .claude/agents/*.md 2>/dev/null | wc -l  # 3개 이상이면 팀 구성됨
 
 ---
 
-## 🎯 핵심 의사결정 트리 (v3.1)
+## 🎯 핵심 의사결정 트리 (Standalone v4.0)
 
 ```
 시작
 │
 ├─ 작업 중단됨? ─────────────────────── YES → /recover
 │
-├─ 아이디어만 있음? ─────────────────── YES → /neurion → /eros → /poietes → /socrates
-│                                             (또는 바로 /socrates)
+├─ 기획 문서 없음? ─────────────────── YES → /governance-setup (Mini-PRD 내장)
 │
-├─ 기획 문서 있음? ─────────────────── NO
-│   │                                      └─ 신규 프로젝트: /socrates
-│   │                                      └─ 기존 코드만: /reverse
-│   │
-│   └─ YES → TASKS.md 있음? ─────────── NO → /tasks-generator
-│                                            (UI 상세화: /screen-spec)
+├─ TASKS.md 없음?
+│   ├─ 레거시 파일만 있음 ───────────── /tasks-migrate (통합)
+│   └─ 태스크 파일 없음 ─────────────── /tasks-init (스캐폴딩)
 │
-├─ 거버넌스 권장 조건 충족? ─────────── YES (태스크 ≥10 AND (도메인 ≥2 OR 팀원 ≥2 OR 외부 API ≥3))
-│   │                                      ↓
-│   │                                  /governance-setup (Phase 0)
-│   │                                      ↓
-│   │                                  /project-bootstrap (에이전트 팀)
-│   │                                      ↓
-│   └───────────────────────────────── /auto-orchestrate (50+면 /ultra-thin-orchestrate)
+├─ 구현 시작?
+│   ├─ ≤30개 태스크 ──────────────────── /agile auto
+│   ├─ 모델 분업 필요 ─────────────────── /multi-ai-run
+│   └─ 수정/변경 ─────────────────────── /agile iterate
 │
-├─ 코드베이스 있음?
-│   │
-│   ├─ 신규 구현? ──────────────────── ≤30개: /agile auto (에이전트 팀 불필요)
-│   │                                   30~50개: /project-bootstrap → /auto-orchestrate
-│   │                                   50~200개: /project-bootstrap → /ultra-thin-orchestrate
-│   │
-│   ├─ 수정/변경? ──────────────────── /agile iterate
-│   │
+├─ 검증 필요?
+│   ├─ 보안 검사 ─────────────────────── /security-review
+│   ├─ 종합 감사 ─────────────────────── /audit
+│   └─ 심층 리뷰 ─────────────────────── /multi-ai-review
+│
+├─ 분석 필요?
+│   ├─ 영향도 ────────────────────────── /impact
+│   ├─ 의존성 ────────────────────────── /deps
+│   ├─ 커버리지 ──────────────────────── /coverage
+│   └─ 아키텍처 ──────────────────────── /architecture
+│
 │   ├─ 명세 드리프트? ─────────────── /sync
 │   │
 │   └─ 버그 수정? ──────────────────── /systematic-debugging
@@ -515,6 +544,9 @@ specs/screens/*.yaml 생성
 "FastAPI 백엔드"                → /fastapi-latest
 "AI 비용 줄이고 싶어"           → /cost-router
 "Desktop과 CLI 연동"            → /desktop-bridge
+"멀티 AI로 실행"                → /multi-ai-run
+"Codex로 코드 작성"             → /multi-ai-run --model=codex
+"Gemini로 디자인"               → /multi-ai-run --model=gemini
 
 # v1.10.0 신규 스킬
 "결핍이 뭔지 모르겠어"          → /eros
@@ -547,22 +579,22 @@ specs/screens/*.yaml 생성
 
 ---
 
-## 🪝 Hook 시스템 연동 (v1.9.2)
+## 🪝 Hook 시스템 연동 (project-team)
 
-바이브랩 v1.9.2의 Hook 시스템이 워크플로우를 자동화합니다:
+`project-team/hooks/` 내장 Hook이 워크플로우를 자동화합니다:
 
-| Hook | 효과 | 절감 |
-|------|------|------|
-| `skill-router` | 키워드 기반 스킬 자동 감지 → 이 스킬 호출 불필요 | 1K~3K 토큰/프롬프트 |
-| `session-memory-loader` | 이전 워크플로우 상태 자동 복원 | 2K~5K 토큰/세션 |
-| `context-guide-loader` | Constitution 자동 주입 | 1K~3K 토큰/수정 |
-| `error-recovery-advisor` | 실패 시 복구 스킬 자동 제안 | ~1K 토큰/에러 |
+| Hook | 효과 |
+|------|------|
+| `task-sync.js` | 태스크 완료 시 TASKS.md 자동 업데이트 |
+| `quality-gate.js` | Phase 완료 전 품질 검증 |
+| `permission-checker.js` | 에이전트 역할별 파일 접근 제어 |
+| `design-validator.js` | 디자인 시스템 준수 검증 |
 
-### Hook 활성화 확인
+### Hook 설치
 
 ```bash
-ls ~/.claude/hooks/
-# session-memory-loader.js, skill-router.js, context-guide-loader.js, ...
+# project-team 설치 스크립트 실행
+./project-team/install.sh
 ```
 
 ---
@@ -608,4 +640,4 @@ A: 특정 언어/기술 코드 품질이 중요할 때 `/python-pro`, `/typescri
 
 ---
 
-**Last Updated**: 2026-03-01 (v3.3.0 - 64개 스킬: 바이브랩 46개 + Editor-K 6개 + 우리스킬 12개) **(v3.3 NEW: security-review 추가)**
+**Last Updated**: 2026-03-03 (v3.5.0 - 59개 스킬: 바이브랩 46개 + 우리스킬 13개) **(v3.5 NEW: multi-ai-run 추가)**

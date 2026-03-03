@@ -388,11 +388,24 @@ Automatically syncs task completion status to the original TASKS.md file.
 - Integrates with Claude's internal TaskUpdate tool
 
 **Task ID Patterns**:
+
+| Format | Example | Description |
+|--------|---------|-------------|
+| **Phase-based** | `P1-T1`, `P2-S1-T3` | Phase/Screen/Task 구조 |
+| **Agile layer** | `T0.1`, `T1.2`, `T3.4` | Layer.Sequence 구조 |
+
 ```
+# Phase-based (P*-T*)
 @TASK P1-T1          # Code comment annotation
 #P1-T1               # Hashtag reference
 Task P1-T1 completed # Explicit completion mention
 [P1-T1]              # Bracket notation (commit messages)
+
+# Agile layer (T*.*)
+@TASK T0.1           # Skeleton task
+#T1.2                # Muscles task reference
+Task T3.4 completed  # Skin task completion
+[T2.1]               # Advanced muscles task
 ```
 
 **Task File Discovery Order**:

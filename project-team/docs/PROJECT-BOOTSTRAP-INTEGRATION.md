@@ -166,12 +166,12 @@ After Bootstrap completes, generate the `project-team.yaml` configuration based 
 
 The template is located at:
 ```
-claude-project-team/templates/project-team.yaml
+project-team/templates/project-team.yaml
 ```
 
 Copy and customize it:
 ```bash
-cp claude-project-team/templates/project-team.yaml .claude/project-team.yaml
+cp project-team/templates/project-team.yaml .claude/project-team.yaml
 ```
 
 Then fill in the placeholders using information from Bootstrap:
@@ -229,7 +229,7 @@ domains:
 Run the installer to add governance hooks and project-level agents:
 
 ```bash
-cd claude-project-team
+cd project-team
 ./install.sh --local
 ```
 
@@ -733,7 +733,7 @@ if [ -f "${CLAUDE_DIR}/settings.json" ]; then
 fi
 
 # Install Project Team
-cd /path/to/claude-project-team
+cd /path/to/project-team
 ./install.sh --local
 
 echo "=== Phase 3: Generate project-team.yaml ==="

@@ -33,7 +33,7 @@ Install to `~/.claude/` to share hooks and skills across all your Claude Code pr
 #### macOS / Linux
 
 ```bash
-cd /path/to/claude-project-team
+cd /path/to/project-team
 chmod +x ./install.sh
 ./install.sh --global
 ```
@@ -41,7 +41,7 @@ chmod +x ./install.sh
 #### Windows (PowerShell)
 
 ```powershell
-cd "C:\path\to\claude-project-team"
+cd "C:\path\to\project-team"
 powershell -ExecutionPolicy Bypass -File .\scripts\install-windows.ps1 -Global
 ```
 
@@ -58,14 +58,14 @@ Install to `.claude/` directory in your project for isolated setup.
 
 ```bash
 cd /path/to/your-project
-/path/to/claude-project-team/install.sh --local
+/path/to/project-team/install.sh --local
 ```
 
 #### Windows (PowerShell)
 
 ```powershell
 cd "C:\path\to\your-project"
-powershell -ExecutionPolicy Bypass -File "C:\path\to\claude-project-team\scripts\install-windows.ps1" -Local
+powershell -ExecutionPolicy Bypass -File "C:\path\to\project-team\scripts\install-windows.ps1" -Local
 ```
 
 **Advantages:**
@@ -217,7 +217,7 @@ jq '.hooks' ./.claude/settings.json | head -20
 ### Run Hook Unit Tests
 
 ```bash
-cd /path/to/claude-project-team
+cd /path/to/project-team
 npm install
 npm test
 
@@ -402,7 +402,7 @@ To update to a newer version while keeping configuration:
 #### macOS / Linux
 
 ```bash
-cd /path/to/claude-project-team
+cd /path/to/project-team
 git pull origin main
 ./install.sh --global --force
 ```
@@ -410,7 +410,7 @@ git pull origin main
 #### Windows
 
 ```powershell
-cd "C:\path\to\claude-project-team"
+cd "C:\path\to\project-team"
 git pull origin main
 powershell -ExecutionPolicy Bypass -File .\scripts\install-windows.ps1 -Global -Force
 ```
@@ -559,18 +559,18 @@ tail -f ~/.claude/install.log
 
 If you need to install without internet:
 
-1. Download claude-project-team on a connected machine:
+1. Download project-team on a connected machine:
    ```bash
-   git clone https://github.com/your-org/claude-project-team.git
-   tar czf claude-project-team.tar.gz claude-project-team/
+   git clone https://github.com/your-org/project-team.git
+   tar czf project-team.tar.gz project-team/
    ```
 
-2. Transfer `claude-project-team.tar.gz` to target machine
+2. Transfer `project-team.tar.gz` to target machine
 
 3. Extract and install:
    ```bash
-   tar xzf claude-project-team.tar.gz
-   cd claude-project-team
+   tar xzf project-team.tar.gz
+   cd project-team
    ./install.sh --global --force
    ```
 
