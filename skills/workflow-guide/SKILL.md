@@ -2,8 +2,8 @@
 name: workflow-guide
 description: 여러 플러그인 중 상황에 맞는 워크플로우를 안내합니다. /workflow, "어떤 스킬을 써야 해?", "워크플로우 추천" 트리거.
 trigger: /workflow, /workflow-guide, "뭐해야해?", "어떤 스킬", "워크플로우 추천"
-version: 4.1.0
-updated: 2026-03-03
+version: 4.5.0
+updated: 2026-03-05
 
 ---
 
@@ -49,7 +49,7 @@ updated: 2026-03-03
 
 ---
 
-## 📊 Standalone 스킬 카탈로그 (15개)
+## 📊 Standalone 스킬 카탈로그 (18개)
 
 ### 핵심 스킬
 
@@ -72,6 +72,7 @@ updated: 2026-03-03
 | **`/changelog`** | `/changelog` | 변경 이력 |
 | **`/architecture`** | `/architecture` | 아키텍처 맵 |
 | **`/compress`** | `/compress`, "컨텍스트 압축" | Long Context 최적화 (H2O 패턴) |
+| **`/orchestrate-standalone`** | `/orchestrate-standalone`, `/orchestrate` | 30~200개 태스크 병렬 실행 (`--mode=wave/sprint`) |
 
 ---
 
@@ -239,7 +240,8 @@ ls .claude/agents/*.md 2>/dev/null | wc -l  # 3개 이상이면 팀 구성됨
 ├─ 구현 시작?
 │   ├─ ≤30개 태스크 ──────────────────── /agile auto
 │   ├─ 30~80개 태스크 ───────────────── /orchestrate
-│   ├─ 80~200개 태스크 ──────────────── /orchestrate --mode=wave (NEW)
+│   ├─ 50~200개 (사용자 리뷰 게이트) ─── /orchestrate --mode=sprint (NEW)
+│   ├─ 80~200개 (자율 병렬 실행) ──────── /orchestrate --mode=wave
 │   ├─ 200개+ 태스크 ───────────────── 하위 프로젝트 분할 → wave
 │   └─ 수정/변경 ─────────────────────── /agile iterate
 │
@@ -270,9 +272,12 @@ ls .claude/agents/*.md 2>/dev/null | wc -l  # 3개 이상이면 팀 구성됨
 | **1~10개** | `/agile run` + `/agile done` | Claude 직접 | ❌ 불필요 | - |
 | **10~30개** | `/agile auto` | Claude 직접 | ❌ 불필요 | - |
 | **30~80개** | `/orchestrate` | 전문가 에이전트 | ✅ 선택 | `/governance-setup` |
+| **50~200개** | `/orchestrate --mode=sprint` | Agile 스프린트 에이전트 | ✅ 선택 | `/governance-setup` |
 | **80~200개** | `/orchestrate --mode=wave` | 도메인 병렬 에이전트 | ✅ 권장 | `/governance-setup` |
 | **200개+** | 하위 프로젝트 분할 → `/orchestrate --mode=wave` | 도메인 병렬 에이전트 | ✅ 필수 | `/governance-setup` |
 
+> **Sprint vs Wave 선택 기준**: `--mode=sprint`은 Human-in-the-loop 리뷰가 필요할 때 (각 스프린트 경계에서 사용자 승인), `--mode=wave`는 완전 자율 도메인 병렬 실행 시 사용합니다.
+>
 > **v2.0 Hybrid Wave Architecture**: 80개 이상 태스크는 `--mode=wave`로 Contract-First + 도메인 병렬 + Cross-Review 게이트를 적용하여 대규모에서도 일관성을 보장합니다.
 
 ### 거버넌스 권장 기준 (실행 규모와 별개)
@@ -308,6 +313,10 @@ ls .claude/agents/*.md 2>/dev/null | wc -l  # 3개 이상이면 팀 구성됨
 │                                                         │
 │ 🏢 중규모 (30~80개)                                      │
 │   └─ /orchestrate (의존성 기반 병렬 실행)                │
+│                                                         │
+│ 🏃 스프린트 (50~200개) - 사용자 리뷰 게이트 필요         │
+│   └─ /orchestrate --mode=sprint                        │
+│       Agile PI 계획 → 스프린트 실행 → 리뷰 게이트       │
 │                                                         │
 │ 🌊 대규모 (80~200개) - Hybrid Wave Architecture          │
 │   └─ /orchestrate --mode=wave                          │
@@ -379,6 +388,17 @@ ls .claude/agents/*.md 2>/dev/null | wc -l  # 3개 이상이면 팀 구성됨
 "컨텍스트 압축해줘"             → /compress
 "문서가 너무 길어"              → /compress optimize
 "context overflow"              → /compress
+"스프린트로 실행해줘"           → /orchestrate --mode=sprint
+"사용자 리뷰 게이트 원해"       → /orchestrate --mode=sprint
+"협업 버스 초기화"              → node project-team/scripts/collab-init.js
+"콜랩 인프라 셋업"              → node project-team/scripts/collab-init.js
+"Wave Barrier 확인"             → node project-team/scripts/conflict-resolver.js
+"REQ 충돌 해결"                 → node project-team/scripts/conflict-resolver.js --auto-escalate
+"에이전트 통신 프로토콜"        → project-team/references/communication-protocol.md
+"REQ/DEC 프로토콜"              → project-team/references/communication-protocol.md
+"ChiefArchitect 중재 요청"      → REQ 파일 ESCALATED → ChiefArchitect DEC 파일 생성
+"도메인 규칙 강제"              → domain-boundary-enforcer.js (project-team/hooks/)
+"교차 도메인 쓰기 차단"         → domain-boundary-enforcer.js PreToolUse 훅
 ```
 
 ---
@@ -404,6 +424,7 @@ ls .claude/agents/*.md 2>/dev/null | wc -l  # 3개 이상이면 팀 구성됨
 | `task-sync.js` | 태스크 완료 시 TASKS.md 자동 업데이트 |
 | `quality-gate.js` | Phase 완료 전 품질 검증 |
 | `permission-checker.js` | 에이전트 역할별 파일 접근 제어 |
+| `domain-boundary-enforcer.js` | PreToolUse 단계에서 교차 도메인 쓰기 차단 |
 | `design-validator.js` | 디자인 시스템 준수 검증 |
 
 ### Hook 설치
@@ -427,8 +448,9 @@ A: 권장하지 않습니다. 각 스킬은 순차적으로 실행하고, 완료
 A: `/recover`를 실행하여 중단된 작업을 복구하세요.
 
 ### Q: 대규모 프로젝트는 어떻게 관리하나요?
-A: 태스크 규모에 따라:
-- **80~200개**: `/orchestrate --mode=wave`로 Hybrid Wave Architecture 사용. Contract-First + 도메인 병렬 + Cross-Review로 일관성 보장.
+A: 태스크 규모와 리뷰 필요 여부에 따라:
+- **50~200개 (사용자 리뷰 필요)**: `/orchestrate --mode=sprint`. Agile PI 계획 + 스프린트 경계마다 사용자 승인 게이트.
+- **80~200개 (완전 자율 실행)**: `/orchestrate --mode=wave`. Contract-First + 도메인 병렬 + Cross-Review로 일관성 보장.
 - **200개+**: 하위 프로젝트로 분할 후 각각 wave 모드 적용.
 - 구현 전 `/governance-setup`으로 거버넌스(PM/Architect/QA/DBA) 문서 생성 권장.
 
@@ -442,4 +464,4 @@ A: `/compress`를 사용하여 H2O 패턴으로 핵심 정보를 추출하세요
 
 ---
 
-**Last Updated**: 2026-03-03 (v4.4.0 - Hybrid Wave Architecture 추가, 대규모 프로젝트 지원 강화)
+**Last Updated**: 2026-03-05 (v4.5.0 - Sprint Mode, domain-boundary-enforcer, REQ/DEC 프로토콜, 협업 버스 인프라 추가)
