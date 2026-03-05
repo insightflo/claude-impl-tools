@@ -161,8 +161,8 @@ if [ "$MODE" != "sprint" ]; then
         exit 1
     fi
 
-    TOTAL_LAYERS=$(node -e "const d = require('$LAYERS_FILE'); console.log(d.layers.length);")
-    TOTAL_TASKS=$(node -e "const d = require('$LAYERS_FILE'); console.log(d.tasks.length);")
+    TOTAL_LAYERS=$("$NODE_CMD" -e "const d = require('$LAYERS_FILE'); console.log(d.layers.length);")
+    TOTAL_TASKS=$("$NODE_CMD" -e "const d = require('$LAYERS_FILE'); console.log(d.tasks.length);")
 
     log_success "$TOTAL_TASKS tasks organized into $TOTAL_LAYERS layers"
 fi
@@ -185,7 +185,7 @@ if [ "$MODE" = "sprint" ]; then
 
     # Bug #7: Sprint 루프 - SPRINT_RUNNING 동안 반복
     while true; do
-        SPRINT_STATE_VAL=$(node -e "
+        SPRINT_STATE_VAL=$("$NODE_CMD" -e "
             try {
                 const s = require('$PROJECT_DIR/.claude/sprint-state.json');
                 console.log(s.state);
@@ -197,8 +197,14 @@ if [ "$MODE" = "sprint" ]; then
             exit 1
         fi
 
-        if [ "$SPRINT_STATE_VAL" = "PI_COMPLETE" ] || [ "$SPRINT_STATE_VAL" = "PAUSED" ]; then
-            log_info "Sprint state: $SPRINT_STATE_VAL — exiting loop"
+        if [ "$SPRINT_STATE_VAL" = "PI_COMPLETE" ]; then
+            log_info "Sprint state: PI_COMPLETE — exiting loop"
+            break
+        fi
+
+        # Bug #13: PAUSED는 --resume이 아닐 때만 루프 종료
+        if [ "$SPRINT_STATE_VAL" = "PAUSED" ] && [ "$RESUME" != "true" ]; then
+            log_info "Sprint paused. Resume with: $0 --mode=sprint --resume"
             break
         fi
 
@@ -217,7 +223,7 @@ if [ "$MODE" = "sprint" ]; then
             3)
                 log_info "Sprint stopped by user. State saved."
                 log_info "Resume with: $0 --mode=sprint --resume"
-                exit 0
+                exit 0  # Intentional: stop is a clean exit, not an error
                 ;;
             *)
                 log_error "Sprint runner failed (exit code: $SPRINT_EXIT)"
@@ -240,7 +246,7 @@ fi
 
 CURRENT_LAYER=0
 if [ "$RESUME" = "true" ]; then
-    CURRENT_LAYER=$("$NODE_CMD" "$SCRIPT_DIR/state.js" load 2>/dev/null | node -pe "JSON.parse(require('fs').readFileSync(0, 'utf8')).current_layer || 0")
+    CURRENT_LAYER=$("$NODE_CMD" "$SCRIPT_DIR/state.js" load 2>/dev/null | "$NODE_CMD" -pe "JSON.parse(require('fs').readFileSync(0, 'utf8')).current_layer || 0")
     log_info "Resuming from layer $CURRENT_LAYER"
 fi
 
@@ -254,15 +260,15 @@ while [ $CURRENT_LAYER -lt $TOTAL_LAYERS ]; do
         console.log(JSON.stringify(layer));
     ")
 
-    TASK_COUNT=$(echo "$LAYER_TASKS" | node -pe "JSON.parse(require('fs').readFileSync(0, 'utf8')).length")
+    TASK_COUNT=$(echo "$LAYER_TASKS" | "$NODE_CMD" -pe "JSON.parse(require('fs').readFileSync(0, 'utf8')).length")
 
     header "Layer $LAYER_NUM/$TOTAL_LAYERS ($TASK_COUNT tasks)"
 
     # Pre-dispatch gate
     log_info "Running pre-dispatch gate..."
-    for task in $(echo "$LAYER_TASKS" | node -pe "JSON.parse(require('fs').readFileSync(0, 'utf8')).map(t => t.id).join(' ')"); do
-        GATE_RESULT=$("$NODE_CMD" "$SCRIPT_DIR/gate-chain.js" pre-dispatch "$(echo "$LAYER_TASKS" | node -pe "JSON.parse(require('fs').readFileSync(0, 'utf8')).find(t => t.id === '$task')")" 2>&1)
-        GATE_PASSED=$(echo "$GATE_RESULT" | node -pe "JSON.parse(require('fs').readFileSync(0, 'utf8')).passed")
+    for task in $(echo "$LAYER_TASKS" | "$NODE_CMD" -pe "JSON.parse(require('fs').readFileSync(0, 'utf8')).map(t => t.id).join(' ')"); do
+        GATE_RESULT=$("$NODE_CMD" "$SCRIPT_DIR/gate-chain.js" pre-dispatch "$(echo "$LAYER_TASKS" | "$NODE_CMD" -pe "JSON.parse(require('fs').readFileSync(0, 'utf8')).find(t => t.id === '$task')")" 2>&1)
+        GATE_PASSED=$(echo "$GATE_RESULT" | "$NODE_CMD" -pe "JSON.parse(require('fs').readFileSync(0, 'utf8')).passed")
 
         if [ "$GATE_PASSED" != "true" ]; then
             log_error "Pre-dispatch gate failed for task: $task"
@@ -275,7 +281,7 @@ while [ $CURRENT_LAYER -lt $TOTAL_LAYERS ]; do
     log_info "Executing $TASK_COUNT tasks with $WORKER_COUNT workers..."
     # TODO: Implement parallel execution using worker.js
     # For now, sequential execution as placeholder
-    for task in $(echo "$LAYER_TASKS" | node -pe "JSON.parse(require('fs').readFileSync(0, 'utf8')).map(t => t.id).join(' ')"); do
+    for task in $(echo "$LAYER_TASKS" | "$NODE_CMD" -pe "JSON.parse(require('fs').readFileSync(0, 'utf8')).map(t => t.id).join(' ')"); do
         log_info "  → $task"
         "$NODE_CMD" "$SCRIPT_DIR/worker.js" "$task" "$MODE" &>/dev/null &
     done
@@ -285,9 +291,9 @@ while [ $CURRENT_LAYER -lt $TOTAL_LAYERS ]; do
 
     # Post-task gate
     log_info "Running post-task gate..."
-    for task in $(echo "$LAYER_TASKS" | node -pe "JSON.parse(require('fs').readFileSync(0, 'utf8')).map(t => t.id).join(' ')"); do
-        GATE_RESULT=$("$NODE_CMD" "$SCRIPT_DIR/gate-chain.js" post-task "$(echo "$LAYER_TASKS" | node -pe "JSON.parse(require('fs').readFileSync(0, 'utf8')).find(t => t.id === '$task')")" 2>&1)
-        GATE_PASSED=$(echo "$GATE_RESULT" | node -pe "JSON.parse(require('fs').readFileSync(0, 'utf8')).passed")
+    for task in $(echo "$LAYER_TASKS" | "$NODE_CMD" -pe "JSON.parse(require('fs').readFileSync(0, 'utf8')).map(t => t.id).join(' ')"); do
+        GATE_RESULT=$("$NODE_CMD" "$SCRIPT_DIR/gate-chain.js" post-task "$(echo "$LAYER_TASKS" | "$NODE_CMD" -pe "JSON.parse(require('fs').readFileSync(0, 'utf8')).find(t => t.id === '$task')")" 2>&1)
+        GATE_PASSED=$(echo "$GATE_RESULT" | "$NODE_CMD" -pe "JSON.parse(require('fs').readFileSync(0, 'utf8')).passed")
 
         if [ "$GATE_PASSED" != "true" ]; then
             log_warn "Post-task gate warning for: $task"
@@ -297,7 +303,7 @@ while [ $CURRENT_LAYER -lt $TOTAL_LAYERS ]; do
     # Barrier gate after layer
     log_info "Running barrier gate..."
     BARRIER_RESULT=$("$NODE_CMD" "$SCRIPT_DIR/gate-chain.js" barrier "$CURRENT_LAYER" "$LAYER_TASKS" 2>&1)
-    BARRIER_PASSED=$(echo "$BARRIER_RESULT" | node -pe "JSON.parse(require('fs').readFileSync(0, 'utf8')).passed")
+    BARRIER_PASSED=$(echo "$BARRIER_RESULT" | "$NODE_CMD" -pe "JSON.parse(require('fs').readFileSync(0, 'utf8')).passed")
 
     if [ "$BARRIER_PASSED" != "true" ]; then
         log_error "Barrier gate failed at layer $LAYER_NUM"
@@ -319,9 +325,9 @@ done
 header "Orchestration Complete"
 
 PROGRESS=$("$NODE_CMD" "$SCRIPT_DIR/state.js" progress 2>/dev/null || echo '{}')
-COMPLETED=$(echo "$PROGRESS" | node -pe "JSON.parse(require('fs').readFileSync(0, 'utf8')).completed")
-FAILED=$(echo "$PROGRESS" | node -pe "JSON.parse(require('fs').readFileSync(0, 'utf8')).failed")
-PERCENT=$(echo "$PROGRESS" | node -pe "JSON.parse(require('fs').readFileSync(0, 'utf8')).percent")
+COMPLETED=$(echo "$PROGRESS" | "$NODE_CMD" -pe "JSON.parse(require('fs').readFileSync(0, 'utf8')).completed")
+FAILED=$(echo "$PROGRESS" | "$NODE_CMD" -pe "JSON.parse(require('fs').readFileSync(0, 'utf8')).failed")
+PERCENT=$(echo "$PROGRESS" | "$NODE_CMD" -pe "JSON.parse(require('fs').readFileSync(0, 'utf8')).percent")
 
 log_success "Completed: $COMPLETED tasks"
 if [ "$FAILED" -gt 0 ]; then

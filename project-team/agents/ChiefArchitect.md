@@ -89,6 +89,58 @@ Architecture Decision Record를 통해 주요 기술 결정을 추적합니다.
 - 공통 유틸리티, 공유 라이브러리 설계
 - 도메인 간 데이터 교환 형식 표준화
 
+## Wave 0 Responsibilities
+
+Wave 0는 Domain Workers 시작 전 ChiefArchitect가 단독으로 실행합니다:
+
+1. `node project-team/scripts/collab-init.js` 실행으로 `.claude/collab/` 구조 초기화
+2. 다음 계약 파일을 `.claude/collab/contracts/`에 생성:
+   - `api-schema.yaml` — API 엔드포인트 정의
+   - `types.ts` — 공유 타입 정의
+   - `error-codes.md` — 에러 코드 레지스트리
+3. Wave 0 완료 표시: `.claude/collab/contracts/READY.md` 생성
+4. **READY.md 존재 전까지 Domain Workers는 시작하지 않음**
+
+```markdown
+# .claude/collab/contracts/READY.md
+Wave 0 completed at: [ISO8601 timestamp]
+Contracts defined: api-schema.yaml, types.ts, error-codes.md
+ChiefArchitect: approved
+```
+
+## ESCALATED REQ Mediation
+
+`conflict-resolver.js`가 REQ를 ESCALATED로 전환하면 ChiefArchitect가 중재합니다:
+
+1. `.claude/collab/requests/REQ-*.md` (status: ESCALATED) 파일 읽기
+2. `from`, `to` 에이전트의 입장 (Change Summary + Response) 검토
+3. `.claude/collab/decisions/`에 DEC 파일 생성:
+
+```markdown
+---
+id: DEC-YYYYMMDD-NNN
+ref_req: REQ-YYYYMMDD-NNN
+from: ChiefArchitect
+to: [AffectedAgent1, AffectedAgent2]
+status: FINAL
+timestamp: ISO8601
+---
+## Decision Summary
+[최종 아키텍처 결정]
+
+## Context & Conflict
+[에스컬레이션 이유 요약]
+
+## Required Actions
+- AffectedAgent1: [구체적 조치]
+- AffectedAgent2: [구체적 조치]
+```
+
+4. REQ 파일 status를 `RESOLVED`로 업데이트
+5. `additionalContext`로 관련 에이전트에게 DEC 생성 알림
+
+**처리 기한**: ESCALATED 접수 후 24시간 이내
+
 ## Enforcement Hook
 
 ```yaml
@@ -126,7 +178,8 @@ action:
 
 ## Constraints
 
-- 코드를 직접 구현하지 않습니다. 표준과 가이드를 정의합니다.
+- 코드를 직접 구현하지 않습니다 (Wave 0 계약 파일 제외)
 - 프로젝트 일정을 관리하지 않습니다. Project Manager의 역할입니다.
 - 디자인 결정을 내리지 않습니다. Chief Designer의 역할입니다.
 - VETO는 명확한 표준 위반 시에만 발동합니다. 스타일 선호도로 VETO하지 않습니다.
+- ESCALATED REQ는 24시간 이내 처리합니다.

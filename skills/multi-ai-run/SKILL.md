@@ -285,7 +285,7 @@ enabled: true  # 모든 오케스트레이션에 자동 적용
 ## FAQ
 
 **Q: Claude 외 모델이 Claude Code 내에서 파일을 수정할 수 있나요?**
-A: CLI 출력을 Claude가 받아서 Edit/Write 도구로 적용합니다. 직접 수정 권한은 Claude만 가집니다.
+A: Codex는 `--sandbox workspace-write` 옵션으로 프로젝트 폴더를 직접 읽고 쓸 수 있습니다. Gemini는 CLI 출력을 Claude가 받아 Edit/Write 도구로 적용합니다.
 
 **Q: 특정 태스크만 다른 모델로 실행하고 싶어요**
 A: `--model=gemini T1.2` 또는 TASKS.md에 태그 추가: `- [ ] T1.2: UI 구현 [model:gemini]`
