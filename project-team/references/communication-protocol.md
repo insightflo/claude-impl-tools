@@ -131,7 +131,40 @@ To request a cross-domain change, create a REQ file instead.
 6. **Mediate**: ChiefArchitect reads both positions, creates `DEC-20260305-001.md` with final ruling.
 7. **Archive**: After wave completion, REQ and DEC move to `.claude/collab/archive/wave-N/`.
 
-## 10. Wave Integration
+## 10. Kanban Board Status Mapping
+
+The task board (`/task-board`) unifies two status systems into four visual columns:
+
+| Board Column | orchestrate-state status | REQ/DEC status |
+|-------------|--------------------------|----------------|
+| **Backlog** | `pending` | — |
+| **In Progress** | `in_progress` | `OPEN`, `PENDING` |
+| **Blocked** | `failed`, `timeout` | `ESCALATED` |
+| **Done** | `completed` | `RESOLVED`, `REJECTED` |
+
+### Board Event Types (emitted by `task-board-sync.js`)
+
+| Event | Trigger | Board Effect |
+|-------|---------|--------------|
+| `task_claimed` | Agent begins task | Backlog → In Progress |
+| `task_started` | First file edit in task | In Progress (progress update) |
+| `task_done` | TaskUpdate completed | In Progress → Done |
+| `task_blocked` | `failed` / `timeout` status | In Progress → Blocked |
+| `req_escalated` | REQ status = ESCALATED | new Blocked card |
+| `req_resolved` | REQ status = RESOLVED/REJECTED | Blocked → Done |
+
+### Board State Files
+
+```
+.claude/collab/
+├── board-state.json   # Current board snapshot (derived, never edit directly)
+└── events.ndjson      # Append-only event log (one JSON object per line)
+```
+
+**Single Source of Truth**: `TASKS.md` + `.claude/orchestrate-state.json` are canonical.
+`board-state.json` is always derivable via `node skills/task-board/scripts/board-builder.js`.
+
+## 11. Wave Integration
 
 ```
 Wave 0: ChiefArchitect (solo)

@@ -48,7 +48,7 @@ cd claude-imple-skills/project-team
 
 | 구성요소 | 개수 | 용도 |
 |----------|-------|------|
-| **스킬** | 19개 | 작업 실행, 분석, 자동화 |
+| **스킬** | 20개 | 작업 실행, 분석, 자동화 |
 | **에이전트** | 10개 | 역할 기반 전문가 팀 |
 | **훅** | 17개 | 자동 검증 (보안, 품질, 영향도) |
 | **템플릿** | 7개 | 프로토콜, ADR, 계약 |
@@ -100,6 +100,7 @@ cd claude-imple-skills/project-team
 | `/architecture` | 프로젝트 구조 & 도메인 맵 |
 | `/compress` | Long Context 최적화 (H2O 패턴) |
 | `/statusline` | Claude Code 상태바에 TASKS.md 진행 상황 표시 |
+| `/task-board` | 에이전트 태스크를 칸반 보드로 시각화 (Backlog / In Progress / Blocked / Done) |
 
 ---
 
@@ -295,7 +296,8 @@ cd project-team
 
 | 버전 | 날짜 | 변경사항 |
 |------|------|----------|
-| **v3.7.0** | 2026-03-05 | Agile Sprint Mode (`--mode=sprint`), multi-ai-review 좀비 프로세스 수정, 계층형 에이전트 협업 버스 (REQ/DEC 프로토콜, domain-boundary-enforcer, Wave Barrier 스캐너) |
+| **v3.8.0** | 2026-03-05 | Task Board 스킬 (`/task-board`), 칸반 시각화, task-board-sync 훅, board-state.json 인프라 |
+| v3.7.0 | 2026-03-05 | Agile Sprint Mode (`--mode=sprint`), multi-ai-review 좀비 프로세스 수정, 계층형 에이전트 협업 버스 (REQ/DEC 프로토콜, domain-boundary-enforcer, Wave Barrier 스캐너) |
 | v3.6.0 | 2026-03-03 | Hybrid Wave Architecture (80-200개 태스크용 `/orchestrate --mode=wave`), Contract-First 템플릿 |
 | v3.5.0 | 2026-03-03 | Context Optimize 스킬 (`/compress`), install.sh 수정, 18개 스킬, 9개 에이전트, 16개 훅 |
 | v3.4.0 | 2026-03-03 | Long Context 최적화 (H2O, Compressive Context, RAG Hybrid) |

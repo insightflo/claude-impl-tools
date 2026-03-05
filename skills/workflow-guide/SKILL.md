@@ -49,7 +49,7 @@ updated: 2026-03-05
 
 ---
 
-## 📊 Standalone 스킬 카탈로그 (18개)
+## 📊 Standalone 스킬 카탈로그 (19개)
 
 ### 핵심 스킬
 
@@ -73,6 +73,7 @@ updated: 2026-03-05
 | **`/architecture`** | `/architecture` | 아키텍처 맵 |
 | **`/compress`** | `/compress`, "컨텍스트 압축" | Long Context 최적화 (H2O 패턴) |
 | **`/orchestrate-standalone`** | `/orchestrate-standalone`, `/orchestrate` | 30~200개 태스크 병렬 실행 (`--mode=wave/sprint`) |
+| **`/task-board`** | `/task-board`, "칸반 보드", "보드 보여줘" | 에이전트 태스크 칸반 시각화 (Backlog/In Progress/Blocked/Done) |
 
 ---
 
@@ -399,6 +400,12 @@ ls .claude/agents/*.md 2>/dev/null | wc -l  # 3개 이상이면 팀 구성됨
 "ChiefArchitect 중재 요청"      → REQ 파일 ESCALATED → ChiefArchitect DEC 파일 생성
 "도메인 규칙 강제"              → domain-boundary-enforcer.js (project-team/hooks/)
 "교차 도메인 쓰기 차단"         → domain-boundary-enforcer.js PreToolUse 훅
+"칸반 보드 보여줘"              → /task-board show
+"보드 보여줘"                   → /task-board show
+"태스크 보드"                   → /task-board show
+"보드 다시 만들어"              → /task-board rebuild
+"blocked 태스크 확인"           → /task-board health
+"에이전트 진행 상황 시각화"     → /task-board show
 ```
 
 ---

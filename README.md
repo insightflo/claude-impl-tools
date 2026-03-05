@@ -44,7 +44,7 @@ curl -fsSL https://raw.githubusercontent.com/insightflo/claude-imple-skills/main
 
 | Component | Count | Purpose |
 |-----------|-------|---------|
-| **Skills** | 19 | Task execution, analysis, automation |
+| **Skills** | 20 | Task execution, analysis, automation |
 | **Agents** | 10 | Role-based specialist team |
 | **Hooks** | 17 | Auto-validation (security, quality, impact) |
 | **Templates** | 7 | Protocols, ADR, contracts |
@@ -96,6 +96,7 @@ curl -fsSL https://raw.githubusercontent.com/insightflo/claude-imple-skills/main
 | `/architecture` | Map project structure & domains |
 | `/compress` | Long Context optimization (H2O pattern) |
 | `/statusline` | Display TASKS.md progress in Claude Code status bar |
+| `/task-board` | Visualize agent tasks as a Kanban board (Backlog / In Progress / Blocked / Done) |
 
 ---
 
@@ -291,7 +292,8 @@ Choose a mode:
 
 | Version | Date | Changes |
 |---------|------|---------|
-| **v3.7.0** | 2026-03-05 | Agile Sprint Mode (`--mode=sprint`), multi-ai-review zombie fix, hierarchical agent collaboration bus (REQ/DEC protocol, domain-boundary-enforcer, Wave Barrier scanner) |
+| **v3.8.0** | 2026-03-05 | Task Board skill (`/task-board`), Kanban visualization, task-board-sync hook, board-state.json infrastructure |
+| v3.7.0 | 2026-03-05 | Agile Sprint Mode (`--mode=sprint`), multi-ai-review zombie fix, hierarchical agent collaboration bus (REQ/DEC protocol, domain-boundary-enforcer, Wave Barrier scanner) |
 | v3.6.0 | 2026-03-03 | Hybrid Wave Architecture for 80-200 tasks (`/orchestrate --mode=wave`), Contract-First template |
 | v3.5.0 | 2026-03-03 | Context Optimize skill (`/compress`), install.sh fix, 18 skills, 9 agents, 16 hooks |
 | v3.4.0 | 2026-03-03 | Long Context optimization (H2O, Compressive Context, RAG Hybrid) |

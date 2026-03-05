@@ -11,11 +11,13 @@
  *
  * Directories created:
  *   .claude/collab/
- *   ├── contracts/   ChiefArchitect-only write (Wave 0 outputs)
- *   ├── requests/    REQ-*.md files (cross-domain change requests)
- *   ├── decisions/   DEC-*.md files (ChiefArchitect rulings)
- *   ├── locks/       JSON lock files (TTL: 10 min)
- *   └── archive/     Wave-end archival of completed REQ/DEC files
+ *   ├── contracts/        ChiefArchitect-only write (Wave 0 outputs)
+ *   ├── requests/         REQ-*.md files (cross-domain change requests)
+ *   ├── decisions/        DEC-*.md files (ChiefArchitect rulings)
+ *   ├── locks/            JSON lock files (TTL: 10 min)
+ *   ├── archive/          Wave-end archival of completed REQ/DEC files
+ *   ├── board-state.json  Current kanban board snapshot (derived, never edit directly)
+ *   └── events.ndjson     Append-only board event log
  */
 
 const fs = require('fs');
@@ -51,6 +53,14 @@ File-based communication bus for the hierarchical agent collaboration system.
 
 - **archive/**: Wave-end archival of completed REQ/DEC files.
   Moved here after wave completion to reduce context overhead.
+
+- **board-state.json**: Current kanban board snapshot (Backlog / In Progress / Blocked / Done).
+  Derived from TASKS.md + orchestrate-state.json + requests/. Never edit directly.
+  Rebuild: \`node skills/task-board/scripts/board-builder.js\`
+
+- **events.ndjson**: Append-only board event log.
+  One JSON event per line: task_claimed, task_started, task_done, task_blocked,
+  req_escalated, req_resolved.
 
 ## REQ File Format
 
@@ -120,6 +130,23 @@ function init(projectDir) {
   // Write README
   const readmePath = path.join(collabDir, 'README.md');
   fs.writeFileSync(readmePath, COLLAB_README);
+
+  // Initialize board-state.json
+  const boardStatePath = path.join(collabDir, 'board-state.json');
+  if (!fs.existsSync(boardStatePath)) {
+    const initialBoard = {
+      version: '1.0',
+      generated_at: new Date().toISOString(),
+      columns: { Backlog: [], 'In Progress': [], Blocked: [], Done: [] },
+    };
+    fs.writeFileSync(boardStatePath, JSON.stringify(initialBoard, null, 2));
+  }
+
+  // Initialize events.ndjson (empty)
+  const eventsPath = path.join(collabDir, 'events.ndjson');
+  if (!fs.existsSync(eventsPath)) {
+    fs.writeFileSync(eventsPath, '');
+  }
 
   log(`collab initialized: ${collabDir}`);
   for (const sub of SUBDIRS) {

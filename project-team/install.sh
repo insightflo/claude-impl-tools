@@ -767,6 +767,8 @@ do_uninstall() {
         "risk-area-warning.js"
         "architecture-updater.js"
         "changelog-recorder.js"
+        "domain-boundary-enforcer.js"
+        "task-board-sync.js"
         "project-team-hooks.json"
     )
 
