@@ -72,7 +72,7 @@ updated: 2026-03-05
 | **`/changelog`** | `/changelog` | 변경 이력 |
 | **`/architecture`** | `/architecture` | 아키텍처 맵 |
 | **`/compress`** | `/compress`, "컨텍스트 압축" | Long Context 최적화 (H2O 패턴) |
-| **`/orchestrate-standalone`** | `/orchestrate-standalone`, `/orchestrate` | 30~200개 태스크 병렬 실행 (`--mode=wave/sprint`) |
+| **`/orchestrate-standalone`** | `/orchestrate-standalone`, `/orchestrate-standalone` | 30~200개 태스크 병렬 실행 (`--mode=wave/sprint`) |
 | **`/task-board`** | `/task-board`, "칸반 보드", "보드 보여줘" | 에이전트 태스크 칸반 시각화 (Backlog/In Progress/Blocked/Done) |
 
 ---
@@ -92,7 +92,7 @@ updated: 2026-03-05
 ### 사용 방법
 
 ```bash
-/orchestrate --tmux    # tmux 병렬 모드 활성화
+/orchestrate-standalone --tmux    # tmux 병렬 모드 활성화
 ```
 
 ### 언제 사용하나?
@@ -129,8 +129,8 @@ ls TASKS.md 2>/dev/null || ls docs/planning/06-tasks.md 2>/dev/null
 ls package.json pyproject.toml requirements.txt 2>/dev/null
 
 # 4. 중단된 작업 확인
-ls .claude/orchestrate-state.json 2>/dev/null
-cat .claude/orchestrate-state.json 2>/dev/null | head -5
+ls .claude/orchestrate-standalone-state.json 2>/dev/null
+cat .claude/orchestrate-standalone-state.json 2>/dev/null | head -5
 
 # 5. Git 상태 확인
 git status --short 2>/dev/null | head -10
@@ -165,16 +165,16 @@ ls .claude/agents/*.md 2>/dev/null | wc -l  # 3개 이상이면 팀 구성됨
 
 | 진단 결과 | 프로젝트 단계 | 권장 스킬 |
 |-----------|---------------|-----------|
-| orchestrate-state.json 존재 | 🔄 **자동화 중단** | `/recover` → `/orchestrate --resume` |
+| orchestrate-state.json 존재 | 🔄 **자동화 중단** | `/recover` → `/orchestrate-standalone --resume` |
 | Git 충돌/dirty 상태 | ⚠️ **복구 필요** | `/recover` |
 | 아이디어만 있음 | 💡 **기획 시작** | `/governance-setup` (Mini-PRD 내장) |
 | docs/planning/ 없음 | 🌱 **기획 필요** | `/governance-setup` |
 | 기획 있음 + TASKS.md 없음 + 레거시(06-tasks.md)만 존재 | 📋 **마이그레이션 필요** | `/tasks-migrate` (루트 TASKS.md로 통합) |
 | 기획 있음 + 태스크 파일 없음 | 📋 **태스크 필요** | `/tasks-init` |
 | 태스크 있음 + **거버넌스 권장 조건 충족** + 거버넌스 없음 | 🏛️ **거버넌스 필요** | `/governance-setup` |
-| 거버넌스 완료 + 미구현 | 🚀 **구현 준비** | `/agile auto` (≤30) 또는 `/orchestrate` (30~80) |
+| 거버넌스 완료 + 미구현 | 🚀 **구현 준비** | `/agile auto` (≤30) 또는 `/orchestrate-standalone` (30~80) |
 | 태스크 있음 + 코드 없음 (소규모) | 🚀 **구현 준비** | `/agile auto` (≤30) |
-| 코드 있음 + 미완료 태스크 | 🔨 **구현 중** | `/agile iterate` 또는 `/orchestrate --resume` |
+| 코드 있음 + 미완료 태스크 | 🔨 **구현 중** | `/agile iterate` 또는 `/orchestrate-standalone --resume` |
 | 모든 태스크 완료 | ✅ **검증 필요** | `/audit` |
 
 ### 2-1단계: 부분 완료 상태 판단 기준
@@ -240,9 +240,9 @@ ls .claude/agents/*.md 2>/dev/null | wc -l  # 3개 이상이면 팀 구성됨
 │
 ├─ 구현 시작?
 │   ├─ ≤30개 태스크 ──────────────────── /agile auto
-│   ├─ 30~80개 태스크 ───────────────── /orchestrate
-│   ├─ 50~200개 (사용자 리뷰 게이트) ─── /orchestrate --mode=sprint (NEW)
-│   ├─ 80~200개 (자율 병렬 실행) ──────── /orchestrate --mode=wave
+│   ├─ 30~80개 태스크 ───────────────── /orchestrate-standalone
+│   ├─ 50~200개 (사용자 리뷰 게이트) ─── /orchestrate-standalone --mode=sprint (NEW)
+│   ├─ 80~200개 (자율 병렬 실행) ──────── /orchestrate-standalone --mode=wave
 │   ├─ 200개+ 태스크 ───────────────── 하위 프로젝트 분할 → wave
 │   └─ 수정/변경 ─────────────────────── /agile iterate
 │
@@ -272,10 +272,10 @@ ls .claude/agents/*.md 2>/dev/null | wc -l  # 3개 이상이면 팀 구성됨
 |-----------|-----------|---------------|------------|-----------|
 | **1~10개** | `/agile run` + `/agile done` | Claude 직접 | ❌ 불필요 | - |
 | **10~30개** | `/agile auto` | Claude 직접 | ❌ 불필요 | - |
-| **30~80개** | `/orchestrate` | 전문가 에이전트 | ✅ 선택 | `/governance-setup` |
-| **50~200개** | `/orchestrate --mode=sprint` | Agile 스프린트 에이전트 | ✅ 선택 | `/governance-setup` |
-| **80~200개** | `/orchestrate --mode=wave` | 도메인 병렬 에이전트 | ✅ 권장 | `/governance-setup` |
-| **200개+** | 하위 프로젝트 분할 → `/orchestrate --mode=wave` | 도메인 병렬 에이전트 | ✅ 필수 | `/governance-setup` |
+| **30~80개** | `/orchestrate-standalone` | 전문가 에이전트 | ✅ 선택 | `/governance-setup` |
+| **50~200개** | `/orchestrate-standalone --mode=sprint` | Agile 스프린트 에이전트 | ✅ 선택 | `/governance-setup` |
+| **80~200개** | `/orchestrate-standalone --mode=wave` | 도메인 병렬 에이전트 | ✅ 권장 | `/governance-setup` |
+| **200개+** | 하위 프로젝트 분할 → `/orchestrate-standalone --mode=wave` | 도메인 병렬 에이전트 | ✅ 필수 | `/governance-setup` |
 
 > **Sprint vs Wave 선택 기준**: `--mode=sprint`은 Human-in-the-loop 리뷰가 필요할 때 (각 스프린트 경계에서 사용자 승인), `--mode=wave`는 완전 자율 도메인 병렬 실행 시 사용합니다.
 >
@@ -313,14 +313,14 @@ ls .claude/agents/*.md 2>/dev/null | wc -l  # 3개 이상이면 팀 구성됨
 │   └─ /agile auto (Claude 직접 작성)                     │
 │                                                         │
 │ 🏢 중규모 (30~80개)                                      │
-│   └─ /orchestrate (의존성 기반 병렬 실행)                │
+│   └─ /orchestrate-standalone (의존성 기반 병렬 실행)                │
 │                                                         │
 │ 🏃 스프린트 (50~200개) - 사용자 리뷰 게이트 필요         │
-│   └─ /orchestrate --mode=sprint                        │
+│   └─ /orchestrate-standalone --mode=sprint                        │
 │       Agile PI 계획 → 스프린트 실행 → 리뷰 게이트       │
 │                                                         │
 │ 🌊 대규모 (80~200개) - Hybrid Wave Architecture          │
-│   └─ /orchestrate --mode=wave                          │
+│   └─ /orchestrate-standalone --mode=wave                          │
 │       Phase 0: Contract-First (계약 확정)               │
 │       Phase 1: Domain Parallelism (병렬 실행)           │
 │       Phase 2: Cross-Review Gate (상호 검토)            │
@@ -329,7 +329,7 @@ ls .claude/agents/*.md 2>/dev/null | wc -l  # 3개 이상이면 팀 구성됨
 │ 🏛️ 거버넌스 (태스크 10+ + 복잡/협업 조건)                │
 │   └─ /governance-setup (Phase 0: PM/Architect/QA/DBA)   │
 │       ↓                                                 │
-│   └─ 규모에 따라 /agile auto 또는 /orchestrate --mode=wave │
+│   └─ 규모에 따라 /agile auto 또는 /orchestrate-standalone --mode=wave │
 └─────────────────────────────────────────────────────────┘
     ↓
 /checkpoint (태스크 완료 시 리뷰)
@@ -389,8 +389,8 @@ ls .claude/agents/*.md 2>/dev/null | wc -l  # 3개 이상이면 팀 구성됨
 "컨텍스트 압축해줘"             → /compress
 "문서가 너무 길어"              → /compress optimize
 "context overflow"              → /compress
-"스프린트로 실행해줘"           → /orchestrate --mode=sprint
-"사용자 리뷰 게이트 원해"       → /orchestrate --mode=sprint
+"스프린트로 실행해줘"           → /orchestrate-standalone --mode=sprint
+"사용자 리뷰 게이트 원해"       → /orchestrate-standalone --mode=sprint
 "협업 버스 초기화"              → node project-team/scripts/collab-init.js
 "콜랩 인프라 셋업"              → node project-team/scripts/collab-init.js
 "Wave Barrier 확인"             → node project-team/scripts/conflict-resolver.js
@@ -456,8 +456,8 @@ A: `/recover`를 실행하여 중단된 작업을 복구하세요.
 
 ### Q: 대규모 프로젝트는 어떻게 관리하나요?
 A: 태스크 규모와 리뷰 필요 여부에 따라:
-- **50~200개 (사용자 리뷰 필요)**: `/orchestrate --mode=sprint`. Agile PI 계획 + 스프린트 경계마다 사용자 승인 게이트.
-- **80~200개 (완전 자율 실행)**: `/orchestrate --mode=wave`. Contract-First + 도메인 병렬 + Cross-Review로 일관성 보장.
+- **50~200개 (사용자 리뷰 필요)**: `/orchestrate-standalone --mode=sprint`. Agile PI 계획 + 스프린트 경계마다 사용자 승인 게이트.
+- **80~200개 (완전 자율 실행)**: `/orchestrate-standalone --mode=wave`. Contract-First + 도메인 병렬 + Cross-Review로 일관성 보장.
 - **200개+**: 하위 프로젝트로 분할 후 각각 wave 모드 적용.
 - 구현 전 `/governance-setup`으로 거버넌스(PM/Architect/QA/DBA) 문서 생성 권장.
 
