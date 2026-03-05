@@ -84,15 +84,19 @@ in_host_agent_context() {
   return 1
 }
 
-JOB_DIR="$("$JOB_SCRIPT" start "$@")"
+# Register trap early (before JOB_SCRIPT start) to protect the start phase
+_cleanup_job() {
+  local exit_code=$?
+  trap - EXIT INT TERM HUP
+  if [ -n "${JOB_DIR:-}" ] && [ -d "$JOB_DIR" ]; then
+    "$JOB_SCRIPT" stop "$JOB_DIR" >/dev/null 2>&1 || true
+    "$JOB_SCRIPT" clean "$JOB_DIR" >/dev/null 2>&1 || true
+  fi
+  exit "$exit_code"
+}
 
-if in_host_agent_context; then
-  exec "$JOB_SCRIPT" wait "$JOB_DIR"
-fi
-
-echo "council: started ${JOB_DIR}" >&2
-
-cleanup_on_signal() {
+_cleanup_signal() {
+  trap - EXIT INT TERM HUP
   if [ -n "${JOB_DIR:-}" ] && [ -d "$JOB_DIR" ]; then
     "$JOB_SCRIPT" stop "$JOB_DIR" >/dev/null 2>&1 || true
     "$JOB_SCRIPT" clean "$JOB_DIR" >/dev/null 2>&1 || true
@@ -100,7 +104,18 @@ cleanup_on_signal() {
   exit 130
 }
 
-trap cleanup_on_signal INT TERM
+JOB_DIR="$("$JOB_SCRIPT" start "$@")"
+
+if in_host_agent_context; then
+  trap _cleanup_job EXIT
+  trap _cleanup_signal INT TERM HUP
+  "$JOB_SCRIPT" wait "$JOB_DIR"
+  exit $?
+fi
+
+echo "council: started ${JOB_DIR}" >&2
+
+trap _cleanup_signal INT TERM HUP
 
 while true; do
   WAIT_JSON="$("$JOB_SCRIPT" wait "$JOB_DIR")"
@@ -117,7 +132,7 @@ process.stdout.write(String(d.overallState||""));
   fi
 done
 
-trap - INT TERM
+trap - EXIT INT TERM HUP
 
 "$JOB_SCRIPT" results "$JOB_DIR"
 "$JOB_SCRIPT" clean "$JOB_DIR" >/dev/null
