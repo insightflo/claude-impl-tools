@@ -141,17 +141,18 @@ function setCurrentLayer(layer, projectDir = process.cwd()) {
 function getProgress(projectDir = process.cwd()) {
   const state = loadState(projectDir);
 
-  const total = state.tasks.length;
-  const completed = state.tasks.filter(t => t.status === 'completed').length;
-  const failed = state.tasks.filter(t => t.status === 'failed').length;
-  const inProgress = state.tasks.filter(t => t.status === 'in_progress').length;
+  const tasks = Array.isArray(state.tasks) ? state.tasks : [];
+  const total = tasks.length;
+  const completed = tasks.filter(t => t.status === 'completed').length;
+  const failed = tasks.filter(t => t.status === 'failed').length;
+  const inProgress = tasks.filter(t => t.status === 'in_progress').length;
   const pending = total - completed - failed - inProgress;
 
   return {
     total,
     completed,
     failed,
-    in_progress,
+    in_progress: inProgress,
     pending,
     percent: total > 0 ? Math.round((completed / total) * 100) : 0
   };

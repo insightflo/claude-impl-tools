@@ -20,32 +20,54 @@ const os = require('os');
 
 /**
  * Parse TASKS.md and extract tasks with metadata
+ *
+ * [목적] TASKS.md에서 태스크 목록과 메타데이터를 추출
+ * [지원 형식]
+ *   - bullet: `- [ ] T1: desc` / `- [x] T1.2: desc`
+ *   - heading: `### [ ] P1-T1: desc` / `### [x] AUTH-03: desc`
+ * [태스크 ID 패턴] A-Z로 시작, 하이픈/숫자/점 허용 (T1, T1.2, P1-T1, AUTH-03.1)
  */
 function parseTasks(tasksPath) {
   const content = fs.readFileSync(tasksPath, 'utf8');
+  const lines = content.split('\n');
   const tasks = [];
-  const taskRegex = /-\s*\[[ x]\]\s+([A-Z]\d+(?:\.\d+)*):\s*(.+?)(?:\n\s{2,}-(.+?))*$/gm;
+  let currentTask = null;
+  let metadataLines = [];
 
-  let match;
-  while ((match = taskRegex.exec(content)) !== null) {
-    const taskId = match[1];
-    const description = match[2].trim();
-    const metadataStr = match[3] || '';
+  const taskIdPattern = '([A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*(?:\\.\\d+)*)';
+  const bulletPattern = new RegExp(`^-\\s*\\[([xX ])\\]\\s+${taskIdPattern}:\\s*(.+?)\\s*$`);
+  const headingPattern = new RegExp(`^#{1,6}\\s*\\[([xX ])\\]\\s+${taskIdPattern}:\\s*(.+?)\\s*$`);
+  const metadataPattern = /^\s{2,}-\s*(.+?)\s*$/;
 
-    // Parse metadata
-    const metadata = parseMetadata(metadataStr);
+  for (const line of lines) {
+    const bulletMatch = line.match(bulletPattern);
+    const headingMatch = line.match(headingPattern);
+    const taskMatch = bulletMatch || headingMatch;
 
-    tasks.push({
-      id: taskId,
-      description,
-      deps: metadata.deps || [],
-      domain: metadata.domain || null,
-      risk: metadata.risk || 'low',
-      files: metadata.files || [],
-      owner: metadata.owner || null,
-      model: metadata.model || 'sonnet',
-      status: 'pending'
-    });
+    if (taskMatch) {
+      if (currentTask) {
+        tasks.push({ ...currentTask, ...parseMetadata(metadataLines.join('\n')) });
+      }
+
+      currentTask = {
+        id: taskMatch[2],
+        description: taskMatch[3].trim(),
+        status: taskMatch[1].toLowerCase() === 'x' ? 'completed' : 'pending'
+      };
+      metadataLines = [];
+      continue;
+    }
+
+    if (!currentTask) continue;
+
+    const metaMatch = line.match(metadataPattern);
+    if (metaMatch) {
+      metadataLines.push(metaMatch[1].trim());
+    }
+  }
+
+  if (currentTask) {
+    tasks.push({ ...currentTask, ...parseMetadata(metadataLines.join('\n')) });
   }
 
   return tasks;
@@ -64,27 +86,56 @@ function parseMetadata(metaStr) {
     model: 'sonnet'
   };
 
-  const depsMatch = metaStr.match(/deps:\s*\[(.+?)\]/);
-  if (depsMatch) {
-    metadata.deps = depsMatch[1].split(',').map(s => s.trim()).filter(Boolean);
+  if (!metaStr) return metadata;
+
+  const lines = metaStr
+    .split('\n')
+    .map(line => line.trim())
+    .filter(Boolean);
+
+  for (const line of lines) {
+    const separatorIndex = line.indexOf(':');
+    if (separatorIndex === -1) continue;
+
+    const key = line.slice(0, separatorIndex).trim().toLowerCase();
+    const value = line.slice(separatorIndex + 1).trim();
+
+    if (key === 'deps') {
+      const depsValue = value.replace(/^\[/, '').replace(/\]$/, '');
+      metadata.deps = depsValue
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean);
+      continue;
+    }
+
+    if (key === 'domain') {
+      metadata.domain = value || null;
+      continue;
+    }
+
+    if (key === 'risk') {
+      metadata.risk = value || metadata.risk;
+      continue;
+    }
+
+    if (key === 'files') {
+      metadata.files = value
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean);
+      continue;
+    }
+
+    if (key === 'owner') {
+      metadata.owner = value || null;
+      continue;
+    }
+
+    if (key === 'model') {
+      metadata.model = value || metadata.model;
+    }
   }
-
-  const domainMatch = metaStr.match(/domain:\s*(\w+)/);
-  if (domainMatch) metadata.domain = domainMatch[1];
-
-  const riskMatch = metaStr.match(/risk:\s*(\w+)/);
-  if (riskMatch) metadata.risk = riskMatch[1];
-
-  const filesMatch = metaStr.match(/files:\s*(.+)/);
-  if (filesMatch) {
-    metadata.files = filesMatch[1].split(',').map(s => s.trim()).filter(Boolean);
-  }
-
-  const ownerMatch = metaStr.match(/owner:\s*(.+)/);
-  if (ownerMatch) metadata.owner = ownerMatch[1];
-
-  const modelMatch = metaStr.match(/model:\s*(\w+)/);
-  if (modelMatch) metadata.model = modelMatch[1];
 
   return metadata;
 }
@@ -148,22 +199,24 @@ function buildDAG(tasks) {
 /**
  * Create execution layers based on dependencies
  */
-function createLayers(sortedTasks, graph) {
+function createLayers(sortedTasks) {
   const layers = [];
-  const placed = new Set();
+  const placedLayer = {}; // taskId → layerIndex where it was placed
 
   for (const task of sortedTasks) {
-    const deps = graph[task.id] || [];
+    const deps = task.deps || [];
 
-    // Find the first layer where all dependencies are placed
-    let layerIndex = 0;
-    for (const layer of layers) {
-      if (deps.every(d => placed.has(d))) {
-        // Found layer, but check for conflicts
-        if (!hasConflicts(task, layer)) {
-          break;
-        }
+    // 선행 태스크가 배치된 최대 레이어 + 1 이후부터 배치 가능
+    let minLayer = 0;
+    for (const dep of deps) {
+      if (dep in placedLayer) {
+        minLayer = Math.max(minLayer, placedLayer[dep] + 1);
       }
+    }
+
+    // minLayer부터 충돌 없는 첫 레이어 탐색
+    let layerIndex = minLayer;
+    while (layerIndex < layers.length && hasConflicts(task, layers[layerIndex])) {
       layerIndex++;
     }
 
@@ -171,7 +224,7 @@ function createLayers(sortedTasks, graph) {
       layers.push([]);
     }
     layers[layerIndex].push(task);
-    placed.add(task.id);
+    placedLayer[task.id] = layerIndex;
   }
 
   return layers;
@@ -391,7 +444,7 @@ if (require.main === module) {
       const { sorted, graph } = buildDAG(tasks);
       console.log(`Topological sort: ${sorted.map(t => t.id).join(' -> ')}`);
 
-      const layers = createLayers(sorted, graph);
+      const layers = createLayers(sorted);
       console.log(`\nExecution layers: ${layers.length}`);
       layers.forEach((layer, i) => {
         console.log(`  Layer ${i + 1}: ${layer.map(t => t.id).join(', ')}`);

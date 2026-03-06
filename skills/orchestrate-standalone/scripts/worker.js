@@ -12,6 +12,8 @@ const { spawn, execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
+const STATE_FILE = '.claude/orchestrate-state.json';
+
 function writeStderr(message) {
   process.stderr.write(`${message}\n`);
 }
@@ -125,7 +127,7 @@ async function executeTask(task, options = {}) {
     timeout = 300000 // 5 minutes default
   } = options;
 
-  const statePath = path.join(projectDir, '.claude', 'orchestrate-state.json');
+  const statePath = path.join(projectDir, STATE_FILE);
 
   return new Promise((resolve, reject) => {
     const startTime = Date.now();
@@ -289,14 +291,23 @@ async function executeLayer(layer, workerCount = 2) {
 // ---------------------------------------------------------------------------
 
 if (require.main === module) {
-  const taskId = process.argv[2];
+  const taskArg = process.argv[2];
+  const projectDir = process.argv[3] || process.cwd();
 
-  if (!taskId) {
-    writeStderr('Usage: node worker.js <taskId> [mode]');
+  if (!taskArg) {
+    writeStderr('Usage: node worker.js <taskJson|taskId> [projectDir]');
     process.exit(1);
   }
 
-  executeTask({ id: taskId }, { timeout: 300000 })
+  // JSON 문자열이면 파싱, 아니면 최소 task 객체 생성
+  let task;
+  try {
+    task = JSON.parse(taskArg);
+  } catch {
+    task = { id: taskArg, description: taskArg, domain: 'general', risk: 'low' };
+  }
+
+  executeTask(task, { projectDir, timeout: 300000 })
     .then(result => {
       process.stdout.write(JSON.stringify(result, null, 2) + '\n');
     })

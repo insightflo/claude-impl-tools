@@ -7,6 +7,7 @@ Created: 2026-03-06
 Status: v3.7 (Round 10 — Go)
 Basis: Symphony analysis + claude-imple-skills architecture review
 Related: SYMPHONY-ADOPTION-PLAN.md (superseded — backup in docs/plan/backup/)
+Acknowledgement: DCPEA loop pattern inspired by [OpenAI Symphony](https://github.com/openai/symphony) (Apache 2.0). No code or documentation copied.
 Review: Round 1 council — Codex + Gemini
 Review: Round 2 council — Codex + Gemini
 Review: Round 3 council — Codex + Gemini (v3.1 Go)

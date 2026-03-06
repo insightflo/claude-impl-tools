@@ -21,6 +21,7 @@ NODE_CMD="${NODE_CMD:-node}"
 MODE="${MODE:-standard}"
 RESUME="${RESUME:-false}"
 SPRINT_SIZE=30
+AUTO_GOAL=""
 
 # Worker pool size based on mode
 declare -A WORKERS=(
@@ -73,6 +74,9 @@ while [ $# -gt 0 ]; do
         --resume)
             RESUME=true
             ;;
+        --goal=*)
+            AUTO_GOAL="${1#*=}"
+            ;;
         --help|-h)
             cat <<EOF
 ${BOLD}Orchestrate Standalone${NC}
@@ -80,7 +84,8 @@ ${BOLD}Orchestrate Standalone${NC}
 Usage: $0 [OPTIONS]
 
 Options:
-  --mode=MODE       Execution mode: lite, standard, full, wave, sprint (default: standard)
+  --mode=MODE       Execution mode: lite, standard, full, wave, sprint, auto (default: standard)
+  --goal=GOAL       Goal for auto mode (required for --mode=auto)
   --sprint-size=N   Size of sprint for sprint mode (default: 30)
   --resume          Resume from previous state
   --help            Show this help
@@ -91,11 +96,14 @@ Modes:
   full          8 workers (most thorough)
   wave          6 workers (Hybrid Wave Architecture)
   sprint        4 workers (Agile Sprint Mode with gates)
+  auto          Autonomous DCPEA loop (Define→Decompose→Plan→Execute→Assess→Adjust)
 
 Examples:
-  $0                      # Standard mode
-  $0 --mode=lite          # Lite mode
-  $0 --resume             # Resume after interruption
+  $0                                          # Standard mode
+  $0 --mode=lite                              # Lite mode
+  $0 --mode=auto --goal="Build user auth"     # Auto mode
+  $0 --mode=auto --resume                     # Resume auto mode
+  $0 --resume                                 # Resume after interruption
 EOF
             exit 0
             ;;
@@ -109,10 +117,10 @@ done
 
 # Validate mode
 case "$MODE" in
-    lite|standard|full|wave|sprint)
+    lite|standard|full|wave|sprint|auto)
         ;;
     *)
-        log_error "Invalid mode: $MODE (must be: lite, standard, full, wave, or sprint)"
+        log_error "Invalid mode: $MODE (must be: lite, standard, full, wave, sprint, or auto)"
         exit 1
         ;;
 esac
@@ -170,6 +178,40 @@ fi
 # ---------------------------------------------------------------------------
 # Execute Layers
 # ---------------------------------------------------------------------------
+
+# Auto mode: DCPEA autonomous orchestration
+if [ "$MODE" = "auto" ]; then
+    header "Executing Auto Mode (DCPEA Loop)"
+
+    if [ "$RESUME" = "true" ]; then
+        log_info "Resuming auto mode from checkpoint..."
+        AUTO_MODE=true "$NODE_CMD" "$SCRIPT_DIR/auto-orchestrator.js" --resume
+    else
+        if [ -z "$AUTO_GOAL" ]; then
+            log_error "Auto mode requires --goal='...'. Example: --mode=auto --goal='Build user auth'"
+            exit 1
+        fi
+        AUTO_MODE=true "$NODE_CMD" "$SCRIPT_DIR/auto-orchestrator.js" "$AUTO_GOAL"
+    fi
+
+    AUTO_EXIT=$?
+    case $AUTO_EXIT in
+        0)
+            log_success "Auto mode completed successfully!"
+            ;;
+        1)
+            log_error "Auto mode failed"
+            ;;
+        2)
+            log_warn "Auto mode paused for human review"
+            log_info "Resume with: $0 --mode=auto --resume"
+            ;;
+        *)
+            log_error "Auto mode exited with code: $AUTO_EXIT"
+            ;;
+    esac
+    exit $AUTO_EXIT
+fi
 
 # Sprint mode: special handling with planner/runner
 if [ "$MODE" = "sprint" ]; then
