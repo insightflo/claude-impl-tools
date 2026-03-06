@@ -223,6 +223,32 @@ runTest('assess-gate: buildDynamicTasks creates follow-up work for failed items'
   assert.strictEqual(dynamicTasks[0].domain, 'api');
 });
 
+runTest('assess-gate: shouldTriggerMultiAiReview returns true for architecture, critical-risk, or large plans', () => {
+  assert.strictEqual(autoOrchestrator.shouldTriggerMultiAiReview([
+    { id: 'T1', description: 'Refactor service graph', domain: 'architecture', risk: 'medium' }
+  ]), true);
+
+  assert.strictEqual(autoOrchestrator.shouldTriggerMultiAiReview([
+    { id: 'T1', description: 'Patch auth flow', domain: 'backend', risk: 'critical' }
+  ]), true);
+
+  assert.strictEqual(autoOrchestrator.shouldTriggerMultiAiReview(
+    Array.from({ length: 21 }, (_, index) => ({
+      id: `T${index + 1}`,
+      description: `Task ${index + 1}`,
+      domain: 'general',
+      risk: 'low'
+    }))
+  ), true);
+});
+
+runTest('assess-gate: shouldTriggerMultiAiReview returns false for small low-risk non-architecture plans', () => {
+  assert.strictEqual(autoOrchestrator.shouldTriggerMultiAiReview([
+    { id: 'T1', description: 'Update docs', domain: 'docs', risk: 'low' },
+    { id: 'T2', description: 'Add smoke test', domain: 'qa', risk: 'medium' }
+  ]), false);
+});
+
 async function main() {
   for (const test of tests) {
     try {

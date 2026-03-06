@@ -154,6 +154,29 @@ function normalizeTaskSummary(tasks = {}) {
 }
 
 /**
+ * Normalize assessment cache entries keyed by task id.
+ *
+ * @param {object} [cache={}] - Partial assessment cache.
+ * @returns {object} Normalized assessment cache.
+ */
+function normalizeAssessmentCache(cache = {}) {
+  if (!cache || typeof cache !== 'object' || Array.isArray(cache)) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(cache).map(([taskId, entry]) => [
+      String(taskId),
+      {
+        hash: entry && typeof entry.hash === 'string' ? entry.hash : '',
+        verdict: entry && typeof entry.verdict === 'string' ? entry.verdict : '',
+        timestamp: entry && typeof entry.timestamp === 'string' ? entry.timestamp : ''
+      }
+    ])
+  );
+}
+
+/**
  * Normalize the full auto-state payload before persistence.
  *
  * @param {object} state - Partial auto-state payload.
@@ -168,6 +191,13 @@ function normalizeAutoState(state, projectDir = process.cwd()) {
     contract: normalizeContract(state && state.contract ? state.contract : {}),
     budget: normalizeBudget(state && state.budget ? state.budget : {}),
     tasks: normalizeTaskSummary(state && state.tasks ? state.tasks : {}),
+    assessment_cache: normalizeAssessmentCache(state && state.assessment_cache ? state.assessment_cache : {}),
+    assessment_cache_contract_hash: state && typeof state.assessment_cache_contract_hash === 'string'
+      ? state.assessment_cache_contract_hash
+      : '',
+    last_assessment: state && state.last_assessment && typeof state.last_assessment === 'object'
+      ? state.last_assessment
+      : null,
     tasks_md_hash: state && Object.prototype.hasOwnProperty.call(state, 'tasks_md_hash')
       ? state.tasks_md_hash
       : computeFileHash(tasksPath)
@@ -226,7 +256,10 @@ function initAutoState(goal, projectDir = process.cwd()) {
       in_progress: 0,
       failed: 0,
       dynamically_added: 0
-    }
+    },
+    assessment_cache: {},
+    assessment_cache_contract_hash: '',
+    last_assessment: null
   }, projectDir);
 
   return saveAutoState(autoState, projectDir);

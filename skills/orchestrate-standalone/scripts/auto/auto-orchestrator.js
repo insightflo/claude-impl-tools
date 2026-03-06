@@ -17,6 +17,7 @@
 const fs = require('fs');
 const path = require('path');
 const readline = require('readline');
+const crypto = require('crypto');
 const { execSync, spawnSync } = require('child_process');
 
 const {
@@ -75,6 +76,18 @@ function askQuestion(rl, prompt) {
   return new Promise(resolve => {
     rl.question(prompt, answer => resolve(String(answer || '').trim()));
   });
+}
+
+/**
+ * Ask an optional yes/no question with a conservative default of "no".
+ *
+ * @param {readline.Interface} rl - Active readline interface.
+ * @param {string} prompt - Prompt string.
+ * @returns {Promise<boolean>} True only when the user explicitly answers yes.
+ */
+async function askOptionalYesNo(rl, prompt) {
+  const answer = (await askQuestion(rl, prompt)).toLowerCase();
+  return answer === 'y' || answer === 'yes';
 }
 
 /**
@@ -450,6 +463,130 @@ function getTasksPath(projectDir = process.cwd()) {
 }
 
 /**
+ * Return true when the completed scope warrants an optional council review.
+ *
+ * @param {Array<object>} tasks - Parsed task list.
+ * @returns {boolean} Whether a multi-AI review should be suggested.
+ */
+function shouldTriggerMultiAiReview(tasks) {
+  if (!Array.isArray(tasks) || tasks.length === 0) {
+    return false;
+  }
+
+  if (tasks.length > 20) {
+    return true;
+  }
+
+  return tasks.some(task => {
+    const domain = String(task && task.domain ? task.domain : '').toLowerCase();
+    const risk = String(task && task.risk ? task.risk : '').toLowerCase();
+    return domain === 'architecture' || risk === 'critical';
+  });
+}
+
+/**
+ * Resolve the optional multi-AI council entrypoint.
+ *
+ * @returns {string} Absolute script path.
+ */
+function getCouncilScriptPath() {
+  return path.resolve(__dirname, '../../../multi-ai-review/scripts/council.sh');
+}
+
+/**
+ * Build a compact review brief for council.sh.
+ *
+ * @param {Array<object>} tasks - Completed tasks.
+ * @param {object} contract - Approved contract.
+ * @param {object} assessment - Final assessment payload.
+ * @returns {string} Review prompt text.
+ */
+function buildMultiAiReviewSummary(tasks, contract, assessment) {
+  const highlightedTasks = tasks
+    .filter(task => {
+      const domain = String(task && task.domain ? task.domain : '').toLowerCase();
+      const risk = String(task && task.risk ? task.risk : '').toLowerCase();
+      return domain === 'architecture' || risk === 'critical';
+    })
+    .slice(0, 8)
+    .map(task => `- ${task.id}: ${task.description} [domain=${task.domain || 'general'}, risk=${task.risk || 'low'}]`);
+  const taskSummary = tasks
+    .slice(0, 12)
+    .map(task => `- ${task.id}: ${task.description} [domain=${task.domain || 'general'}, risk=${task.risk || 'low'}]`);
+
+  return [
+    'Review this completed orchestrator run.',
+    `Goal: ${contract && contract.goal ? contract.goal : 'N/A'}`,
+    `Verdict: ${assessment && assessment.verdict ? assessment.verdict : 'PASS'}`,
+    `Completion rate: ${assessment && typeof assessment.completion_rate === 'number' ? assessment.completion_rate : 100}%`,
+    `Verify command: ${assessment && assessment.verify && assessment.verify.command ? assessment.verify.command : 'N/A'}`,
+    `Total tasks: ${tasks.length}`,
+    highlightedTasks.length ? 'Architecture / critical tasks:' : '',
+    ...highlightedTasks,
+    'Task summary:',
+    ...taskSummary,
+    tasks.length > taskSummary.length ? `- ...and ${tasks.length - taskSummary.length} more completed tasks.` : '',
+    'Focus on architecture soundness, critical-risk regressions, and missing follow-up work.'
+  ].filter(Boolean).join('\n');
+}
+
+/**
+ * Optionally launch a multi-AI review after Final Gate approval.
+ *
+ * @param {readline.Interface} rl - Active readline interface.
+ * @param {Array<object>} tasks - Planned tasks for the run.
+ * @param {object} contract - Approved contract.
+ * @param {object} assessment - Final assessment.
+ * @param {object} [options={}] - Runtime options.
+ * @param {string} [options.projectDir=process.cwd()] - Project root.
+ */
+async function maybeRunMultiAiReview(rl, tasks, contract, assessment, options = {}) {
+  const {
+    projectDir = process.cwd()
+  } = options;
+
+  if (!shouldTriggerMultiAiReview(tasks)) {
+    return;
+  }
+
+  const councilScript = getCouncilScriptPath();
+  if (!fs.existsSync(councilScript)) {
+    appendEvent('multi_ai_review', {
+      status: 'unavailable',
+      reason: 'council.sh not found'
+    }, projectDir);
+    return;
+  }
+
+  const shouldRun = await askOptionalYesNo(rl, 'Multi-AI review recommended. Run now? [y/N] ');
+  if (!shouldRun) {
+    appendEvent('multi_ai_review', {
+      status: 'skipped'
+    }, projectDir);
+    return;
+  }
+
+  const summary = buildMultiAiReviewSummary(tasks, contract, assessment);
+  const result = spawnSync(councilScript, [summary], {
+    cwd: projectDir,
+    stdio: 'inherit'
+  });
+
+  if (result.error) {
+    appendEvent('multi_ai_review', {
+      status: 'failed',
+      error: result.error.message
+    }, projectDir);
+    return;
+  }
+
+  appendEvent('multi_ai_review', {
+    status: result.status === 0 ? 'completed' : 'failed',
+    exit_code: Number.isInteger(result.status) ? result.status : null
+  }, projectDir);
+}
+
+/**
  * Synchronize current task definitions into bridge state.
  *
  * @param {Array<object>} tasks - Parsed tasks.
@@ -554,6 +691,27 @@ function refreshAutoStateSummary(autoState, tasks, projectDir = process.cwd()) {
   autoState.tasks.in_progress = metrics.in_progress;
   autoState.tasks.failed = metrics.failed;
   return saveAutoState(autoState, projectDir);
+}
+
+/**
+ * Compute a stable hash for a task assessment cache entry.
+ *
+ * MVP behavior uses only task metadata so unchanged tasks can reuse the
+ * previous assessment without re-running verification commands.
+ *
+ * @param {object} task - Parsed task.
+ * @param {string} [projectDir=process.cwd()] - Project root.
+ * @returns {string} Hex-encoded task hash.
+ */
+function computeTaskHash(task, projectDir = process.cwd()) {
+  void projectDir;
+  const payload = JSON.stringify({
+    id: String(task && task.id ? task.id : ''),
+    status: String(task && task.status ? task.status : ''),
+    description: String(task && task.description ? task.description : '')
+  });
+
+  return crypto.createHash('sha256').update(payload).digest('hex');
 }
 
 // ---------------------------------------------------------------------------
@@ -886,6 +1044,17 @@ async function runExecuteStage(layers, goal, contract, autoState, options = {}) 
   } = options;
 
   const allResults = [];
+  const checkpointTag = createGitCheckpoint(
+    Number(autoState && autoState.budget && autoState.budget.current_iteration) + 1,
+    projectDir
+  );
+
+  if (checkpointTag) {
+    appendEvent('execute', {
+      status: 'created',
+      tag: checkpointTag
+    }, projectDir);
+  }
 
   for (let layerIndex = 0; layerIndex < layers.length; layerIndex++) {
     const layer = layers[layerIndex];
@@ -978,16 +1147,168 @@ function runCheckCommand(command, projectDir = process.cwd()) {
 }
 
 /**
+ * Run a git command and return trimmed stdout.
+ *
+ * @param {string} command - Git command to execute.
+ * @param {string} [projectDir=process.cwd()] - Project root.
+ * @returns {string} Trimmed stdout.
+ */
+function runGitCommand(command, projectDir = process.cwd()) {
+  return String(execSync(command, {
+    cwd: projectDir,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    shell: process.platform === 'win32' ? true : '/bin/sh',
+    maxBuffer: 1024 * 1024 * 4
+  }) || '').trim();
+}
+
+/**
+ * Create a lightweight git checkpoint tag for the current working tree state.
+ *
+ * @param {number|string} iterationNum - Current execute iteration number.
+ * @param {string} [projectDir=process.cwd()] - Project root.
+ * @returns {string|null} Checkpoint tag name or null when git is unavailable.
+ */
+function createGitCheckpoint(iterationNum, projectDir = process.cwd()) {
+  const tagName = `auto-checkpoint-${iterationNum}`;
+
+  try {
+    runGitCommand('git rev-parse --is-inside-work-tree', projectDir);
+    runGitCommand('git add -A', projectDir);
+
+    let checkpointRef = runGitCommand(`git stash create ${shellQuote(tagName)}`, projectDir);
+    if (!checkpointRef) {
+      checkpointRef = runGitCommand('git rev-parse HEAD', projectDir);
+    }
+
+    if (!checkpointRef) {
+      return null;
+    }
+
+    runGitCommand(
+      `git tag -f ${shellQuote(tagName)} ${shellQuote(checkpointRef)}`,
+      projectDir
+    );
+
+    return tagName;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Restore tracked files from a previously created checkpoint tag.
+ *
+ * @param {string} tagName - Checkpoint tag name.
+ * @param {string} [projectDir=process.cwd()] - Project root.
+ * @returns {boolean} True when rollback succeeded.
+ */
+function rollbackToCheckpoint(tagName, projectDir = process.cwd()) {
+  if (!tagName) {
+    return false;
+  }
+
+  try {
+    runGitCommand(`git checkout ${shellQuote(tagName)} -- .`, projectDir);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Delete all auto-generated checkpoint tags.
+ *
+ * @param {string} [projectDir=process.cwd()] - Project root.
+ * @returns {Array<string>} Removed checkpoint tag names.
+ */
+function cleanupCheckpoints(projectDir = process.cwd()) {
+  try {
+    runGitCommand('git rev-parse --is-inside-work-tree', projectDir);
+    const output = runGitCommand(`git tag --list ${shellQuote('auto-checkpoint-*')}`, projectDir);
+    const tags = output.split(/\r?\n/).map(tag => tag.trim()).filter(Boolean);
+
+    for (const tag of tags) {
+      runGitCommand(`git tag -d ${shellQuote(tag)}`, projectDir);
+    }
+
+    return tags;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Find the most recent auto-generated checkpoint tag.
+ *
+ * @param {string} [projectDir=process.cwd()] - Project root.
+ * @returns {string|null} Latest checkpoint tag or null when unavailable.
+ */
+function getLatestCheckpointTag(projectDir = process.cwd()) {
+  try {
+    const output = runGitCommand(
+      `git tag --list ${shellQuote('auto-checkpoint-*')} --sort=-version:refname`,
+      projectDir
+    );
+    return output.split(/\r?\n/).map(tag => tag.trim()).find(Boolean) || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Assess stage: verify commands and task completion status.
  *
  * @param {Array<object>} tasks - Current parsed tasks.
  * @param {object} contract - Approved contract.
  * @param {object} [options={}] - Runtime options.
+ * @param {object} [options.autoState] - Current auto-state for cache reuse.
  * @returns {object} Assessment result.
  */
 function runAssessStage(tasks, contract, options = {}) {
-  const { projectDir = process.cwd() } = options;
+  const {
+    projectDir = process.cwd(),
+    autoState = null
+  } = options;
   const metrics = getCurrentTaskMetrics(tasks, projectDir);
+  const timestamp = new Date().toISOString();
+  const contractHash = String(contract && contract.hash ? contract.hash : '');
+  const taskHashes = Object.fromEntries(
+    tasks.map(task => [task.id, computeTaskHash(task, projectDir)])
+  );
+
+  if (autoState) {
+    if (!autoState.assessment_cache || typeof autoState.assessment_cache !== 'object') {
+      autoState.assessment_cache = {};
+    }
+
+    if (autoState.assessment_cache_contract_hash !== contractHash) {
+      autoState.assessment_cache = {};
+      autoState.assessment_cache_contract_hash = contractHash;
+      autoState.last_assessment = null;
+    }
+  }
+
+  const cache = autoState && autoState.assessment_cache ? autoState.assessment_cache : {};
+  const canUseCachedAssessment = tasks.length > 0
+    && tasks.every(task => cache[task.id] && cache[task.id].hash === taskHashes[task.id])
+    && autoState
+    && autoState.last_assessment;
+
+  if (canUseCachedAssessment) {
+    const assessment = {
+      ...autoState.last_assessment,
+      cached: true,
+      cache_timestamp: timestamp,
+      metrics,
+      completion_rate: metrics.percent
+    };
+
+    appendEvent('assess', assessment, projectDir);
+    return assessment;
+  }
+
   const verify = runCheckCommand(contract.verify_cmd, projectDir);
   const extraChecks = (contract.extra_checks || []).map(command => runCheckCommand(command, projectDir));
   const allChecksGreen = verify.ok && extraChecks.every(check => check.ok);
@@ -1004,8 +1325,24 @@ function runAssessStage(tasks, contract, options = {}) {
     verify,
     extra_checks: extraChecks,
     completion_rate: metrics.percent,
-    metrics
+    metrics,
+    cached: false
   };
+
+  if (autoState) {
+    autoState.assessment_cache = Object.fromEntries(
+      tasks.map(task => [
+        task.id,
+        {
+          hash: taskHashes[task.id],
+          verdict,
+          timestamp
+        }
+      ])
+    );
+    autoState.assessment_cache_contract_hash = contractHash;
+    autoState.last_assessment = assessment;
+  }
 
   appendEvent('assess', assessment, projectDir);
   return assessment;
@@ -1096,16 +1433,18 @@ function buildDynamicTasks(assessment) {
  */
 async function runFailureGate(rl, autoState, reason, options = {}) {
   const { projectDir = process.cwd() } = options;
+  const checkpointTag = getLatestCheckpointTag(projectDir);
   appendEvent('budget_check', {
     status: 'exceeded',
     reason,
-    budget: autoState.budget
+    budget: autoState.budget,
+    checkpoint_tag: checkpointTag
   }, projectDir);
 
   return promptGate(
     rl,
     'Failure Gate',
-    `Budget or failure threshold exceeded.\nReason: ${reason}\nBudget: ${JSON.stringify(autoState.budget, null, 2)}\napprove=grant one more loop, reject=abort, modify=grant one more loop with guidance\n`,
+    `Budget or failure threshold exceeded.\nReason: ${reason}\nBudget: ${JSON.stringify(autoState.budget, null, 2)}\nLatest checkpoint: ${checkpointTag || 'none'}\napprove=grant one more loop, reject=abort${checkpointTag ? ' (rollback will be offered)' : ''}, modify=grant one more loop with guidance\n`,
     'Failure gate guidance: '
   );
 }
@@ -1139,11 +1478,31 @@ async function runAdjustStage(assessment, autoState, rl, options = {}, feedback 
 
     const decision = await runFailureGate(rl, autoState, reasons.join(', '), options);
     if (decision.action === 'reject') {
+      const checkpointTag = getLatestCheckpointTag(projectDir);
+      let rolledBack = false;
+
+      if (checkpointTag) {
+        const rollbackAnswer = (await askQuestion(
+          rl,
+          `Rollback tracked files to ${checkpointTag}? [y/N]: `
+        )).toLowerCase();
+
+        if (rollbackAnswer === 'y' || rollbackAnswer === 'yes') {
+          rolledBack = rollbackToCheckpoint(checkpointTag, projectDir);
+          appendEvent('adjust', {
+            status: rolledBack ? 'rolled_back' : 'rollback_failed',
+            tag: checkpointTag
+          }, projectDir);
+        }
+      }
+
       appendEvent('adjust', {
         status: 'aborted',
-        reason: reasons.join(', ')
+        reason: reasons.join(', '),
+        rollback_tag: checkpointTag || null,
+        rolled_back: rolledBack
       }, projectDir);
-      return { outcome: 'abort', autoState, addedTasks: [] };
+      return { outcome: 'abort', autoState, addedTasks: [], rollbackTag: checkpointTag, rolledBack };
     }
 
     autoState.budget.max_iterations += 1;
@@ -1265,7 +1624,10 @@ async function main(goal, options = {}) {
       await runExecuteStage(plan.layers, effectiveGoal, autoState.contract, autoState, normalizedOptions);
       autoState = loadAutoState(normalizedOptions.projectDir) || autoState;
 
-      const assessment = runAssessStage(plan.tasks, autoState.contract, normalizedOptions);
+      const assessment = runAssessStage(plan.tasks, autoState.contract, {
+        ...normalizedOptions,
+        autoState
+      });
       autoState = refreshAutoStateSummary(autoState, plan.tasks, normalizedOptions.projectDir);
 
       if (assessment.verdict === 'PASS') {
@@ -1277,6 +1639,22 @@ async function main(goal, options = {}) {
         );
 
         if (decision.action === 'approve') {
+          await maybeRunMultiAiReview(
+            rl,
+            plan.tasks,
+            autoState.contract,
+            assessment,
+            normalizedOptions
+          );
+
+          const removedCheckpoints = cleanupCheckpoints(normalizedOptions.projectDir);
+          if (removedCheckpoints.length) {
+            appendEvent('adjust', {
+              status: 'cleaned',
+              tags: removedCheckpoints
+            }, normalizedOptions.projectDir);
+          }
+
           return {
             status: 'PASS',
             goal: effectiveGoal,
@@ -1354,10 +1732,14 @@ if (require.main === module) {
 module.exports = {
   main,
   parseCliArgs,
+  shouldTriggerMultiAiReview,
   runDefineStage,
   runDecomposeStage,
   runPlanStage,
   runExecuteStage,
   runAssessStage,
-  runAdjustStage
+  runAdjustStage,
+  createGitCheckpoint,
+  rollbackToCheckpoint,
+  cleanupCheckpoints
 };

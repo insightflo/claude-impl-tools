@@ -34,7 +34,8 @@ const EVENT_TYPES = new Set([
   'task_add',
   'task_complete',
   'task_fail',
-  'budget_check'
+  'budget_check',
+  'multi_ai_review'
 ]);
 
 /**

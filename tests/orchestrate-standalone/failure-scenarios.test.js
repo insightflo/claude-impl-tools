@@ -1,6 +1,7 @@
 'use strict';
 
 const assert = require('assert');
+const { execSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -62,6 +63,24 @@ function createRl(answers) {
     },
     close() {}
   };
+}
+
+function hasGit() {
+  try {
+    execSync('git --version', { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function initGitRepo(projectDir) {
+  execSync('git init', { cwd: projectDir, stdio: 'ignore' });
+  execSync('git config user.name "Test User"', { cwd: projectDir, stdio: 'ignore' });
+  execSync('git config user.email "test@example.com"', { cwd: projectDir, stdio: 'ignore' });
+  fs.writeFileSync(path.join(projectDir, 'README.md'), 'seed\n', 'utf8');
+  execSync('git add README.md', { cwd: projectDir, stdio: 'ignore' });
+  execSync('git commit -m "seed"', { cwd: projectDir, stdio: 'ignore' });
 }
 
 function runTest(name, fn) {
@@ -153,6 +172,69 @@ runTest('2-4b: runAdjustStage detects budget overruns and triggers the failure g
     assert.ok(budgetEvent, 'expected a budget_check event');
     assert.match(budgetEvent.data.reason, /max_iterations exceeded/);
     assert.match(budgetEvent.data.reason, /max_dynamic_tasks exceeded/);
+  });
+});
+
+runTest('2-4b-rollback: runAdjustStage offers rollback to the latest checkpoint on abort', async () => {
+  if (!hasGit()) {
+    return;
+  }
+
+  await withTempDir('orch-failure-', async projectDir => {
+    initGitRepo(projectDir);
+    fs.writeFileSync(path.join(projectDir, 'README.md'), 'checkpoint state\n', 'utf8');
+    const tagName = autoOrchestrator.createGitCheckpoint(1, projectDir);
+
+    assert.strictEqual(tagName, 'auto-checkpoint-1');
+
+    fs.writeFileSync(path.join(projectDir, 'README.md'), 'mutated after checkpoint\n', 'utf8');
+
+    const rl = createRl(['reject', 'yes']);
+    const assessment = {
+      verdict: 'FAIL',
+      metrics: {
+        incompleteTasks: [],
+        failedTasks: []
+      }
+    };
+    const autoState = engineAdapter.saveAutoState({
+      contract: {
+        goal: 'Rollback offer reproduction',
+        acceptance_criteria: [],
+        constraints: [],
+        quality_bar: [],
+        verify_cmd: 'true',
+        extra_checks: []
+      },
+      budget: {
+        max_iterations: 1,
+        current_iteration: 1,
+        max_dynamic_tasks: 0,
+        dynamic_tasks_added: 0,
+        max_estimated_tokens: 0,
+        estimated_tokens_used: 0
+      },
+      tasks: {
+        total: 0,
+        completed: 0,
+        in_progress: 0,
+        failed: 0,
+        dynamically_added: 0
+      }
+    }, projectDir);
+
+    const result = await autoOrchestrator.runAdjustStage(assessment, autoState, rl, { projectDir });
+    const fileContent = fs.readFileSync(path.join(projectDir, 'README.md'), 'utf8');
+    const events = eventLog.readEvents(projectDir);
+    const rollbackEvent = events.find(
+      event => event.type === 'adjust' && event.data && event.data.status === 'rolled_back'
+    );
+
+    assert.strictEqual(result.outcome, 'abort');
+    assert.strictEqual(result.rollbackTag, 'auto-checkpoint-1');
+    assert.strictEqual(result.rolledBack, true);
+    assert.strictEqual(fileContent, 'checkpoint state\n');
+    assert.ok(rollbackEvent, 'expected a checkpoint rollback event');
   });
 });
 
@@ -262,6 +344,53 @@ runTest('2-4e: appendDynamicTasks appends AUTO-N tasks with stable numbering', (
     assert.match(fileContent, /## Auto Adjustments/);
     assert.match(fileContent, /AUTO-3: Fill in missing API regression coverage/);
     assert.match(fileContent, /AUTO-4: Document the new recovery path/);
+  });
+});
+
+runTest('2-4f: checkpoint helpers create, restore, and clean up git checkpoints', () => {
+  if (!hasGit()) {
+    return;
+  }
+
+  return withTempDir('orch-failure-', projectDir => {
+    initGitRepo(projectDir);
+
+    const trackedFile = path.join(projectDir, 'README.md');
+    fs.writeFileSync(trackedFile, 'first checkpoint\n', 'utf8');
+
+    const firstTag = autoOrchestrator.createGitCheckpoint(1, projectDir);
+    assert.strictEqual(firstTag, 'auto-checkpoint-1');
+
+    fs.writeFileSync(trackedFile, 'second checkpoint\n', 'utf8');
+    const secondTag = autoOrchestrator.createGitCheckpoint(2, projectDir);
+    assert.strictEqual(secondTag, 'auto-checkpoint-2');
+
+    fs.writeFileSync(trackedFile, 'after checkpoints\n', 'utf8');
+    assert.strictEqual(autoOrchestrator.rollbackToCheckpoint(firstTag, projectDir), true);
+    assert.strictEqual(fs.readFileSync(trackedFile, 'utf8'), 'first checkpoint\n');
+
+    const removed = autoOrchestrator.cleanupCheckpoints(projectDir);
+    const remainingTags = execSync('git tag --list "auto-checkpoint-*"', {
+      cwd: projectDir,
+      encoding: 'utf8'
+    }).trim();
+
+    assert.deepStrictEqual(removed.sort(), ['auto-checkpoint-1', 'auto-checkpoint-2']);
+    assert.strictEqual(remainingTags, '');
+  });
+});
+
+runTest('2-4g: event log accepts multi_ai_review events for optional council runs', () => {
+  return withTempDir('orch-failure-', projectDir => {
+    eventLog.appendEvent('multi_ai_review', {
+      status: 'completed',
+      exit_code: 0
+    }, projectDir);
+
+    const events = eventLog.readEvents(projectDir);
+    assert.strictEqual(events.length, 1);
+    assert.strictEqual(events[0].type, 'multi_ai_review');
+    assert.strictEqual(events[0].data.status, 'completed');
   });
 });
 
