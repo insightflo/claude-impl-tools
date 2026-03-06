@@ -331,39 +331,42 @@ while [ $CURRENT_LAYER -lt $TOTAL_LAYERS ]; do
 
     # Pre-dispatch gate
     log_info "Running pre-dispatch gate..."
-    for task in $(echo "$LAYER_TASKS" | "$NODE_CMD" -pe "JSON.parse(require('fs').readFileSync(0, 'utf8')).map(t => t.id).join(' ')"); do
-        GATE_RESULT=$("$NODE_CMD" "$SCRIPT_DIR/engine/gate-chain.js" pre-dispatch "$(echo "$LAYER_TASKS" | "$NODE_CMD" -pe "JSON.parse(require('fs').readFileSync(0, 'utf8')).find(t => t.id === '$task')")" 2>&1)
+    while IFS= read -r taskJson; do
+        taskId=$("$NODE_CMD" -pe "JSON.parse(process.argv[1]).id" "$taskJson")
+        GATE_RESULT=$("$NODE_CMD" "$SCRIPT_DIR/engine/gate-chain.js" pre-dispatch "$taskJson" 2>&1)
         GATE_PASSED=$(echo "$GATE_RESULT" | "$NODE_CMD" -pe "JSON.parse(require('fs').readFileSync(0, 'utf8')).passed")
 
         if [ "$GATE_PASSED" != "true" ]; then
-            log_error "Pre-dispatch gate failed for task: $task"
+            log_error "Pre-dispatch gate failed for task: $taskId"
             echo "$GATE_RESULT"
             exit 1
         fi
-    done
+    done < <(echo "$LAYER_TASKS" | "$NODE_CMD" -e "JSON.parse(require('fs').readFileSync(0,'utf8')).forEach(t=>console.log(JSON.stringify(t)))")
 
     # Execute tasks in this layer (parallel)
     log_info "Executing $TASK_COUNT tasks with $WORKER_COUNT workers..."
     # TODO: Implement parallel execution using worker.js
     # For now, sequential execution as placeholder
-    for task in $(echo "$LAYER_TASKS" | "$NODE_CMD" -pe "JSON.parse(require('fs').readFileSync(0, 'utf8')).map(t => t.id).join(' ')"); do
-        log_info "  → $task"
-        "$NODE_CMD" "$SCRIPT_DIR/engine/worker.js" "$task" "$MODE" &>/dev/null &
-    done
+    while IFS= read -r taskJson; do
+        taskId=$("$NODE_CMD" -pe "JSON.parse(process.argv[1]).id" "$taskJson")
+        log_info "  → $taskId"
+        "$NODE_CMD" "$SCRIPT_DIR/engine/worker.js" "$taskJson" "$PROJECT_DIR" &>/dev/null &
+    done < <(echo "$LAYER_TASKS" | "$NODE_CMD" -e "JSON.parse(require('fs').readFileSync(0,'utf8')).forEach(t=>console.log(JSON.stringify(t)))")
 
     # Wait for all tasks in this layer
     wait
 
     # Post-task gate
     log_info "Running post-task gate..."
-    for task in $(echo "$LAYER_TASKS" | "$NODE_CMD" -pe "JSON.parse(require('fs').readFileSync(0, 'utf8')).map(t => t.id).join(' ')"); do
-        GATE_RESULT=$("$NODE_CMD" "$SCRIPT_DIR/engine/gate-chain.js" post-task "$(echo "$LAYER_TASKS" | "$NODE_CMD" -pe "JSON.parse(require('fs').readFileSync(0, 'utf8')).find(t => t.id === '$task')")" 2>&1)
+    while IFS= read -r taskJson; do
+        taskId=$("$NODE_CMD" -pe "JSON.parse(process.argv[1]).id" "$taskJson")
+        GATE_RESULT=$("$NODE_CMD" "$SCRIPT_DIR/engine/gate-chain.js" post-task "$taskJson" 2>&1)
         GATE_PASSED=$(echo "$GATE_RESULT" | "$NODE_CMD" -pe "JSON.parse(require('fs').readFileSync(0, 'utf8')).passed")
 
         if [ "$GATE_PASSED" != "true" ]; then
-            log_warn "Post-task gate warning for: $task"
+            log_warn "Post-task gate warning for: $taskId"
         fi
-    done
+    done < <(echo "$LAYER_TASKS" | "$NODE_CMD" -e "JSON.parse(require('fs').readFileSync(0,'utf8')).forEach(t=>console.log(JSON.stringify(t)))")
 
     # Barrier gate after layer
     log_info "Running barrier gate..."
