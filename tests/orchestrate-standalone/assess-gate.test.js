@@ -43,11 +43,23 @@ function stripIndent(content) {
 
 function withTempDir(prefix, fn) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  let result;
+
   try {
-    return fn(dir);
-  } finally {
+    result = fn(dir);
+  } catch (error) {
     fs.rmSync(dir, { recursive: true, force: true });
+    throw error;
   }
+
+  if (result && typeof result.then === 'function') {
+    return result.finally(() => {
+      fs.rmSync(dir, { recursive: true, force: true });
+    });
+  }
+
+  fs.rmSync(dir, { recursive: true, force: true });
+  return result;
 }
 
 function writeTasksFile(projectDir, content) {
@@ -71,8 +83,8 @@ function runTest(name, fn) {
   tests.push({ name, fn });
 }
 
-runTest('assess-gate: runAssessStage returns PASS when verify_cmd succeeds and all tasks are complete', () => {
-  withTempDir('orch-assess-', projectDir => {
+runTest('assess-gate: runAssessStage returns PASS when verify_cmd succeeds and all tasks are complete', async () => {
+  await withTempDir('orch-assess-', async projectDir => {
     const tasks = parseTasks(writeTasksFile(projectDir, `
       - [ ] T1: Prepare feature baseline
         - deps: []
@@ -97,7 +109,7 @@ runTest('assess-gate: runAssessStage returns PASS when verify_cmd succeeds and a
       ]
     }, projectDir);
 
-    const assessment = autoOrchestrator.runAssessStage(
+    const assessment = await autoOrchestrator.runAssessStage(
       tasks,
       createContract('node -e "process.exit(0)"'),
       { projectDir }
@@ -110,8 +122,8 @@ runTest('assess-gate: runAssessStage returns PASS when verify_cmd succeeds and a
   });
 });
 
-runTest('assess-gate: runAssessStage returns FAIL when verify_cmd fails', () => {
-  withTempDir('orch-assess-', projectDir => {
+runTest('assess-gate: runAssessStage returns FAIL when verify_cmd fails', async () => {
+  await withTempDir('orch-assess-', async projectDir => {
     const tasks = parseTasks(writeTasksFile(projectDir, `
       - [ ] T1: Prepare feature baseline
         - deps: []
@@ -136,7 +148,7 @@ runTest('assess-gate: runAssessStage returns FAIL when verify_cmd fails', () => 
       ]
     }, projectDir);
 
-    const assessment = autoOrchestrator.runAssessStage(
+    const assessment = await autoOrchestrator.runAssessStage(
       tasks,
       createContract('node -e "process.exit(1)"'),
       { projectDir }
@@ -148,8 +160,8 @@ runTest('assess-gate: runAssessStage returns FAIL when verify_cmd fails', () => 
   });
 });
 
-runTest('assess-gate: runAssessStage returns GAPS when verify_cmd passes but tasks remain incomplete', () => {
-  withTempDir('orch-assess-', projectDir => {
+runTest('assess-gate: runAssessStage returns GAPS when verify_cmd passes but tasks remain incomplete', async () => {
+  await withTempDir('orch-assess-', async projectDir => {
     const tasks = parseTasks(writeTasksFile(projectDir, `
       - [ ] T1: Prepare feature baseline
         - deps: []
@@ -179,7 +191,7 @@ runTest('assess-gate: runAssessStage returns GAPS when verify_cmd passes but tas
     }, projectDir);
 
     const metrics = autoOrchestrator.__test.getCurrentTaskMetrics(tasks, projectDir);
-    const assessment = autoOrchestrator.runAssessStage(
+    const assessment = await autoOrchestrator.runAssessStage(
       tasks,
       createContract('node -e "process.exit(0)"'),
       { projectDir }
@@ -190,6 +202,47 @@ runTest('assess-gate: runAssessStage returns GAPS when verify_cmd passes but tas
     assert.deepStrictEqual(metrics.incompleteTasks.map(task => task.id), ['T2', 'T3']);
     assert.strictEqual(assessment.verdict, 'GAPS');
     assert.strictEqual(assessment.verify.ok, true);
+  });
+});
+
+runTest('assess-gate: runAssessStage runs verify_cmd and extra_checks in parallel', async () => {
+  await withTempDir('orch-assess-', async projectDir => {
+    const tasks = parseTasks(writeTasksFile(projectDir, `
+      - [ ] T1: Prepare feature baseline
+        - deps: []
+        - domain: infra
+        - files: src/setup.js
+    `));
+
+    state.saveState({
+      version: '1.0.0',
+      started_at: '2026-03-06T00:00:00.000Z',
+      current_layer: 1,
+      total_layers: 1,
+      mode: 'auto',
+      tasks: [
+        { id: 'T1', status: 'completed' }
+      ]
+    }, projectDir);
+
+    const contract = createContract('node -e "setTimeout(() => process.exit(0), 500)"');
+    contract.extra_checks = [
+      'node -e "setTimeout(() => process.exit(0), 500)"',
+      'node -e "setTimeout(() => process.exit(0), 500)"'
+    ];
+
+    const startedAt = Date.now();
+    const assessment = await autoOrchestrator.runAssessStage(tasks, contract, { projectDir });
+    const elapsedMs = Date.now() - startedAt;
+
+    assert.strictEqual(assessment.verdict, 'PASS');
+    assert.strictEqual(assessment.verify.ok, true);
+    assert.strictEqual(assessment.extra_checks.length, 2);
+    assert.strictEqual(assessment.extra_checks.every(check => check.ok), true);
+    assert.ok(
+      elapsedMs < 1200,
+      `expected parallel checks to finish in under 1200ms, got ${elapsedMs}ms`
+    );
   });
 });
 

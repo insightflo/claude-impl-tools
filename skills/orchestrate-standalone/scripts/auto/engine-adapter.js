@@ -207,6 +207,66 @@ function normalizeAutoState(state, projectDir = process.cwd()) {
 }
 
 /**
+ * Estimate task complexity on a bounded 1-5 scale.
+ *
+ * @param {object} [task={}] - Task payload.
+ * @returns {number} Estimated complexity from 1 to 5.
+ */
+function estimateComplexity(task = {}) {
+  const description = typeof task.description === 'string' ? task.description : '';
+  const descriptionLength = description.length;
+  const baseFromDescription = descriptionLength < 30
+    ? 1
+    : descriptionLength < 80
+      ? 2
+      : descriptionLength < 150
+        ? 3
+        : descriptionLength < 300
+          ? 4
+          : 5;
+
+  const deps = Array.isArray(task.deps) ? task.deps : [];
+  const depBonus = deps.length === 0 ? 0 : deps.length <= 2 ? 1 : 2;
+
+  const files = Array.isArray(task.files) ? task.files : [];
+  const fileBonus = files.length <= 1 ? 0 : files.length <= 3 ? 1 : 2;
+
+  const riskLevel = typeof task.risk === 'string' ? task.risk.toLowerCase() : '';
+  const riskBonus = riskLevel === 'critical'
+    ? 3
+    : riskLevel === 'high'
+      ? 2
+      : riskLevel === 'medium'
+        ? 1
+        : 0;
+
+  const domainConflictBonus = task.domain ? 1 : 0;
+  const rawScore = baseFromDescription + depBonus + fileBonus + riskBonus + domainConflictBonus;
+
+  return Math.max(1, Math.min(5, rawScore));
+}
+
+/**
+ * Estimate aggregate complexity metrics for a layer.
+ *
+ * @param {object[]} [layer=[]] - Tasks in the layer.
+ * @returns {object} Layer complexity summary.
+ */
+function estimateLayerComplexity(layer = []) {
+  const tasks = Array.isArray(layer) ? layer : [];
+  const complexities = tasks.map(task => estimateComplexity(task));
+  const total = complexities.reduce((sum, complexity) => sum + complexity, 0);
+  const max = complexities.length > 0 ? Math.max(...complexities) : 0;
+
+  return {
+    total,
+    average: complexities.length > 0 ? total / complexities.length : 0,
+    max,
+    estimated_parallelism: Math.ceil(tasks.length / Math.max(1, max))
+  };
+}
+
+/**
  * Compute the contract hash from the mutable contract fields only.
  *
  * @param {object} [contract={}] - Contract payload.
@@ -352,6 +412,8 @@ module.exports = {
   initAutoState,
   loadAutoState,
   saveAutoState,
+  estimateComplexity,
+  estimateLayerComplexity,
   computeContractHash,
   writeBridge
 };

@@ -18,7 +18,7 @@ const fs = require('fs');
 const path = require('path');
 const readline = require('readline');
 const crypto = require('crypto');
-const { execSync, spawnSync } = require('child_process');
+const { exec, execSync, spawnSync } = require('child_process');
 
 const {
   parseTasks,
@@ -34,6 +34,10 @@ const {
   appendEvent,
   readEvents
 } = require('./event-log');
+const {
+  syncToLinear,
+  isLinearSyncAvailable
+} = require('./linear-sync');
 
 const { executeLayer } = require('../engine/worker');
 
@@ -587,6 +591,51 @@ async function maybeRunMultiAiReview(rl, tasks, contract, assessment, options = 
 }
 
 /**
+ * Optionally sync the current auto-state to Linear without affecting orchestration.
+ *
+ * @param {object} autoState - Current auto-state.
+ * @param {object} [options={}] - Runtime options.
+ * @param {string} [options.projectDir=process.cwd()] - Project root.
+ * @returns {{ synced: boolean, reason?: string, error?: string }} Sync result.
+ */
+function maybeSyncLinearProgress(autoState, options = {}) {
+  const {
+    projectDir = process.cwd()
+  } = options;
+
+  if (!isLinearSyncAvailable(projectDir)) {
+    return {
+      synced: false,
+      reason: 'linear-sync not available'
+    };
+  }
+
+  const result = syncToLinear(autoState, projectDir);
+  const detail = result.error || result.reason || null;
+  const syncStatus = result.synced ? 'completed' : (result.reason ? 'skipped' : 'failed');
+
+  appendEvent('linear_sync', {
+    status: syncStatus,
+    synced: result.synced,
+    detail,
+    iteration: Number(autoState && autoState.budget && autoState.budget.current_iteration) || 0,
+    verdict: autoState && autoState.last_assessment
+      ? autoState.last_assessment.verdict || null
+      : null
+  }, projectDir);
+
+  if (result.synced) {
+    process.stdout.write('Linear sync completed.\n');
+  } else if (result.reason) {
+    process.stdout.write(`Linear sync skipped: ${detail}\n`);
+  } else {
+    process.stdout.write(`Linear sync failed: ${detail || 'unknown error'}\n`);
+  }
+
+  return result;
+}
+
+/**
  * Synchronize current task definitions into bridge state.
  *
  * @param {Array<object>} tasks - Parsed tasks.
@@ -691,6 +740,94 @@ function refreshAutoStateSummary(autoState, tasks, projectDir = process.cwd()) {
   autoState.tasks.in_progress = metrics.in_progress;
   autoState.tasks.failed = metrics.failed;
   return saveAutoState(autoState, projectDir);
+}
+
+/**
+ * Get the learnings JSONL path for a project.
+ *
+ * @param {string} [projectDir=process.cwd()] - Project root.
+ * @returns {string} Absolute learnings.jsonl path.
+ */
+function getLearningsPath(projectDir = process.cwd()) {
+  return path.join(projectDir, '.claude/orchestrate/learnings.jsonl');
+}
+
+/**
+ * Append a cross-session learning entry for the current assessment.
+ *
+ * @param {object|null} autoState - Current auto-state.
+ * @param {object} assessment - Assessment result.
+ * @param {string} [projectDir=process.cwd()] - Project root.
+ * @returns {object} Persisted learning entry.
+ */
+function saveLearning(autoState, assessment, projectDir = process.cwd()) {
+  const learningsPath = getLearningsPath(projectDir);
+  const learningsDir = path.dirname(learningsPath);
+  const entry = {
+    ts: new Date().toISOString(),
+    session_id: autoState && autoState.session_id ? autoState.session_id : null,
+    goal: autoState && autoState.contract && autoState.contract.goal ? autoState.contract.goal : '',
+    iteration: autoState && autoState.budget ? autoState.budget.current_iteration : null,
+    tasks_total: autoState && autoState.tasks ? autoState.tasks.total : 0,
+    tasks_completed: autoState && autoState.tasks ? autoState.tasks.completed : 0,
+    tasks_failed: autoState && autoState.tasks ? autoState.tasks.failed : 0,
+    verdict: assessment && assessment.verdict ? assessment.verdict : 'GAPS',
+    duration_estimate: null
+  };
+
+  fs.mkdirSync(learningsDir, { recursive: true });
+  fs.appendFileSync(learningsPath, `${JSON.stringify(entry)}\n`, 'utf8');
+  return entry;
+}
+
+/**
+ * Load persisted learning entries from the project JSONL store.
+ *
+ * @param {string} [projectDir=process.cwd()] - Project root.
+ * @returns {Array<object>} Parsed learning entries.
+ */
+function loadLearnings(projectDir = process.cwd()) {
+  const learningsPath = getLearningsPath(projectDir);
+  if (!fs.existsSync(learningsPath)) {
+    return [];
+  }
+
+  return fs.readFileSync(learningsPath, 'utf8')
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean)
+    .map(line => JSON.parse(line));
+}
+
+/**
+ * Summarize persisted cross-session learning data.
+ *
+ * @param {string} [projectDir=process.cwd()] - Project root.
+ * @returns {{ total_sessions: number, avg_completion_rate: number, common_failure_patterns: Array<string> }} Learning summary.
+ */
+function getLearningsSummary(projectDir = process.cwd()) {
+  const learnings = loadLearnings(projectDir);
+  const totalSessions = learnings.length;
+  const avgCompletionRate = totalSessions > 0
+    ? learnings.reduce((sum, learning) => {
+      const total = Number(learning && learning.tasks_total);
+      const completed = Number(learning && learning.tasks_completed);
+      if (!Number.isFinite(total) || total <= 0 || !Number.isFinite(completed)) {
+        return sum;
+      }
+
+      return sum + (completed / total);
+    }, 0) / totalSessions
+    : 0;
+
+  return {
+    total_sessions: totalSessions,
+    avg_completion_rate: avgCompletionRate,
+    common_failure_patterns: learnings
+      .filter(learning => learning && learning.verdict === 'FAIL')
+      .map(learning => learning.goal)
+      .filter(Boolean)
+  };
 }
 
 /**
@@ -1116,34 +1253,62 @@ async function runExecuteStage(layers, goal, contract, autoState, options = {}) 
 }
 
 /**
- * Run a single shell command and capture success/failure.
+ * Run a single shell check command asynchronously.
  *
- * @param {string} command - Shell command.
+ * @param {string} cmd - Shell command.
  * @param {string} [projectDir=process.cwd()] - Project root.
- * @returns {{ command: string, ok: boolean, output?: string, error?: string }} Result.
+ * @returns {Promise<{ cmd: string, success: boolean, output: string }>} Result.
  */
-function runCheckCommand(command, projectDir = process.cwd()) {
-  try {
-    const output = execSync(command, {
+function runCheckParallel(cmd, projectDir = process.cwd()) {
+  return new Promise((resolve, reject) => {
+    exec(cmd, {
       cwd: projectDir,
       encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
       shell: process.platform === 'win32' ? true : '/bin/sh',
       maxBuffer: 1024 * 1024 * 4
-    });
+    }, (error, stdout, stderr) => {
+      if (error) {
+        const failure = new Error(
+          String(stderr || stdout || error.message || '').trim()
+        );
+        failure.cmd = cmd;
+        failure.output = String(stderr || stdout || error.message || '').trim();
+        failure.code = error.code;
+        reject(failure);
+        return;
+      }
 
+      resolve({
+        cmd,
+        success: true,
+        output: String(stdout || '').trim()
+      });
+    });
+  });
+}
+
+/**
+ * Normalize a settled check result into the assess-stage result shape.
+ *
+ * @param {PromiseSettledResult<{ cmd: string, success: boolean, output: string }>} settled - Settled check result.
+ * @param {string} command - Original shell command.
+ * @returns {{ command: string, ok: boolean, output?: string, error?: string }} Result.
+ */
+function formatSettledCheckResult(settled, command) {
+  if (settled.status === 'fulfilled') {
     return {
       command,
-      ok: true,
-      output: String(output || '').trim()
-    };
-  } catch (error) {
-    return {
-      command,
-      ok: false,
-      error: String(error.stderr || error.stdout || error.message || '').trim()
+      ok: Boolean(settled.value && settled.value.success),
+      output: String(settled.value && settled.value.output ? settled.value.output : '').trim()
     };
   }
+
+  const reason = settled.reason || {};
+  return {
+    command,
+    ok: false,
+    error: String(reason.output || reason.message || '').trim()
+  };
 }
 
 /**
@@ -1264,9 +1429,9 @@ function getLatestCheckpointTag(projectDir = process.cwd()) {
  * @param {object} contract - Approved contract.
  * @param {object} [options={}] - Runtime options.
  * @param {object} [options.autoState] - Current auto-state for cache reuse.
- * @returns {object} Assessment result.
+ * @returns {Promise<object>} Assessment result.
  */
-function runAssessStage(tasks, contract, options = {}) {
+async function runAssessStage(tasks, contract, options = {}) {
   const {
     projectDir = process.cwd(),
     autoState = null
@@ -1306,11 +1471,18 @@ function runAssessStage(tasks, contract, options = {}) {
     };
 
     appendEvent('assess', assessment, projectDir);
+    saveLearning(autoState, assessment, projectDir);
     return assessment;
   }
 
-  const verify = runCheckCommand(contract.verify_cmd, projectDir);
-  const extraChecks = (contract.extra_checks || []).map(command => runCheckCommand(command, projectDir));
+  const checkCommands = [contract.verify_cmd, ...(contract.extra_checks || [])];
+  const settledChecks = await Promise.allSettled(
+    checkCommands.map(command => runCheckParallel(command, projectDir))
+  );
+  const verify = formatSettledCheckResult(settledChecks[0], contract.verify_cmd);
+  const extraChecks = (contract.extra_checks || []).map((command, index) =>
+    formatSettledCheckResult(settledChecks[index + 1], command)
+  );
   const allChecksGreen = verify.ok && extraChecks.every(check => check.ok);
 
   let verdict = 'PASS';
@@ -1345,6 +1517,7 @@ function runAssessStage(tasks, contract, options = {}) {
   }
 
   appendEvent('assess', assessment, projectDir);
+  saveLearning(autoState, assessment, projectDir);
   return assessment;
 }
 
@@ -1624,7 +1797,7 @@ async function main(goal, options = {}) {
       await runExecuteStage(plan.layers, effectiveGoal, autoState.contract, autoState, normalizedOptions);
       autoState = loadAutoState(normalizedOptions.projectDir) || autoState;
 
-      const assessment = runAssessStage(plan.tasks, autoState.contract, {
+      const assessment = await runAssessStage(plan.tasks, autoState.contract, {
         ...normalizedOptions,
         autoState
       });
@@ -1655,6 +1828,8 @@ async function main(goal, options = {}) {
             }, normalizedOptions.projectDir);
           }
 
+          maybeSyncLinearProgress(autoState, normalizedOptions);
+
           return {
             status: 'PASS',
             goal: effectiveGoal,
@@ -1667,6 +1842,8 @@ async function main(goal, options = {}) {
           ...assessment,
           verdict: 'GAPS'
         };
+        autoState.last_assessment = finalAssessment;
+        autoState = saveAutoState(autoState, normalizedOptions.projectDir);
 
         const adjustResult = await runAdjustStage(
           finalAssessment,
@@ -1677,6 +1854,7 @@ async function main(goal, options = {}) {
         );
 
         if (adjustResult.outcome === 'abort') {
+          maybeSyncLinearProgress(autoState, normalizedOptions);
           return {
             status: 'ABORTED',
             goal: effectiveGoal,
@@ -1686,11 +1864,13 @@ async function main(goal, options = {}) {
         }
 
         autoState = adjustResult.autoState;
+        maybeSyncLinearProgress(autoState, normalizedOptions);
         continue;
       }
 
       const adjustResult = await runAdjustStage(assessment, autoState, rl, normalizedOptions);
       if (adjustResult.outcome === 'abort') {
+        maybeSyncLinearProgress(autoState, normalizedOptions);
         return {
           status: 'ABORTED',
           goal: effectiveGoal,
@@ -1700,6 +1880,7 @@ async function main(goal, options = {}) {
       }
 
       autoState = adjustResult.autoState;
+      maybeSyncLinearProgress(autoState, normalizedOptions);
     }
   } finally {
     if (process.cwd() !== originalCwd) {
@@ -1739,6 +1920,9 @@ module.exports = {
   runExecuteStage,
   runAssessStage,
   runAdjustStage,
+  saveLearning,
+  loadLearnings,
+  getLearningsSummary,
   createGitCheckpoint,
   rollbackToCheckpoint,
   cleanupCheckpoints
