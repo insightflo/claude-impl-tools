@@ -2,7 +2,7 @@
 name: multi-ai-review
 description: Claude + Gemini CLI + Codex CLI 멀티-AI 리뷰. 3단계 파이프라인으로 Initial Opinions → Cross-Review → Chairman Synthesis 수행. CLI 방식으로 추가 API 비용 없이 실행.
 trigger: "council 소집", "여러 AI 의견 물어봐", "심층 리뷰", "컨센서스 리뷰"
-version: 3.2.0
+version: 3.3.0
 updated: 2026-03-07
 ---
 
@@ -16,6 +16,7 @@ updated: 2026-03-07
 > **3-Stage Pipeline**: Initial Opinions (병렬) → Cross-Review (반박) → Chairman Synthesis (종합)
 > **비용**: CLI 구독 플랜만으로 실행 (추가 API 비용 없음)
 
+> **v3.3.0**: Chairman Protocol - 미해결 쟁점 시 추가 Cross-Review 라운드 자동 판단
 > **v3.2.0**: Cross-Review 자동화 - Stage 2에서 멤버 간 상호 비평 자동 실행
 > **v3.1.0**: Long Context 최적화 - H2O 패턴으로 핵심 정보 상단 배치
 > **v3.0.0**: MCP 의존성 제거, agent-council 패턴 적용, CLI 직접 호출
@@ -149,6 +150,64 @@ council:
 3. **병렬 실행**: 각 멤버에게 동시에 리뷰 요청
 4. **결과 수집**: 응답을 포맷팅하여 표시
 5. **의장 종합**: Claude가 최종 판정 및 리포트 생성
+
+---
+
+## 🎯 Chairman Protocol (Stage 3 — 필수 준수)
+
+Stage 1 + Stage 2 결과를 받은 후, **Chairman(Claude)은 다음 프로토콜을 따른다:**
+
+### Step 1: 합의 평가
+Cross-Review 결과를 분석하여 다음을 판단:
+- **합의 도달**: 멤버들이 대체로 동의하거나, 이견이 있어도 명확히 정리됨
+- **미해결 쟁점**: 핵심 이슈에 대해 상반된 의견이 충돌하며 추가 논의 필요
+
+### Step 2: 추가 라운드 결정
+```
+IF 미해결 쟁점 존재 AND 추가 논의가 가치 있음:
+    → 추가 Cross-Review 실행 (최대 2회까지)
+    → 쟁점을 명확히 한 focused question으로 재질의
+ELSE:
+    → 최종 종합으로 진행
+```
+
+### Step 3: 추가 Cross-Review 실행 (필요시)
+```bash
+# JOB_DIR은 이전 Stage의 디렉토리
+./skills/multi-ai-review/scripts/council.sh cross-review "$JOB_DIR"
+```
+
+**Focused Question 예시:**
+> "A는 X 접근법을, B는 Y 접근법을 주장합니다. 각각의 trade-off를 구체적으로 비교하고, 프로덕션 환경에서 어떤 것이 더 적합한지 근거를 제시하세요."
+
+### Step 4: 최종 종합
+모든 라운드 완료 후, 다음 형식으로 **한국어**로 종합:
+
+```markdown
+## 🏛️ Chairman's Synthesis
+
+### 핵심 결론
+[1-2문장 요약]
+
+### 합의 사항
+- [멤버들이 동의한 포인트들]
+
+### 이견 및 해소
+- [쟁점] → [Chairman 판단 + 근거]
+
+### 권고 사항
+1. [우선순위 높은 액션]
+2. [추가 고려사항]
+
+### 리뷰 메타
+- Rounds: [Stage 1 + Cross-Review 횟수]
+- Consensus Level: [Strong/Moderate/Divergent]
+```
+
+### 제약 조건
+- **최대 라운드**: Cross-Review는 최대 3회 (Stage 2 + 추가 2회)
+- **추가 라운드 기준**: 단순 의견 차이가 아닌, 결정에 영향을 주는 핵심 쟁점만
+- **무한 루프 방지**: 3회 후에도 미해결이면 "의견 분분" 으로 정리하고 Chairman 판단 제시
 
 ## 파일 구조
 
