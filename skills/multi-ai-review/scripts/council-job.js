@@ -813,26 +813,26 @@ function cmdCrossReview(options, jobDir) {
 
     const othersOpinions = memberNames
       .filter(m => m !== reviewer)
-      .map(m => `### ${m}의 의견:\n${stage1Results[m]}`)
+      .map(m => `### ${m}'s opinion:\n${stage1Results[m]}`)
       .join('\n\n');
 
-    const crossPrompt = `# Cross-Review 요청
+    const crossPrompt = `# Cross-Review Request
 
-당신은 "${reviewer}"입니다. 다른 AI들의 리뷰 의견을 검토하고 반박하거나 동의하세요.
+You are "${reviewer}". Review the other AIs' opinions and provide your critique.
 
-## 원본 리뷰 요청:
+## Original Review Request:
 ${originalPrompt}
 
-## 다른 AI들의 Stage 1 의견:
+## Other AIs' Stage 1 Opinions:
 ${othersOpinions}
 
-## Cross-Review 과제:
-1. 각 의견의 강점과 약점을 분석
-2. 동의/반박 명확히
-3. 추가 통찰 제시
-4. 핵심 1-3가지 요약
+## Cross-Review Tasks:
+1. Analyze strengths and weaknesses of each opinion
+2. Clearly state agreements/disagreements
+3. Provide additional insights
+4. Summarize 1-3 key takeaways
 
-**반드시 한국어로 답변하세요.**`;
+**Respond in English.**`;
 
     crossReviewTasks.push({ reviewer, config: reviewerConfig, prompt: crossPrompt });
   }
