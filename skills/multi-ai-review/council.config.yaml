@@ -13,7 +13,7 @@ council:
           color: "GREEN"
 
         - name: codex
-          command: "codex exec"
+          command: "codex exec --skip-git-repo-check"
           emoji: "🤖"
           color: "BLUE"
 
