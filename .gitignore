@@ -9,6 +9,9 @@
 # Skills 로컬 설정 (별도 배포)
 .claude/
 
+# Opencode 설정 (임시)
+.sisyphus
+
 # 로컬 프로젝트 지침 (프로젝트별 설정)
 CLAUDE.md
 
