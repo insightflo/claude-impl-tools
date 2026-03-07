@@ -22,6 +22,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const childProcess = require('child_process');
 
 // Status messages go to stderr; stdout is reserved for JSON output
 function log(msg) {
@@ -87,6 +88,7 @@ See: project-team/references/communication-protocol.md
 `;
 
 const SUBDIRS = ['contracts', 'requests', 'decisions', 'locks', 'archive'];
+const REQUIRED_FILES = ['board-state.json', 'events.ndjson'];
 
 function parseArgs() {
   const args = process.argv.slice(2);
@@ -105,7 +107,9 @@ function parseArgs() {
 
 function isInitialized(collabDir) {
   if (!fs.existsSync(collabDir)) return false;
-  return SUBDIRS.every((d) => fs.existsSync(path.join(collabDir, d)));
+  const hasDirs = SUBDIRS.every((d) => fs.existsSync(path.join(collabDir, d)));
+  const hasFiles = REQUIRED_FILES.every((f) => fs.existsSync(path.join(collabDir, f)));
+  return hasDirs && hasFiles;
 }
 
 function init(projectDir) {
@@ -131,22 +135,19 @@ function init(projectDir) {
   const readmePath = path.join(collabDir, 'README.md');
   fs.writeFileSync(readmePath, COLLAB_README);
 
-  // Initialize board-state.json
-  const boardStatePath = path.join(collabDir, 'board-state.json');
-  if (!fs.existsSync(boardStatePath)) {
-    const initialBoard = {
-      version: '1.0',
-      generated_at: new Date().toISOString(),
-      columns: { Backlog: [], 'In Progress': [], Blocked: [], Done: [] },
-    };
-    fs.writeFileSync(boardStatePath, JSON.stringify(initialBoard, null, 2));
-  }
-
   // Initialize events.ndjson (empty)
   const eventsPath = path.join(collabDir, 'events.ndjson');
   if (!fs.existsSync(eventsPath)) {
     fs.writeFileSync(eventsPath, '');
   }
+
+  const boardBuilderPath = path.join(projectDir, 'skills', 'task-board', 'scripts', 'board-builder.js');
+  if (!fs.existsSync(boardBuilderPath)) {
+    throw new Error(`board builder missing: ${boardBuilderPath}`);
+  }
+  childProcess.execFileSync(process.execPath, [boardBuilderPath, `--project-dir=${projectDir}`], {
+    stdio: 'ignore',
+  });
 
   log(`collab initialized: ${collabDir}`);
   for (const sub of SUBDIRS) {
