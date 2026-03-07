@@ -11,11 +11,113 @@
 const { spawn, execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const { writeEvent } = require('../../../../project-team/scripts/lib/whitebox-events');
+const {
+  createRunId,
+  withExecutorMetadata,
+} = require('../../../../project-team/scripts/lib/whitebox-run');
 
 const STATE_FILE = '.claude/orchestrate-state.json';
 
+function toEventWriteError(stage, type, error) {
+  return {
+    stage,
+    event_type: type,
+    message: error && error.message ? error.message : String(error),
+    code: error && error.code ? error.code : null,
+  };
+}
+
+async function emitCanonicalEvent(type, data, projectDir = process.cwd(), correlationId = null, stage = type) {
+  try {
+    await writeEvent({
+      type,
+      producer: 'orchestrate-worker',
+      correlation_id: correlationId || undefined,
+      data,
+    }, {
+      projectDir,
+    });
+    return { ok: true, error: null, failure: null };
+  } catch (error) {
+    const failure = toEventWriteError(stage, type, error);
+    writeStderr(`[worker] canonical event write failed (${type}): ${failure.message}`);
+    return { ok: false, error, failure };
+  }
+}
+
 function writeStderr(message) {
   process.stderr.write(`${message}\n`);
+}
+
+function persistTaskState(statePath, taskId, status, data = {}) {
+  let state = { tasks: [], started_at: new Date().toISOString() };
+
+  if (fs.existsSync(statePath)) {
+    state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+  }
+
+  const taskIndex = state.tasks.findIndex((task) => task.id === taskId);
+  const previous = taskIndex >= 0 ? state.tasks[taskIndex] : null;
+  const taskState = {
+    id: taskId,
+    status,
+    updated_at: new Date().toISOString(),
+    ...data,
+  };
+
+  if (taskIndex >= 0) {
+    state.tasks[taskIndex] = { ...state.tasks[taskIndex], ...taskState };
+  } else {
+    state.tasks.push(taskState);
+  }
+
+  fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
+  return { previousStatus: previous && previous.status ? previous.status : null };
+}
+
+async function updateTaskState(statePath, taskId, status, data = {}, options = {}) {
+  const { emitEvent = true } = options;
+
+  try {
+    const { previousStatus } = persistTaskState(statePath, taskId, status, data);
+    if (!emitEvent) return { ok: true, previousStatus };
+
+    const projectDir = path.dirname(path.dirname(statePath));
+    const eventResult = await emitCanonicalEvent('orchestrate.task.status_changed', {
+      task_id: taskId,
+      from: previousStatus,
+      to: status,
+      changed: previousStatus !== status,
+      has_duration: Number.isFinite(data.duration),
+      has_exit_code: Number.isInteger(data.code),
+      worker: typeof data.worker === 'string' ? data.worker : null,
+    }, projectDir, taskId, 'task_status_changed');
+
+    if (!eventResult.ok) {
+      const error = new Error(`Failed to write orchestrate.task.status_changed for ${taskId}: ${eventResult.failure.message}`);
+      error.code = 'WHITEBOX_EVENT_WRITE_FAILED';
+      error.failure = eventResult.failure;
+      throw error;
+    }
+
+    return { ok: true, previousStatus };
+  } catch (error) {
+    writeStderr(`Failed to update state: ${error.message}`);
+    throw error;
+  }
+}
+
+function persistEventWriteFailure(statePath, taskId, failureStatus, failure, data = {}) {
+  try {
+    persistTaskState(statePath, taskId, failureStatus, {
+      ...data,
+      error: failure.message,
+      event_write_error: failure,
+    });
+  } catch (stateError) {
+    writeStderr(`Failed to persist event write failure: ${stateError.message}`);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -60,14 +162,18 @@ function loadModelRouting(projectDir) {
  */
 function resolveCliCommand(task, projectDir, defaultClaudePath = 'claude') {
   let model = task.model;
+  let routeSource = 'task.model';
+  let fallbackReason = null;
 
   // 1. task.model이 없으면 model-routing.yaml에서 task.owner 기반으로 탐색
   if (!model) {
     const routingConfig = loadModelRouting(projectDir);
     if (task.owner && routingConfig.routing[task.owner]) {
       model = routingConfig.routing[task.owner];
+      routeSource = 'routing.owner';
     } else {
       model = routingConfig.default || 'claude';
+      routeSource = 'routing.default';
     }
   }
 
@@ -83,10 +189,12 @@ function resolveCliCommand(task, projectDir, defaultClaudePath = 'claude') {
   } else {
     writeStderr(`[Warning] Unknown model '${rawModel}'. Falling back to 'claude'.`);
     resolvedModel = 'claude';
+    fallbackReason = 'unknown_model';
   }
 
   let command = defaultClaudePath;
   let args = [];
+  const requestedExecutor = rawModel;
 
   // 2. 모델명에 따른 CLI 커맨드 및 인자 매핑
   if (resolvedModel === 'codex') {
@@ -104,13 +212,14 @@ function resolveCliCommand(task, projectDir, defaultClaudePath = 'claude') {
       execSync(`${checkCmd} ${command}`, { stdio: 'ignore' });
     } catch (e) {
       writeStderr(`[Warning] CLI '${command}' not found. Falling back to '${defaultClaudePath}'.`);
+      fallbackReason = `missing_cli:${command}`;
       command = defaultClaudePath;
       args = [];
       resolvedModel = 'claude';
     }
   }
 
-  return { command, args, model: resolvedModel };
+  return { command, args, model: resolvedModel, requestedExecutor, routeSource, fallbackReason };
 }
 
 // ---------------------------------------------------------------------------
@@ -130,10 +239,10 @@ async function executeTask(task, options = {}) {
   const statePath = path.join(projectDir, STATE_FILE);
 
   return new Promise((resolve, reject) => {
+    void (async () => {
     const startTime = Date.now();
-
-    // Update state to "in_progress"
-    updateTaskState(statePath, task.id, 'in_progress', { worker: 'worker-' + process.pid % 4 });
+    let timeoutHandle = null;
+    let finalized = false;
 
     // Prepare prompt
     const prompt = `
@@ -149,18 +258,154 @@ Please complete this task and report back when done.
 `;
 
     // Resolve which CLI to use based on routing rules
-    const { command, args, model } = resolveCliCommand(task, projectDir, claudePath);
+    const runId = task.run_id || createRunId('multi-ai-run', task.id);
+    const { command, args, model, requestedExecutor, routeSource, fallbackReason } = resolveCliCommand(task, projectDir, claudePath);
     process.stderr.write(`[worker] Task ${task.id} → ${command} (model: ${model})\n`);
+
+    const routeSelectedResult = await emitCanonicalEvent('multi_ai_run.route.selected', {
+      run_id: runId,
+      task_id: task.id,
+      owner: task.owner || 'default',
+      route_source: routeSource,
+      requested_executor: requestedExecutor,
+      command,
+      ...withExecutorMetadata(model),
+    }, projectDir, task.id, 'route_selected');
+
+    if (!routeSelectedResult.ok) {
+      persistEventWriteFailure(statePath, task.id, 'failed', routeSelectedResult.failure, {
+        intended_status: 'in_progress',
+      });
+      reject(new Error(`Canonical event write failed for ${task.id}: ${routeSelectedResult.failure.message}`));
+      return;
+    }
+
+    if (fallbackReason) {
+      const fallbackResult = await emitCanonicalEvent('multi_ai_run.route.fallback', {
+        run_id: runId,
+        task_id: task.id,
+        owner: task.owner || 'default',
+        route_source: routeSource,
+        requested_executor: requestedExecutor,
+        fallback_reason: fallbackReason,
+        fallback_executor: model,
+        command,
+        ...withExecutorMetadata(model),
+      }, projectDir, task.id, 'route_fallback');
+
+      if (!fallbackResult.ok) {
+        persistEventWriteFailure(statePath, task.id, 'failed', fallbackResult.failure, {
+          intended_status: 'in_progress',
+        });
+        reject(new Error(`Canonical event write failed for ${task.id}: ${fallbackResult.failure.message}`));
+        return;
+      }
+    }
+
+    const startResult = await emitCanonicalEvent('orchestrate.execution.start', {
+      run_id: runId,
+      task_id: task.id,
+      domain: task.domain || 'general',
+      risk: task.risk || 'low',
+      owner: task.owner || 'default',
+      model,
+      command,
+      ...withExecutorMetadata(model),
+    }, projectDir, task.id, 'execution_start');
+
+    if (!startResult.ok) {
+      persistEventWriteFailure(statePath, task.id, 'failed', startResult.failure, {
+        intended_status: 'in_progress',
+      });
+      reject(new Error(`Canonical event write failed for ${task.id}: ${startResult.failure.message}`));
+      return;
+    }
+
+    // Update state to "in_progress"
+    try {
+      await updateTaskState(statePath, task.id, 'in_progress', { worker: 'worker-' + process.pid % 4 });
+    } catch (error) {
+      if (error && error.failure) {
+        persistEventWriteFailure(statePath, task.id, 'failed', error.failure, {
+          intended_status: 'in_progress',
+        });
+        reject(new Error(`Canonical event write failed for ${task.id}: ${error.failure.message}`));
+        return;
+      }
+      reject(error);
+      return;
+    }
 
     // Spawn the selected CLI
     const cli = spawn(command, args, {
       cwd: projectDir,
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: { ...process.env, CLAUDE_AGENT_ROLE: task.owner || 'default' }
+      env: {
+        ...process.env,
+        CLAUDE_AGENT_ROLE: task.owner || 'default',
+        CLAUDE_TASK_ID: task.id,
+        WHITEBOX_RUN_ID: runId,
+      }
     });
 
     let output = '';
     let errorOutput = '';
+
+    async function finalizeExecution(result) {
+      if (finalized) return;
+      finalized = true;
+      if (timeoutHandle) {
+        clearTimeout(timeoutHandle);
+        timeoutHandle = null;
+      }
+
+      const duration = Number.isFinite(result.durationMs) ? result.durationMs : (Date.now() - startTime);
+      const stateData = {
+        duration,
+        ...result.stateData,
+      };
+
+      const finishResult = await emitCanonicalEvent('orchestrate.execution.finish', {
+        run_id: runId,
+        task_id: task.id,
+        outcome: result.outcome,
+        duration_ms: duration,
+        exit_code: result.exitCode,
+        ...(result.timeout ? { timeout: true } : {}),
+        ...withExecutorMetadata(model),
+      }, projectDir, task.id, 'execution_finish');
+
+      if (!finishResult.ok) {
+        persistEventWriteFailure(statePath, task.id, 'failed', finishResult.failure, {
+          intended_status: result.status,
+          duration,
+        });
+        reject(new Error(`Canonical event write failed for ${task.id}: ${finishResult.failure.message}`));
+        return;
+      }
+
+      try {
+        await updateTaskState(statePath, task.id, result.status, stateData);
+      } catch (error) {
+        if (error && error.failure) {
+          persistEventWriteFailure(statePath, task.id, 'failed', error.failure, {
+            intended_status: result.status,
+            duration,
+          });
+          reject(new Error(`Canonical event write failed for ${task.id}: ${error.failure.message}`));
+          return;
+        }
+        reject(error);
+        return;
+      }
+
+      if (result.status === 'completed') {
+        resolve({ id: task.id, status: 'completed', duration, output });
+        return;
+      }
+
+      reject(result.error instanceof Error ? result.error : new Error(String(result.error || `Task ${task.id} failed`)));
+    }
 
     cli.stdout.on('data', (data) => {
       output += data.toString();
@@ -170,84 +415,62 @@ Please complete this task and report back when done.
       errorOutput += data.toString();
     });
 
-    cli.on('error', (err) => {
-      updateTaskState(statePath, task.id, 'failed', {
-        duration: Date.now() - startTime,
-        error: err.message,
+    cli.on('error', async (err) => {
+      await finalizeExecution({
+        status: 'failed',
+        outcome: 'error',
+        exitCode: null,
+        stateData: {
+          error: err.message,
+        },
+        error: new Error(`Task ${task.id} failed to start: ${err.message}`),
       });
-      reject(new Error(`Task ${task.id} failed to start: ${err.message}`));
     });
 
-    cli.on('close', (code) => {
-      const duration = Date.now() - startTime;
-
+    cli.on('close', async (code) => {
       if (code === 0) {
-        updateTaskState(statePath, task.id, 'completed', {
-          duration,
-          output: output.slice(-500), // Last 500 chars
-          worker: 'worker-' + process.pid % 4
+        await finalizeExecution({
+          status: 'completed',
+          outcome: 'pass',
+          exitCode: 0,
+          stateData: {
+            output: output.slice(-500),
+            worker: 'worker-' + process.pid % 4,
+          },
         });
-        resolve({ id: task.id, status: 'completed', duration, output });
       } else {
-        updateTaskState(statePath, task.id, 'failed', {
-          duration,
-          error: errorOutput.slice(-500) || `Process exited with code ${code}`,
-          code
+        await finalizeExecution({
+          status: 'failed',
+          outcome: 'deny',
+          exitCode: Number.isInteger(code) ? code : null,
+          stateData: {
+            error: errorOutput.slice(-500) || `Process exited with code ${code}`,
+            code,
+          },
+          error: new Error(`Task ${task.id} failed with code ${code}`),
         });
-        reject(new Error(`Task ${task.id} failed with code ${code}`));
       }
     });
 
     // Timeout handling
-    const timeoutHandle = setTimeout(() => {
+    timeoutHandle = setTimeout(() => {
       cli.kill('SIGTERM');
-      updateTaskState(statePath, task.id, 'timeout', { duration: timeout });
-      reject(new Error(`Task ${task.id} timed out after ${timeout}ms`));
+      void finalizeExecution({
+        status: 'timeout',
+        outcome: 'error',
+        exitCode: null,
+        durationMs: timeout,
+        stateData: {},
+        timeout: true,
+        error: new Error(`Task ${task.id} timed out after ${timeout}ms`),
+      });
     }, timeout);
-
-    cli.on('close', () => {
-      clearTimeout(timeoutHandle);
-    });
 
     // Send prompt
     cli.stdin.write(prompt);
     cli.stdin.end();
+    })().catch(reject);
   });
-}
-
-// ---------------------------------------------------------------------------
-// State Management
-// ---------------------------------------------------------------------------
-
-/**
- * Update task state in orchestrate-state.json
- */
-function updateTaskState(statePath, taskId, status, data = {}) {
-  try {
-    let state = { tasks: [], started_at: new Date().toISOString() };
-
-    if (fs.existsSync(statePath)) {
-      state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
-    }
-
-    const taskIndex = state.tasks.findIndex(t => t.id === taskId);
-    const taskState = {
-      id: taskId,
-      status,
-      updated_at: new Date().toISOString(),
-      ...data
-    };
-
-    if (taskIndex >= 0) {
-      state.tasks[taskIndex] = { ...state.tasks[taskIndex], ...taskState };
-    } else {
-      state.tasks.push(taskState);
-    }
-
-    fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
-  } catch (error) {
-    writeStderr(`Failed to update state: ${error.message}`);
-  }
 }
 
 // ---------------------------------------------------------------------------
