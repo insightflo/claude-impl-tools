@@ -501,6 +501,9 @@ ALGORITHM get_recommendation():
 
 ```
 "뭐부터 해야 할지 모르겠어"     → /workflow
+"상태 보여줘"                  → /whitebox status
+"왜 막혔어"                    → /whitebox explain
+"화이트박스 health check"       → /whitebox health
 "기획서 있는데 코딩 시작해줘"   → /agile auto
 "이 기능 수정해줘"              → /agile iterate
 "코드 검토해줘"                 → /checkpoint  (빠른 2단계 리뷰)
@@ -540,6 +543,12 @@ ALGORITHM get_recommendation():
 "blocked 태스크 확인"           → /task-board health
 "에이전트 진행 상황 시각화"     → /task-board show
 ```
+
+화이트박스 관점의 추천 루트:
+- 진행 상황만 빠르게 보고 싶다 → `/whitebox status`
+- 왜 막혔는지 근거와 다음 액션이 필요하다 → `/whitebox explain`
+- CLI 인증/부착 상태와 artifact 무결성을 점검하고 싶다 → `/whitebox health`
+- 전체 칸반을 Ratatui 터미널로 보고 싶다 → `/task-board show`
 
 ---
 

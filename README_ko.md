@@ -1,10 +1,10 @@
 # claude-imple-skills
 
-> **Claude Code용 구현 스킬 팩** — AI 에이전트 팀으로 소프트웨어 구축
+> **Claude Code용 화이트박스 컨트롤 플레인** — AI 코딩의 실행, 차단 이유, 건강 상태를 파일 기반으로 관찰/설명/제어
 
 [**English**](./README.md) | [**한국어**](./README_ko.md)
 
-Claude Code로 소프트웨어를 개발할 때 도와주는 **스킬**과 **에이전트 팀** 모음입니다. 외부 의존성 없이 독립적으로 실행됩니다.
+Claude Code로 소프트웨어를 개발할 때 필요한 **스킬**, **에이전트 팀**, **화이트박스 관찰 표면**을 제공합니다. canonical 이벤트 로그, 파생 상태 아티팩트, Ratatui 터미널 뷰어를 통해 AI 실행을 숨기지 않고 드러내며, 외부 서비스 없이 독립적으로 동작합니다.
 
 ---
 
@@ -42,6 +42,11 @@ cd claude-imple-skills/project-team
 ./install.sh --global
 ```
 
+설치 후 화이트박스 MVP 규칙:
+- LLM 실행은 구독형 CLI `claude`, `codex`, `gemini`만 지원
+- `/whitebox status`, `/whitebox explain`, `/whitebox health`가 기본 점검 엔트리포인트
+- TTY에서는 Ratatui 뷰어를, 리다이렉트/비-TTY에서는 ASCII fallback을 사용
+
 ---
 
 ## 제공 기능
@@ -65,6 +70,7 @@ cd claude-imple-skills/project-team
 | `/agile` | 레이어별 스프린트 (Skeleton → Muscles → Skin), 1~30개 태스크 |
 | `/recover` | 중단 후 작업 재개 |
 | `/checkpoint` | 진행 상태 저장/복원 |
+| `/whitebox` | 현재 run, blocker, CLI/auth, 파생 artifact 상태를 설명/점검 |
 
 ### 프로젝트 초기화
 
@@ -99,8 +105,8 @@ cd claude-imple-skills/project-team
 | `/coverage` | 테스트 커버리지 시각화 |
 | `/architecture` | 프로젝트 구조 & 도메인 맵 |
 | `/compress` | Long Context 최적화 (H2O 패턴) |
-| `/statusline` | Claude Code 상태바에 TASKS.md 진행 상황 표시 |
-| `/task-board` | 에이전트 태스크를 칸반 보드로 시각화 (Backlog / In Progress / Blocked / Done) |
+| `/statusline` | Claude Code 상태바에 TASKS 진행률과 whitebox blocker/run 힌트 표시 |
+| `/task-board` | Ratatui 화이트박스 터미널 뷰어와 함께 칸반 보드 시각화 |
 
 ---
 
@@ -162,6 +168,7 @@ project-team/
 시작
   │
   ├─ "뭐부터 해야 해?" ────────────── /workflow
+  ├─ "왜 막혔어 / 지금 상태 뭐야?" ─── /whitebox status | /whitebox explain | /whitebox health
   │
   ├─ 프로젝트 기획
   │   ├─ 대규모 프로젝트? ──────── /governance-setup
@@ -184,6 +191,17 @@ project-team/
   │
   └─ 중단 시 ──────────────────── /recover
 ```
+
+`/whitebox`는 MVP 관찰 표면입니다:
+- `/whitebox status` — 현재 run, gate, blocked 개수, stale artifact 요약
+- `/whitebox explain` — 특정 task/REQ/gate 가 왜 막혔는지 근거 기반 설명
+- `/whitebox health` — 구독형 CLI 인증/부착 상태 + artifact 무결성 점검
+
+화이트박스는 다음 파일 기반 아티팩트를 읽습니다:
+- canonical 로그: `.claude/collab/events.ndjson`
+- 파생 보드: `.claude/collab/board-state.json`
+- 파생 요약: `.claude/collab/whitebox-summary.json`
+- stale marker: `.claude/collab/derived-meta.json`
 
 ### 에이전트 팀이 필요한가?
 

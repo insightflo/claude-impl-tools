@@ -182,3 +182,27 @@ Wave Barrier (after each wave):
 ```
 
 See also: `docs/plan/hierarchical-agent-collab-plan.md`
+
+## 12. Whitebox Event Contract Integration
+
+Whitebox event governance is standardized in `docs/plan/WHITEBOX-EVENT-CONTRACT.md`.
+
+- `.claude/collab/events.ndjson` is the canonical whitebox log.
+- `.claude/orchestrate/auto-events.jsonl` is a deprecated compatibility mirror.
+- telemetry stream output is excluded from the whitebox contract.
+
+Required envelope keys for whitebox events:
+
+- `schema_version`, `event_id`, `ts`, `type`, `producer`, `data`
+- `correlation_id`, `causation_id`
+
+Required HITL lifecycle events:
+
+- `approval_required`, `approval_granted`, `approval_rejected`
+- `execution_paused`, `execution_resumed`
+
+Schema policy and stale markers:
+
+- Readers/projectors support schema `N` and `N-1`.
+- Unsupported events are handled with skip+warn behavior.
+- Stale derived artifact markers are tracked in `.claude/collab/derived-meta.json`.

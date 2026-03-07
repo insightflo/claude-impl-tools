@@ -10,6 +10,16 @@
 
 ---
 
+## Whitebox 정책 (MVP)
+
+- 실행 정책: `subscription-only`
+- 허용 executor: `claude`, `codex`, `gemini`
+- 비용 모델: CLI 구독 기반만 사용 (추가 API 비용 없음)
+- 범위 제외: API-key-first provider API integration
+- Claude 상태 규칙: `CLAUDECODE`가 없으면 `host_not_attached`
+
+---
+
 ## Claude Code (필수)
 
 이미 사용 중이므로 설치되어 있습니다.
@@ -32,8 +42,7 @@ npm install -g @openai/codex
 
 ```bash
 codex auth
-# 또는 환경변수
-export OPENAI_API_KEY="sk-..."
+codex auth status
 ```
 
 ### 테스트
@@ -66,8 +75,7 @@ pip install google-generativeai
 
 ```bash
 gemini auth
-# 또는 환경변수
-export GOOGLE_API_KEY="..."
+gemini auth status
 ```
 
 ### 테스트
@@ -100,10 +108,22 @@ check_cli gemini
 
 echo ""
 echo "=== 인증 상태 확인 ==="
-claude --version 2>/dev/null && echo "✅ Claude 인증됨"
+if [ -n "$CLAUDECODE" ]; then
+  echo "✅ Claude host attached"
+else
+  echo "⚠️ Claude host_not_attached (CLAUDECODE 미설정)"
+fi
 codex auth status 2>/dev/null && echo "✅ Codex 인증됨"
 gemini auth status 2>/dev/null && echo "✅ Gemini 인증됨"
 ```
+
+### 정책 점검 스크립트
+
+```bash
+node project-team/scripts/subscription-policy-check.js --json
+```
+
+상태값: `missing_cli`, `missing_auth`, `host_not_attached`, `ok`
 
 ---
 
@@ -124,7 +144,7 @@ CLI가 설치되지 않은 경우:
 ### Codex 인증 실패
 
 ```bash
-# API 키 재설정
+# (optional) env var cleanup
 unset OPENAI_API_KEY
 codex auth --reset
 ```
@@ -132,9 +152,11 @@ codex auth --reset
 ### Gemini 권한 오류
 
 ```bash
+# CLI 인증 갱신
+gemini auth
+gcloud auth login
 # 프로젝트 ID 확인
 gcloud config get-value project
-# 또는 API 키 재발급
 ```
 
 ### 타임아웃

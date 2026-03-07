@@ -1,10 +1,10 @@
 # claude-imple-skills
 
-> **Implementation skill pack for Claude Code** — Build software with AI agent teams
+> **Whitebox control plane for Claude Code** — observe, explain, and steer AI coding with file-based artifacts
 
 [**English**](./README.md) | [**한국어**](./README_ko.md)
 
-A standalone-first collection of **skills** and **agent teams** that help you build software with Claude Code. No external dependencies required.
+A standalone-first collection of **skills**, **agent teams**, and **whitebox control-plane surfaces** for AI-assisted software delivery. It keeps execution legible through canonical events, derived status artifacts, and a Ratatui terminal viewer without requiring external services.
 
 ---
 
@@ -23,6 +23,11 @@ TUI-based installer lets you select:
 - Skill categories (Core, Orchestration, Quality, Analysis, Tasks)
 - Project Team (10 agents + 15 hooks)
 - Multi-AI routing (Claude + Gemini + Codex)
+
+Whitebox MVP policy after install:
+- only subscription-backed CLIs are supported for LLM execution: `claude`, `codex`, `gemini`
+- `/whitebox status`, `/whitebox explain`, and `/whitebox health` become the first inspection surface
+- the terminal viewer uses Ratatui for TTY sessions and falls back to ASCII when redirected
 
 ### Option 2: Non-Interactive Install
 
@@ -61,6 +66,7 @@ curl -fsSL https://raw.githubusercontent.com/insightflo/claude-imple-skills/main
 | `/agile` | Layered sprints (Skeleton → Muscles → Skin) for 1-30 tasks |
 | `/recover` | Resume work after interruptions |
 | `/checkpoint` | Save/restore progress at any point |
+| `/whitebox` | Inspect current run, blockers, CLI health, and derived artifact state |
 
 ### Project Initialization
 
@@ -95,8 +101,8 @@ curl -fsSL https://raw.githubusercontent.com/insightflo/claude-imple-skills/main
 | `/coverage` | Visualize test coverage gaps |
 | `/architecture` | Map project structure & domains |
 | `/compress` | Long Context optimization (H2O pattern) |
-| `/statusline` | Display TASKS.md progress in Claude Code status bar |
-| `/task-board` | Visualize agent tasks as a Kanban board (Backlog / In Progress / Blocked / Done) |
+| `/statusline` | Display TASKS.md progress plus whitebox blocker/run hints in Claude Code status bar |
+| `/task-board` | Visualize agent tasks as a Kanban board with a Ratatui whitebox terminal viewer |
 
 ---
 
@@ -158,6 +164,7 @@ See `project-team/docs/MODES.md` for details.
 Start
   │
   ├─ "What should I do?" ────────────── /workflow
+  ├─ "Why is it blocked / what's happening?" ── /whitebox status | /whitebox explain | /whitebox health
   │
   ├─ Plan your project
   │   ├─ Large project? ──────── /governance-setup
@@ -180,6 +187,17 @@ Start
   │
   └─ If interrupted ───────────── /recover
 ```
+
+`/whitebox` is the MVP inspection surface for the control plane:
+- `/whitebox status` (overview)
+- `/whitebox explain` (why blocked/denied)
+- `/whitebox health` (CLI/auth + artifact integrity checks)
+
+The whitebox surfaces read file-based artifacts instead of hidden state:
+- canonical log: `.claude/collab/events.ndjson`
+- derived board: `.claude/collab/board-state.json`
+- derived summary: `.claude/collab/whitebox-summary.json`
+- stale markers: `.claude/collab/derived-meta.json`
 
 ### Do you need an agent team?
 
