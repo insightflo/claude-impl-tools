@@ -1,7 +1,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { spawnSync } = require('child_process');
+const { fork, spawnSync } = require('child_process');
 const { EventEmitter } = require('events');
 
 const { writeEvent, readEvents, validateEvents } = require('../../../project-team/scripts/lib/whitebox-events');
@@ -85,6 +85,52 @@ describe('whitebox control plane', () => {
     const validation = validateEvents({ projectDir });
     expect(validation.ok).toBe(false);
     expect(validation.truncated).toBe(1);
+  });
+
+  test('writeEvent stays valid under concurrent multi-process appends', async () => {
+    const projectDir = makeTempProject('whitebox-events-concurrent-');
+    initCollabArtifacts(projectDir);
+
+    const writerScript = path.join(projectDir, 'event-writer.js');
+    fs.writeFileSync(writerScript, [
+      `'use strict';`,
+      `const { writeEvent } = require(${JSON.stringify(path.resolve(__dirname, '../../../project-team/scripts/lib/whitebox-events.js'))});`,
+      `(async () => {`,
+      `  for (let i = 0; i < 40; i += 1) {`,
+      `    await writeEvent({`,
+      `      type: 'fixture.concurrent',`,
+      `      producer: 'jest-writer',`,
+      `      data: { index: i, pid: process.pid },`,
+      `    }, { projectDir: process.argv[2] });`,
+      `  }`,
+      `})();`,
+      ``,
+    ].join('\n'), 'utf8');
+
+    await new Promise((resolve, reject) => {
+      let settled = 0;
+      const children = Array.from({ length: 6 }, () => fork(writerScript, [projectDir], { stdio: 'ignore' }));
+
+      for (const child of children) {
+        child.on('exit', (code) => {
+          if (code !== 0) {
+            reject(new Error(`concurrent writer exited with code ${code}`));
+            return;
+          }
+          settled += 1;
+          if (settled === children.length) resolve();
+        });
+        child.on('error', reject);
+      }
+    });
+
+    const parsed = readEvents({ projectDir, tolerateTrailingPartialLine: false });
+    const validation = validateEvents({ projectDir });
+
+    expect(parsed.events).toHaveLength(240);
+    expect(parsed.errors).toHaveLength(0);
+    expect(parsed.truncated).toHaveLength(0);
+    expect(validation.ok).toBe(true);
   });
 
   test('buildWhiteboxSummary reflects blocked cards and stale markers', () => {

@@ -4,7 +4,6 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const { withLock } = require('./collab-lock');
 const { readNdjsonFile } = require('./ndjson');
 const { redactObject } = require('./redact');
 
@@ -85,12 +84,7 @@ async function writeEvent(input, options = {}) {
   const filePath = resolveEventsFilePath(options);
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
 
-  await withLock('events-ndjson', async () => {
-    fs.appendFileSync(filePath, JSON.stringify(event) + '\n', 'utf8');
-  }, {
-    projectDir: resolveProjectDir(options.projectDir),
-    file: filePath,
-  });
+  fs.appendFileSync(filePath, JSON.stringify(event) + '\n', 'utf8');
 
   return event;
 }
