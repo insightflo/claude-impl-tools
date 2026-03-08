@@ -306,15 +306,19 @@ function upsertDecision(statePath, decision) {
     if (!Array.isArray(state.decisions)) state.decisions = [];
 
     const index = state.decisions.findIndex((entry) => entry.id === decision.id);
+    const timestamp = new Date().toISOString();
     const next = {
-      updated_at: new Date().toISOString(),
+      updated_at: timestamp,
       ...decision
     };
 
     if (index >= 0) {
-      state.decisions[index] = { ...state.decisions[index], ...next };
+      state.decisions[index] = {
+        created_at: state.decisions[index].created_at || timestamp,
+        ...next
+      };
     } else {
-      state.decisions.push({ created_at: new Date().toISOString(), ...next });
+      state.decisions.push({ created_at: timestamp, ...next });
     }
 
     fs.writeFileSync(statePath, JSON.stringify(state, null, 2));

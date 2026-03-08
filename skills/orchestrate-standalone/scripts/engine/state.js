@@ -141,16 +141,20 @@ function setCurrentLayer(layer, projectDir = process.cwd()) {
 
 function upsertDecision(decision, projectDir = process.cwd()) {
   const state = loadState(projectDir);
+  const timestamp = new Date().toISOString();
   const next = {
-    updated_at: new Date().toISOString(),
+    updated_at: timestamp,
     ...decision
   };
   const index = state.decisions.findIndex((entry) => entry.id === next.id);
   if (index >= 0) {
-    state.decisions[index] = { ...state.decisions[index], ...next };
+    state.decisions[index] = {
+      created_at: state.decisions[index].created_at || timestamp,
+      ...next
+    };
   } else {
     state.decisions.push({
-      created_at: new Date().toISOString(),
+      created_at: timestamp,
       ...next
     });
   }
