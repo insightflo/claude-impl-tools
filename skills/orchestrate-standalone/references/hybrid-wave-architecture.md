@@ -1,8 +1,8 @@
-# Hybrid Wave Architecture
+# Hybrid Wave Architecture (Design Reference)
 
 > Multi-AI Council 합의 기반 대규모 프로젝트 아키텍처 (v2.0)
 >
-> **핵심 원칙**: Contract-First + Domain Parallelism + Cross-Review = 대규모 일관성
+> **참고 문서**: 이 문서는 wave 모드의 설계 방향을 설명합니다. 현재 공개 CLI는 이 문서의 모든 phase/flag를 직접 노출하지 않습니다.
 
 ---
 
@@ -19,7 +19,7 @@
 
 ---
 
-## Hybrid Wave Architecture
+## Hybrid Wave Architecture (Reference Model)
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -110,39 +110,37 @@
 
 ## 사용법
 
-### 1. Phase 0 실행 (계약 생성)
+### 1. 현재 공개 CLI 실행
 
 ```bash
-/orchestrate-standalone --mode=wave --phase=0
+/orchestrate-standalone --mode=wave
 ```
 
-산출물:
+현재 공개 CLI 기준 동작:
 ```
-contracts/
-├── api-contract.yaml      # API 스키마 정의
-├── type-contract.ts       # 공유 타입 정의
-├── design-tokens.json     # 디자인 토큰
-└── domain-boundaries.md   # 도메인 경계 규칙
+orchestrate-standalone --mode=wave
+├── 6-worker execution profile
+├── whitebox board surfacing
+├── gate-chain / worker / board integration
+└── 기존 DAG 기반 실행 흐름 유지
 ```
 
-### 2. Wave 실행
+### 2. 참고: 내부 설계 방향
+
+> 아래 내용은 설계 레퍼런스입니다. 현재 공개 CLI가 이 phase 단계를 직접 노출하는 것은 아닙니다.
 
 ```bash
-# 자동 Wave 실행 (Phase 1-3)
-/orchestrate-standalone --mode=wave --wave-size=30
-
-# 또는 특정 Phase만
-/orchestrate-standalone --mode=wave --phase=1
+/orchestrate-standalone --mode=wave
 ```
 
-### 3. Mid-Wave Validation (자동)
+### 3. Mid-Wave Validation (Reference)
 
 Wave 중간에 자동 실행:
 - `contract-gate`: API 계약 준수 검증
 - `duplicate-detector`: 중복 코드 탐지
 - `type-checker`: 타입 일관성 검증
 
-### 4. Cross-Review (Phase 2)
+### 4. Cross-Review (Reference)
 
 각 도메인 에이전트가 다른 도메인 검토:
 ```

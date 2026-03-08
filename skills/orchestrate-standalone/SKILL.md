@@ -1,6 +1,6 @@
 ---
 name: orchestrate-standalone
-description: 30~200개 태스크를 의존성 기반으로 병렬 실행합니다. Hybrid Wave 모드로 대규모도 일관성 유지.
+description: 30~200개 태스크를 의존성 기반으로 병렬 실행합니다. Wave 모드는 대규모 실행용 6-worker profile과 whitebox board surfacing을 제공합니다.
 triggers:
   - /orchestrate-standalone
   - /orchestrate
@@ -14,7 +14,7 @@ updated: 2026-03-05
 
 > **목표**: 30~200개 태스크를 의존성 기반 병렬 실행
 >
-> **철학**: Contract-First + Wave 단위 병렬 + 중간 검증 = 대규모에서도 일관성 유지
+> **철학**: 의존성 기반 DAG 실행 + gate-chain + whitebox surfacing으로 대규모 작업을 안정적으로 진행합니다.
 
 ---
 
@@ -24,62 +24,58 @@ updated: 2026-03-05
 |------|----------|---------|------|
 | **lite** | 30~50 | 2 | 빠른 실행 |
 | **standard** | 50~80 | 4 | 일반 프로젝트 |
-| **wave** | 80~200 | 4~8 | **Hybrid Wave Architecture** (NEW) |
+| **wave** | 80~200 | 6 | 대규모 실행용 wave profile + whitebox surfacing |
 | **sprint** | 50~200 | 4 | **Agile Sprint Mode** (NEW) — PI 계획 + 스프린트 Gate |
 | **full** | 80개+ | 8 | 대규모 병렬 (legacy) |
 
 ---
 
-## 🌊 Hybrid Wave Architecture (v2.0)
+## 🌊 Wave Mode (Current CLI Contract)
 
-> Multi-AI Council 합의: Contract-First + 도메인 병렬 + 중간 검증 = 대규모 일관성
+> 현재 공개 CLI의 `--mode=wave`는 대규모 프로젝트용 실행 프로필입니다.
+>
+> **현재 보장되는 것**
+> - 80개 이상 태스크에서 wave 추천
+> - 6-worker 기본값
+> - startup/completion 시 whitebox board 자동 surfacing
+> - 기존 gate-chain / worker / board / control-plane 연동 유지
+>
+> **아직 공개 CLI로 제공하지 않는 것**
+> - `--phase`
+> - `--wave-size`
+> - `--scope`
+> - 별도 wave planner 단계
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  Phase 0: Shared Foundation (단일 에이전트)              │
-│  - API 스키마, 타입, 에러 규약, 디자인 토큰 확정         │
-│  - contracts/ 디렉토리에 계약 파일 생성                  │
-│  - 이 단계 완료 전 병렬 진입 불가                        │
+│  Large-project execution profile                         │
+│  - TASKS.md DAG 기반 실행                                │
+│  - wave 모드에서는 6 workers 사용                        │
+│  - whitebox board / gate / control-plane 연동            │
 └─────────────────────────────────────────────────────────┘
                           ↓
 ┌─────────────────────────────────────────────────────────┐
-│  Phase 1: Domain Parallelism (다중 에이전트)             │
-│  - Wave 단위: 20-40 tasks                               │
-│  - 도메인별 전문 에이전트가 병렬 실행                    │
-│  - 중간 인터페이스 검증 (Wave 중간에 실행)               │
-└─────────────────────────────────────────────────────────┘
-                          ↓
-┌─────────────────────────────────────────────────────────┐
-│  Phase 2: Cross-Review Gate                             │
-│  - 각 에이전트가 다른 에이전트 결과물 검토               │
-│  - contract-gate: 계약 준수 검증                         │
-│  - 중복 코드, 타입 불일치 탐지                          │
-└─────────────────────────────────────────────────────────┘
-                          ↓
-┌─────────────────────────────────────────────────────────┐
-│  Phase 3: Integration & Polish (단일 에이전트)           │
-│  - 공통 모듈 통합, 중복 제거                            │
-│  - 최종 품질 감사 (/quality-auditor)                    │
+│  Existing engine pipeline                                │
+│  - pre-dispatch gate                                     │
+│  - worker execution                                      │
+│  - post-task gate                                        │
+│  - barrier gate                                          │
 └─────────────────────────────────────────────────────────┘
 ```
 
 ### Wave 모드 사용법
 
 ```bash
-# Phase 0: 계약 생성 (필수 선행)
-/orchestrate-standalone --mode=wave --phase=0
-
-# Phase 1-3: 자동 실행
-/orchestrate-standalone --mode=wave --wave-size=30
+/orchestrate-standalone --mode=wave
 ```
 
 ### Wave vs Legacy 비교
 
-| 관점 | Legacy (full) | Wave (v2.0) |
+| 관점 | Legacy (full) | Wave (current CLI) |
 |------|---------------|-------------|
-| 통합 충돌 | 스프린트 말 발견 | Phase 2에서 조기 탐지 |
-| Context Drift | 높음 | 계약으로 방지 |
-| 병렬 효율 | 높음 | 높음 + 일관성 보장 |
+| Worker profile | 8 | 6 |
+| Whitebox surfacing | 수동 확인 위주 | startup/completion auto surfacing |
+| 실행 엔진 | DAG + gates | DAG + gates |
 | 권장 태스크 | 80+ | 80~200 |
 
 ---
@@ -249,22 +245,13 @@ security-scan (보안 스캔)
 
 ### 대규모 (80~200개) - Wave 모드 권장
 ```bash
-# Step 1: Phase 0 - 계약 먼저 확정
-/orchestrate-standalone --mode=wave --phase=0
-
-# Step 2: Wave 실행 (자동으로 Phase 1-3 진행)
-/orchestrate-standalone --mode=wave --wave-size=30
-
-# 또는 한 번에 전체 실행
-/orchestrate-standalone --mode=wave --auto
+/orchestrate-standalone --mode=wave
 ```
 
 ### 초대규모 (200개+)
 ```bash
-# 프로젝트 분할 권장
-# 각 하위 프로젝트에 Wave 모드 적용
-/orchestrate-standalone --mode=wave --scope=domain:user
-/orchestrate-standalone --mode=wave --scope=domain:order
+# 프로젝트 분할 후 각 하위 프로젝트에서 wave 모드 실행 권장
+/orchestrate-standalone --mode=wave
 ```
 
 ---

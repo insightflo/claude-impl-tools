@@ -3,10 +3,6 @@
 # Phase 0에서 생성되는 계약 파일 템플릿
 # 모든 도메인 에이전트가 이 계약을 준수해야 병렬 실행 가능
 #
-# Usage:
-#   /orchestrate-standalone --mode=wave --phase=0
-#   이 명령은 contracts/ 디렉토리에 아래 파일들을 생성
-
 ---
 
 # 1. API Contract (OpenAPI 스타일)
@@ -169,19 +165,19 @@ test_contract:
 
 # 6. Wave Validation Checkpoints
 wave_validation:
-  # Wave 중간 검증 (Phase 1 중)
+  # Wave 중간 검증
   mid_wave:
     - contract_compliance: "모든 API가 api_contract 준수"
     - type_consistency: "공유 타입 사용 확인"
     - no_duplicates: "유틸 함수 중복 없음"
 
-  # Wave 종료 검증 (Phase 2)
+  # Wave 종료 검증
   end_wave:
     - cross_domain_review: "다른 도메인 에이전트가 코드 검토"
     - integration_test: "도메인 간 통합 테스트 통과"
     - design_consistency: "디자인 토큰 준수"
 
-  # 최종 검증 (Phase 3)
+  # 최종 검증
   final:
     - full_test_suite: "전체 테스트 통과"
     - security_scan: "보안 스캔 통과"

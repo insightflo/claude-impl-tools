@@ -187,10 +187,10 @@ Start
 |------------|-------------|-----------------|------------|
 | ≤ 30 | `/agile auto` | Claude directly | No |
 | 30-80 | `/orchestrate-standalone` | Specialist agents | Optional |
-| 80-200 | `/orchestrate --mode=wave` | Domain-parallel agents | Recommended |
+| 80-200 | `/orchestrate --mode=wave` | Large-project wave profile | Recommended |
 | 200+ | Split into sub-projects | Domain-parallel agents | Required |
 
-**v2.0 Hybrid Wave Architecture**: For 80+ tasks, use `--mode=wave` for Contract-First + Domain Parallelism + Cross-Review gates. This ensures consistency even at scale.
+**Wave mode (current CLI)**: For 80+ tasks, use `--mode=wave` for the large-project execution profile with whitebox board surfacing and a 6-worker default.
 
 ---
 

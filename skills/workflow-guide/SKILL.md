@@ -399,15 +399,15 @@ ALGORITHM get_recommendation():
 | **10~30개** | `/agile auto` | Claude 직접 | ❌ 불필요 | - |
 | **30~80개** | `/orchestrate-standalone` | 전문가 에이전트 | ✅ 선택 | `/governance-setup` |
 | **50~200개** | `/orchestrate-standalone --mode=sprint` | Agile 스프린트 에이전트 | ✅ 선택 | `/governance-setup` |
-| **80~200개** | `/orchestrate-standalone --mode=wave` | 도메인 병렬 에이전트 | ✅ 권장 | `/governance-setup` |
+| **80~200개** | `/orchestrate-standalone --mode=wave` | 대규모 실행용 wave profile | ✅ 권장 | `/governance-setup` |
 | **러프 골** | `/orchestrate-standalone --mode=auto --goal="..."` | 자율 DCPEA 에이전트 | ✅ 선택 | 불필요 (자동 생성) |
-| **200개+** | 하위 프로젝트 분할 → `/orchestrate-standalone --mode=wave` | 도메인 병렬 에이전트 | ✅ 필수 | `/governance-setup` |
+| **200개+** | 하위 프로젝트 분할 → `/orchestrate-standalone --mode=wave` | 대규모 실행용 wave profile | ✅ 필수 | `/governance-setup` |
 
-> **Sprint vs Wave 선택 기준**: `--mode=sprint`은 Human-in-the-loop 리뷰가 필요할 때 (각 스프린트 경계에서 사용자 승인), `--mode=wave`는 완전 자율 도메인 병렬 실행 시 사용합니다.
+> **Sprint vs Wave 선택 기준**: `--mode=sprint`은 Human-in-the-loop 리뷰가 필요할 때 (각 스프린트 경계에서 사용자 승인) 사용합니다. `--mode=wave`는 80개 이상 태스크에서 더 큰 worker profile과 whitebox board surfacing이 필요한 대규모 실행에 사용합니다.
 >
 > **Auto 모드**: `--mode=auto`는 1-2문장 목표를 받아 자동 분해 → 실행 → 평가 → 조정하는 자율 DCPEA 루프입니다. Human Gate는 Contract, Decompose, Failure, Final 4곳입니다.
 >
-> **v2.0 Hybrid Wave Architecture**: 80개 이상 태스크는 `--mode=wave`로 Contract-First + 도메인 병렬 + Cross-Review 게이트를 적용하여 대규모에서도 일관성을 보장합니다.
+> **Wave mode (current CLI)**: 80개 이상 태스크는 `--mode=wave`로 실행할 수 있습니다. 현재 공개 CLI는 6-worker execution profile과 whitebox board surfacing을 제공합니다.
 
 ### 거버넌스 권장 기준 (실행 규모와 별개)
 
@@ -447,12 +447,10 @@ ALGORITHM get_recommendation():
 │   └─ /orchestrate-standalone --mode=sprint                        │
 │       Agile PI 계획 → 스프린트 실행 → 리뷰 게이트       │
 │                                                         │
-│ 🌊 대규모 (80~200개) - Hybrid Wave Architecture          │
+│ 🌊 대규모 (80~200개) - Wave profile                      │
 │   └─ /orchestrate-standalone --mode=wave                          │
-│       Phase 0: Contract-First (계약 확정)               │
-│       Phase 1: Domain Parallelism (병렬 실행)           │
-│       Phase 2: Cross-Review Gate (상호 검토)            │
-│       Phase 3: Integration & Polish (통합)              │
+│       6 workers + whitebox board surfacing              │
+│       existing DAG/gate pipeline                         │
 │                                                         │
 │ 🏛️ 거버넌스 (태스크 10+ + 복잡/협업 조건)                │
 │   └─ /governance-setup (Phase 0: PM/Architect/QA/DBA)   │
@@ -590,7 +588,7 @@ A: `/recover`를 실행하여 중단된 작업을 복구하세요.
 ### Q: 대규모 프로젝트는 어떻게 관리하나요?
 A: 태스크 규모와 리뷰 필요 여부에 따라:
 - **50~200개 (사용자 리뷰 필요)**: `/orchestrate-standalone --mode=sprint`. Agile PI 계획 + 스프린트 경계마다 사용자 승인 게이트.
-- **80~200개 (완전 자율 실행)**: `/orchestrate-standalone --mode=wave`. Contract-First + 도메인 병렬 + Cross-Review로 일관성 보장.
+- **80~200개 (대규모 실행)**: `/orchestrate-standalone --mode=wave`. 현재 공개 CLI는 6-worker profile과 whitebox board surfacing을 제공합니다.
 - **러프 골 (자율 DCPEA)**: `/orchestrate-standalone --mode=auto --goal="Build user auth with OAuth"`. 1-2문장 목표 → 자동 분해 → 실행 → 평가 → 조정. Human Gate 4곳: Contract, Decompose, Failure, Final.
 - **200개+**: 하위 프로젝트로 분할 후 각각 wave 모드 적용.
 - 구현 전 `/governance-setup`으로 거버넌스(PM/Architect/QA/DBA) 문서 생성 권장.

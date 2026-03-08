@@ -191,10 +191,10 @@ project-team/
 |-----------|------|-----------|------------|
 | ≤ 30 | `/agile auto` | Claude 직접 | 불필요 |
 | 30-80 | `/orchestrate-standalone` | 전문가 에이전트 | 선택 |
-| 80-200 | `/orchestrate --mode=wave` | 도메인 병렬 에이전트 | 권장 |
+| 80-200 | `/orchestrate --mode=wave` | 대규모 실행용 wave profile | 권장 |
 | 200+ | 하위 프로젝트 분할 | 도메인 병렬 에이전트 | 필수 |
 
-**v2.0 Hybrid Wave Architecture**: 80개 이상 태스크는 `--mode=wave`를 사용하세요. Contract-First + 도메인 병렬 + Cross-Review 게이트로 대규모에서도 일관성을 보장합니다.
+**Wave mode (current CLI)**: 80개 이상 태스크는 `--mode=wave`를 사용하세요. 현재 공개 CLI는 whitebox board surfacing과 6-worker 기본값을 제공합니다.
 
 ---
 
