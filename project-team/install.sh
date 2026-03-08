@@ -173,7 +173,7 @@ check_prerequisites() {
 
     # Verify source directory has expected structure
     local missing=0
-    for dir in hooks agents templates; do
+    for dir in hooks hook-shims agents templates; do
         if [ ! -d "${SCRIPT_DIR}/${dir}" ]; then
             log_error "Missing source directory: ${SCRIPT_DIR}/${dir}"
             missing=$((missing + 1))
@@ -358,6 +358,22 @@ install_hooks() {
             log_success "  ${basename_file}"
         fi
     done < <(find "$hooks_src" -maxdepth 1 -name '*.js' -print0 | sort -z)
+
+    local shims_src="${SCRIPT_DIR}/hook-shims"
+    if [ -d "$shims_src" ]; then
+        while IFS= read -r -d '' shimfile; do
+            local basename_file
+            basename_file="$(basename "$shimfile")"
+            local dest="${TARGET_HOOKS}/${basename_file}"
+
+            install_file "$shimfile" "$dest"
+            count=$((count + 1))
+
+            if [ "$QUIET" = false ] && [ "$DRY_RUN" = false ]; then
+                log_success "  ${basename_file}"
+            fi
+        done < <(find "$shims_src" -maxdepth 1 -name '*.js' -print0 | sort -z)
+    fi
 
     INSTALLED_HOOKS=$count
 
@@ -757,10 +773,16 @@ do_uninstall() {
 
     # List of project-team specific files to remove
     local project_team_hooks=(
+        "_project-hook-shim.js"
+        "agent-context-injector.js"
         "permission-checker.js"
+        "context-guide-loader.js"
         "standards-validator.js"
         "design-validator.js"
+        "error-recovery-advisor.js"
+        "git-commit-checker.js"
         "interface-validator.js"
+        "post-edit-analyzer.js"
         "cross-domain-notifier.js"
         "quality-gate.js"
         "pre-edit-impact-check.js"
@@ -768,6 +790,9 @@ do_uninstall() {
         "architecture-updater.js"
         "changelog-recorder.js"
         "domain-boundary-enforcer.js"
+        "session-memory-loader.js"
+        "session-summary-saver.js"
+        "skill-router.js"
         "task-board-sync.js"
         "project-team-hooks.json"
     )
