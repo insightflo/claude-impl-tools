@@ -27,15 +27,26 @@ AUTO_MAX_DYNAMIC_TASKS=""
 AUTO_WORKER_COUNT=""
 AUTO_MAX_CONSECUTIVE_FAILURES=""
 
-# Worker pool size based on mode
-declare -A WORKERS=(
-    [lite]=2
-    [standard]=4
-    [full]=8
-    [wave]=6
-    [sprint]=4
-)
-WORKER_COUNT=${WORKERS[$MODE]:-4}
+case "$MODE" in
+    lite)
+        WORKER_COUNT=2
+        ;;
+    standard)
+        WORKER_COUNT=4
+        ;;
+    full)
+        WORKER_COUNT=8
+        ;;
+    wave)
+        WORKER_COUNT=6
+        ;;
+    sprint)
+        WORKER_COUNT=4
+        ;;
+    *)
+        WORKER_COUNT=4
+        ;;
+esac
 
 # Colors
 if [ -t 1 ]; then
@@ -380,7 +391,7 @@ while [ $CURRENT_LAYER -lt $TOTAL_LAYERS ]; do
     fi
 
     # Update current layer
-    "$NODE_CMD" "$SCRIPT_DIR/engine/state.js" update "$CURRENT_LAYER" "current_layer=$LAYER_NUM" &>/dev/null
+    "$NODE_CMD" "$SCRIPT_DIR/engine/state.js" set-layer "$LAYER_NUM" &>/dev/null
     CURRENT_LAYER=$LAYER_NUM
 
     log_success "Layer $LAYER_NUM/$TOTAL_LAYERS completed"

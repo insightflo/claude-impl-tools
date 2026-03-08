@@ -92,7 +92,7 @@ select_skill_categories() {
 
     CATEGORIES=$(gum choose --no-limit --cursor.foreground 212 --selected.foreground 212 \
         --header "설치할 카테고리를 선택하세요 (Space로 선택, Enter로 확인):" \
-        "Core - multi-ai-run, multi-ai-review, orchestrate-standalone (필수 추천)" \
+        "Core - multi-ai-run, multi-ai-review, orchestrate-standalone, task-board (필수 추천)" \
         "Orchestration - agile, governance-setup, workflow-guide" \
         "Quality - checkpoint, quality-auditor, security-review" \
         "Analysis - architecture, deps, impact, changelog, coverage" \
@@ -223,7 +223,7 @@ install_skills() {
 
     # Core skills
     if [[ "$INSTALL_ALL" == true ]] || [[ "$CATEGORIES" == *"Core"* ]]; then
-        for skill in multi-ai-run multi-ai-review orchestrate-standalone; do
+        for skill in multi-ai-run multi-ai-review orchestrate-standalone task-board; do
             if [[ -d "$SCRIPT_DIR/skills/$skill" ]]; then
                 mkdir -p "$TARGET_DIR/skills/$skill"
                 gum spin --spinner dot --title "$skill 설치 중..." -- \
@@ -456,7 +456,10 @@ show_completion() {
         "3. 오케스트레이션 시작:" \
         "   > /orchestrate-standalone" \
         "" \
-        "4. 멀티 AI 리뷰:" \
+        "4. 진행 상황 UI:" \
+        "   > /task-board show" \
+        "" \
+        "5. 멀티 AI 리뷰:" \
         "   > /multi-ai-review"
 
     # Show CLI status if multi-ai was configured

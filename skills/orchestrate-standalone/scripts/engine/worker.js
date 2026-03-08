@@ -14,6 +14,39 @@ const path = require('path');
 
 const STATE_FILE = '.claude/orchestrate-state.json';
 
+function buildTaskSyncDecision(task, output) {
+  const text = String(output || '');
+  if (!/TASKS\.md/i.test(text)) return null;
+
+  const permissionSignals = [
+    /requires permission/i,
+    /blocked by permissions/i,
+    /approve the write/i,
+    /approve to mark/i,
+    /write permission/i,
+    /update was blocked by permissions/i,
+    /권한이 필요합니다/,
+    /업데이트 권한이 필요합니다/,
+    /허용하시면/,
+    /마킹하겠습니다/
+  ];
+
+  if (!permissionSignals.some((pattern) => pattern.test(text))) {
+    return null;
+  }
+
+  return {
+    id: `DEC-TASKSYNC-${task.id}`,
+    type: 'task_sync_permission',
+    task_id: task.id,
+    task_title: task.description || task.id,
+    status: 'pending',
+    title: `Approve TASKS.md sync for ${task.id}`,
+    reason: 'Task completed but TASKS.md checkbox sync needs write approval.',
+    allowed_actions: ['approve', 'reject']
+  };
+}
+
 function writeStderr(message) {
   process.stderr.write(`${message}\n`);
 }
@@ -187,6 +220,12 @@ Please complete this task and report back when done.
           output: output.slice(-500), // Last 500 chars
           worker: 'worker-' + process.pid % 4
         });
+        const decision = buildTaskSyncDecision(task, output);
+        if (decision) {
+          upsertDecision(statePath, decision);
+        } else {
+          clearTaskDecisions(statePath, task.id);
+        }
         resolve({ id: task.id, status: 'completed', duration, output });
       } else {
         updateTaskState(statePath, task.id, 'failed', {
@@ -194,6 +233,7 @@ Please complete this task and report back when done.
           error: errorOutput.slice(-500) || `Process exited with code ${code}`,
           code
         });
+        clearTaskDecisions(statePath, task.id);
         reject(new Error(`Task ${task.id} failed with code ${code}`));
       }
     });
@@ -202,6 +242,7 @@ Please complete this task and report back when done.
     const timeoutHandle = setTimeout(() => {
       cli.kill('SIGTERM');
       updateTaskState(statePath, task.id, 'timeout', { duration: timeout });
+      clearTaskDecisions(statePath, task.id);
       reject(new Error(`Task ${task.id} timed out after ${timeout}ms`));
     }, timeout);
 
@@ -224,11 +265,14 @@ Please complete this task and report back when done.
  */
 function updateTaskState(statePath, taskId, status, data = {}) {
   try {
-    let state = { tasks: [], started_at: new Date().toISOString() };
+    let state = { tasks: [], decisions: [], started_at: new Date().toISOString() };
 
     if (fs.existsSync(statePath)) {
       state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
     }
+
+    if (!Array.isArray(state.tasks)) state.tasks = [];
+    if (!Array.isArray(state.decisions)) state.decisions = [];
 
     const taskIndex = state.tasks.findIndex(t => t.id === taskId);
     const taskState = {
@@ -247,6 +291,49 @@ function updateTaskState(statePath, taskId, status, data = {}) {
     fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
   } catch (error) {
     writeStderr(`Failed to update state: ${error.message}`);
+  }
+}
+
+function upsertDecision(statePath, decision) {
+  try {
+    let state = { tasks: [], decisions: [], started_at: new Date().toISOString() };
+
+    if (fs.existsSync(statePath)) {
+      state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+    }
+
+    if (!Array.isArray(state.tasks)) state.tasks = [];
+    if (!Array.isArray(state.decisions)) state.decisions = [];
+
+    const index = state.decisions.findIndex((entry) => entry.id === decision.id);
+    const next = {
+      updated_at: new Date().toISOString(),
+      ...decision
+    };
+
+    if (index >= 0) {
+      state.decisions[index] = { ...state.decisions[index], ...next };
+    } else {
+      state.decisions.push({ created_at: new Date().toISOString(), ...next });
+    }
+
+    fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
+  } catch (error) {
+    writeStderr(`Failed to update decisions: ${error.message}`);
+  }
+}
+
+function clearTaskDecisions(statePath, taskId) {
+  try {
+    if (!fs.existsSync(statePath)) return;
+    const state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+    if (!Array.isArray(state.decisions)) return;
+    const next = state.decisions.filter((entry) => entry.task_id !== taskId);
+    if (next.length === state.decisions.length) return;
+    state.decisions = next;
+    fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
+  } catch (error) {
+    writeStderr(`Failed to clear task decisions: ${error.message}`);
   }
 }
 

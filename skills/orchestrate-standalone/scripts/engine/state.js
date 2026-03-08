@@ -29,6 +29,7 @@ function loadState(projectDir = process.cwd()) {
       version: '1.0.0',
       started_at: new Date().toISOString(),
       tasks: [],
+      decisions: [],
       current_layer: 0,
       total_layers: 0,
       mode: 'standard'
@@ -36,7 +37,10 @@ function loadState(projectDir = process.cwd()) {
   }
 
   try {
-    return JSON.parse(fs.readFileSync(statePath, 'utf8'));
+    const state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+    if (!Array.isArray(state.tasks)) state.tasks = [];
+    if (!Array.isArray(state.decisions)) state.decisions = [];
+    return state;
   } catch (error) {
     throw new Error(`Failed to load state: ${error.message}`);
   }
@@ -133,6 +137,50 @@ function setCurrentLayer(layer, projectDir = process.cwd()) {
   const state = loadState(projectDir);
   state.current_layer = layer;
   saveState(state, projectDir);
+}
+
+function upsertDecision(decision, projectDir = process.cwd()) {
+  const state = loadState(projectDir);
+  const next = {
+    updated_at: new Date().toISOString(),
+    ...decision
+  };
+  const index = state.decisions.findIndex((entry) => entry.id === next.id);
+  if (index >= 0) {
+    state.decisions[index] = { ...state.decisions[index], ...next };
+  } else {
+    state.decisions.push({
+      created_at: new Date().toISOString(),
+      ...next
+    });
+  }
+  saveState(state, projectDir);
+  return state.decisions[index >= 0 ? index : state.decisions.length - 1];
+}
+
+function resolveDecision(decisionId, action, projectDir = process.cwd(), extra = {}) {
+  const state = loadState(projectDir);
+  const index = state.decisions.findIndex((entry) => entry.id === decisionId);
+  if (index === -1) return null;
+  state.decisions[index] = {
+    ...state.decisions[index],
+    status: action === 'approve' ? 'resolved' : 'rejected',
+    resolution_action: action,
+    resolved_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    ...extra
+  };
+  saveState(state, projectDir);
+  return state.decisions[index];
+}
+
+function clearTaskDecisions(taskId, projectDir = process.cwd()) {
+  const state = loadState(projectDir);
+  const nextDecisions = state.decisions.filter((entry) => entry.task_id !== taskId);
+  if (nextDecisions.length === state.decisions.length) return false;
+  state.decisions = nextDecisions;
+  saveState(state, projectDir);
+  return true;
 }
 
 /**
@@ -248,6 +296,15 @@ if (require.main === module) {
       console.log(JSON.stringify(getTask(taskId), null, 2));
       break;
 
+    case 'set-layer':
+      if (args.length !== 1) {
+        console.error('Usage: node state.js set-layer <layer>');
+        process.exit(1);
+      }
+      setCurrentLayer(Number(args[0]) || 0);
+      console.log(JSON.stringify(loadState(), null, 2));
+      break;
+
     case 'clear':
       clearState();
       console.log('State cleared');
@@ -284,6 +341,9 @@ module.exports = {
   getTask,
   getTasksByStatus,
   setCurrentLayer,
+  upsertDecision,
+  resolveDecision,
+  clearTaskDecisions,
   getProgress,
   isComplete,
   canResume,

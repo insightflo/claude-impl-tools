@@ -27,6 +27,8 @@ updated: 2026-03-05
 
 ```bash
 bash skills/task-board/scripts/board-show.sh
+bash skills/task-board/scripts/board-show.sh --approve=DEC-TASKSYNC-T0.1
+bash skills/task-board/scripts/board-show.sh --reject=DEC-TASKSYNC-T0.1
 ```
 
 ### `/task-board rebuild` — 보드 재빌드
@@ -75,6 +77,22 @@ node skills/task-board/scripts/board-builder.js --dry-run --json | \
     });
   "
 ```
+
+### `/task-board decisions` — 대기 중인 결정 보기
+
+```bash
+node skills/task-board/scripts/decision-gate.js list
+```
+
+### `/task-board resolve` — 결정 처리
+
+```bash
+node skills/task-board/scripts/decision-gate.js resolve --id=DEC-TASKSYNC-T0.1 --action=approve
+node skills/task-board/scripts/decision-gate.js resolve --id=DEC-TASKSYNC-T0.1 --action=reject
+```
+
+`board-show.sh --approve/--reject`가 whitebox UI 게이트웨이이고,
+`decision-gate.js`는 동일 동작의 직접 호출 경로입니다.
 
 ## 칸반 컬럼 매핑
 
@@ -142,5 +160,7 @@ project-team/hooks/
 "칸반 보드 보여줘"     → /task-board show
 "보드 다시 만들어"     → /task-board rebuild
 "blocked 태스크 확인"  → /task-board health
+"대기 중인 결정 보기"  → /task-board decisions
+"이 결정 승인해"       → /task-board resolve
 "협업 버스 초기화"     → /task-board init
 ```

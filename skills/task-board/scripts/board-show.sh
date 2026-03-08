@@ -18,14 +18,23 @@ BUILDER="$(dirname "$0")/board-builder.js"
 
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(pwd)}"
 REBUILD=false
+DECISION_ID=""
+DECISION_ACTION=""
 for arg in "$@"; do
   case "$arg" in
     --project-dir=*) PROJECT_DIR="${arg#--project-dir=}" ;;
     --rebuild) REBUILD=true ;;
+    --approve=*) DECISION_ID="${arg#--approve=}"; DECISION_ACTION="approve" ;;
+    --reject=*) DECISION_ID="${arg#--reject=}"; DECISION_ACTION="reject" ;;
   esac
 done
 
 BOARD_FILE="$PROJECT_DIR/.claude/collab/board-state.json"
+
+if [[ -n "$DECISION_ID" ]]; then
+  node "$(dirname "$0")/decision-gate.js" resolve --project-dir="$PROJECT_DIR" --id="$DECISION_ID" --action="$DECISION_ACTION"
+  REBUILD=true
+fi
 
 # ---------------------------------------------------------------------------
 # Rebuild if requested or missing
@@ -100,6 +109,21 @@ for (let row = 0; row < maxRows; row++) {
     } else {
       process.stdout.write(' '.repeat(COL_WIDTH) + '  ');
     }
+  }
+  process.stdout.write('\n');
+}
+
+const decisions = Array.isArray(board.decisions) ? board.decisions.filter((d) => d.status === 'decision_pending') : [];
+if (decisions.length > 0) {
+  process.stdout.write('Pending Decisions\n');
+  process.stdout.write('-----------------\n');
+  for (const decision of decisions) {
+    const actions = Array.isArray(decision.allowed_actions) ? decision.allowed_actions.join('/') : '';
+    process.stdout.write(`- ${decision.id}: ${decision.title}\n`);
+    if (decision.task_id) process.stdout.write(`  task: ${decision.task_id}\n`);
+    if (decision.reason) process.stdout.write(`  reason: ${decision.reason}\n`);
+    if (actions) process.stdout.write(`  actions: ${actions}\n`);
+    process.stdout.write(`  run: bash skills/task-board/scripts/board-show.sh --approve=${decision.id} --project-dir=.\n`);
   }
   process.stdout.write('\n');
 }

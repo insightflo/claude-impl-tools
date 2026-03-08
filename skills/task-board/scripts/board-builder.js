@@ -56,6 +56,9 @@ const COLUMN_MAP = {
   ESCALATED: 'Blocked',
   RESOLVED: 'Done',
   REJECTED: 'Done',
+  decision_pending: 'Blocked',
+  decision_resolved: 'Done',
+  decision_rejected: 'Done',
 };
 
 // ---------------------------------------------------------------------------
@@ -98,8 +101,33 @@ function parseOrchestrateState(statePath) {
       status: t.status || 'pending',
       agent: t.owner || t.agent || null,
       source: 'orchestrate-state',
-    }));
+    })).filter((t) => !/^\d+$/.test(String(t.id || '')));
   } catch { return []; }
+}
+
+function parseDecisions(statePath) {
+  if (!fs.existsSync(statePath)) return [];
+  try {
+    const state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+    if (!Array.isArray(state.decisions)) return [];
+    return state.decisions.map((decision) => ({
+      id: decision.id,
+      title: decision.title || decision.id,
+      status: decision.status === 'resolved'
+        ? 'decision_resolved'
+        : decision.status === 'rejected'
+          ? 'decision_rejected'
+          : 'decision_pending',
+      agent: null,
+      source: 'decision',
+      decision_type: decision.type || null,
+      task_id: decision.task_id || null,
+      allowed_actions: Array.isArray(decision.allowed_actions) ? decision.allowed_actions : [],
+      reason: decision.reason || null,
+    }));
+  } catch {
+    return [];
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -140,7 +168,7 @@ function parseReqFiles(requestsDir) {
 // Merge: orchestrate-state overrides tasks-md for same task ID
 // ---------------------------------------------------------------------------
 
-function mergeSources(tasksMd, orchestrateState, reqs) {
+function mergeSources(tasksMd, orchestrateState, reqs, decisions) {
   const byId = new Map();
 
   // Base: tasks-md
@@ -156,6 +184,8 @@ function mergeSources(tasksMd, orchestrateState, reqs) {
   // Add REQ cards (separate from tasks)
   for (const r of reqs) byId.set(r.id, r);
 
+  for (const decision of decisions) byId.set(decision.id, decision);
+
   return Array.from(byId.values());
 }
 
@@ -168,17 +198,26 @@ function buildBoard(cards) {
     version: '1.0',
     generated_at: new Date().toISOString(),
     columns: { Backlog: [], 'In Progress': [], Blocked: [], Done: [] },
+    decisions: [],
   };
 
   for (const card of cards) {
     const col = COLUMN_MAP[card.status] || 'Backlog';
-    state.columns[col].push({
+    const nextCard = {
       id: card.id,
       title: card.title,
       status: card.status,
       agent: card.agent || null,
       source: card.source,
-    });
+    };
+    if (card.task_id) nextCard.task_id = card.task_id;
+    if (card.decision_type) nextCard.decision_type = card.decision_type;
+    if (card.reason) nextCard.reason = card.reason;
+    if (Array.isArray(card.allowed_actions) && card.allowed_actions.length > 0) {
+      nextCard.allowed_actions = card.allowed_actions;
+      state.decisions.push(nextCard);
+    }
+    state.columns[col].push(nextCard);
   }
 
   return state;
@@ -199,8 +238,9 @@ function main() {
     : path.join(p, '.claude', 'orchestrate-state.json');
   const orchestrateState = parseOrchestrateState(statePath);
   const reqs = parseReqFiles(path.join(p, '.claude', 'collab', 'requests'));
+  const decisions = parseDecisions(statePath);
 
-  const cards = mergeSources(tasksMd, orchestrateState, reqs);
+  const cards = mergeSources(tasksMd, orchestrateState, reqs, decisions);
   const board = buildBoard(cards);
 
   if (!opts.dryRun) {
@@ -219,4 +259,4 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { parseTasks, parseOrchestrateState, parseReqFiles, mergeSources, buildBoard, COLUMN_MAP };
+module.exports = { parseTasks, parseOrchestrateState, parseReqFiles, parseDecisions, mergeSources, buildBoard, COLUMN_MAP };

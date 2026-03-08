@@ -485,9 +485,11 @@ async function main() {
   }
 }
 
-main().catch(() => {
-  // Silent exit - hooks must never break the session
-});
+if (require.main === module) {
+  main().catch(() => {
+    // Silent exit - hooks must never break the session
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Exports for testing
