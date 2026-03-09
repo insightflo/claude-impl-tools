@@ -193,6 +193,9 @@ function normalizePendingGate(gate = null) {
     timeout_policy: typeof gate.timeout_policy === 'string' ? gate.timeout_policy : 'wait_for_operator',
     created_at: typeof gate.created_at === 'string' ? gate.created_at : null,
     preview: typeof gate.preview === 'string' ? gate.preview : '',
+    trigger_type: typeof gate.trigger_type === 'string' ? gate.trigger_type : null,
+    trigger_reason: typeof gate.trigger_reason === 'string' ? gate.trigger_reason : null,
+    recommendation: typeof gate.recommendation === 'string' ? gate.recommendation : null,
   };
 }
 

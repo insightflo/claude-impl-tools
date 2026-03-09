@@ -162,6 +162,29 @@ function createGateId(stage, autoState) {
   return `${String(stage || 'gate').replace(/[^a-zA-Z0-9_-]+/g, '-').toLowerCase()}-${sessionId}-${token}`;
 }
 
+function inferTriggerMetadata(gateName, preview, options = {}) {
+  const triggerType = typeof options.triggerType === 'string' && options.triggerType.trim()
+    ? options.triggerType.trim()
+    : 'user_confirmation';
+  const normalizedPreview = String(preview || '').trim();
+  const defaultReason = normalizedPreview || `${gateName} needs operator confirmation.`;
+  const recommendation = typeof options.recommendation === 'string' && options.recommendation.trim()
+    ? options.recommendation.trim()
+    : triggerType === 'agent_conflict'
+      ? 'Review the competing recommendations and choose the option you want the run to follow.'
+      : triggerType === 'risk_acknowledgement'
+        ? 'Acknowledge the risk only if you want the current plan to continue as-is.'
+        : 'Approve to continue, or reject to keep the run paused and revise the plan.';
+
+  return {
+    trigger_type: triggerType,
+    trigger_reason: typeof options.triggerReason === 'string' && options.triggerReason.trim()
+      ? options.triggerReason.trim()
+      : defaultReason,
+    recommendation,
+  };
+}
+
 function normalizePendingGate(autoState, gateName, preview, options = {}) {
   const existing = autoState && autoState.pending_gate ? autoState.pending_gate : null;
   if (existing && existing.stage === options.stage && existing.gate_name === gateName) {
@@ -182,6 +205,7 @@ function normalizePendingGate(autoState, gateName, preview, options = {}) {
     timeout_policy: options.timeoutPolicy || `wait_${options.approvalWaitMs || DEFAULT_APPROVAL_WAIT_MS}ms`,
     created_at: new Date().toISOString(),
     preview,
+    ...inferTriggerMetadata(gateName, preview, options),
   };
 }
 
@@ -197,6 +221,9 @@ async function emitApprovalLifecycle(type, gate, actor, projectDir) {
     data.choices = gate.choices;
     data.default_behavior = gate.default_behavior;
     data.timeout_policy = gate.timeout_policy;
+    data.trigger_type = gate.trigger_type || null;
+    data.trigger_reason = gate.trigger_reason || null;
+    data.recommendation = gate.recommendation || null;
   }
 
   await emitRunEventStrict({
@@ -238,6 +265,9 @@ async function waitForFileGateDecision(autoState, gateName, preview, options = {
     taskId: options.taskId,
     timeoutPolicy: options.timeoutPolicy,
     approvalWaitMs,
+    triggerType: options.triggerType,
+    triggerReason: options.triggerReason,
+    recommendation: options.recommendation,
   });
 
   if (!autoState.pending_gate || autoState.pending_gate.gate_id !== gate.gate_id) {

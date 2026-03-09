@@ -690,6 +690,65 @@ describe('whitebox control plane', () => {
     expect(flow.filter((event) => event.type === 'execution_resumed')).toHaveLength(1);
   });
 
+  test('waitForFileGateDecision preserves custom trigger metadata end-to-end', async () => {
+    const projectDir = makeTempProject('whitebox-control-trigger-runtime-');
+    let orchestrator;
+    let engineAdapter;
+
+    jest.isolateModules(() => {
+      orchestrator = require('../../../skills/orchestrate-standalone/scripts/auto/auto-orchestrator');
+      engineAdapter = require('../../../skills/orchestrate-standalone/scripts/auto/engine-adapter');
+    });
+
+    const autoState = engineAdapter.initAutoState('Trigger propagation fixture', projectDir);
+    const decisionPromise = orchestrator.waitForFileGateDecision(autoState, 'Conflict Gate', 'Builder and Reviewer disagree.', {
+      projectDir,
+      stage: 'resolve_conflict',
+      taskId: 'T4.9',
+      approvalPollIntervalMs: 10,
+      approvalWaitMs: 500,
+      triggerType: 'agent_conflict',
+      triggerReason: 'Agent conflict detected for T4.9.',
+      recommendation: 'Review both options and choose the path you want to continue.',
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    const current = engineAdapter.loadAutoState(projectDir);
+    expect(current.pending_gate).toMatchObject({
+      gate_name: 'Conflict Gate',
+      task_id: 'T4.9',
+      trigger_type: 'agent_conflict',
+      trigger_reason: 'Agent conflict detected for T4.9.',
+      recommendation: 'Review both options and choose the path you want to continue.',
+    });
+
+    await writeControlCommand({
+      type: 'approve',
+      producer: 'whitebox-cli',
+      target: { gate_id: current.pending_gate.gate_id },
+      actor: { id: 'operator-trigger-runtime' },
+      correlation_id: current.pending_gate.correlation_id,
+    }, { projectDir });
+
+    const decision = await decisionPromise;
+    expect(decision.action).toBe('approve');
+
+    const parsed = readEvents({ projectDir, tolerateTrailingPartialLine: false });
+    const flow = parsed.events.filter((event) => event.correlation_id === current.pending_gate.correlation_id);
+    const approvalRequired = flow.find((event) => event.type === 'approval_required');
+
+    expect(approvalRequired).toBeTruthy();
+    expect(approvalRequired.data).toMatchObject({
+      gate_id: current.pending_gate.gate_id,
+      task_id: 'T4.9',
+      trigger_type: 'agent_conflict',
+      trigger_reason: 'Agent conflict detected for T4.9.',
+      recommendation: 'Review both options and choose the path you want to continue.',
+    });
+
+  });
+
   test('control-state projects pending approvals from canonical gate lifecycle', () => {
     const projectDir = makeTempProject('whitebox-control-state-');
     writeJson(path.join(projectDir, '.claude', 'orchestrate', 'auto-state.json'), {
@@ -751,6 +810,76 @@ describe('whitebox control plane', () => {
       task_id: 'T4.1',
       gate_name: 'Final Gate',
       correlation_id: 'gate:run-control-state-1:final_gate',
+    });
+  });
+
+  test('control-state preserves trigger metadata for selective interventions', () => {
+    const projectDir = makeTempProject('whitebox-control-trigger-');
+    writeJson(path.join(projectDir, '.claude', 'orchestrate', 'auto-state.json'), {
+      session_id: 'run-control-trigger-1',
+      pending_gate: {
+        gate_id: 'gate-control-trigger-1',
+        gate_name: 'Conflict Gate',
+        stage: 'resolve_conflict',
+        task_id: 'T4.9',
+        run_id: 'run-control-trigger-1',
+        correlation_id: 'gate:run-control-trigger-1:resolve_conflict',
+        choices: ['approve', 'reject'],
+        default_behavior: 'wait_for_operator',
+        timeout_policy: 'wait_60000ms',
+        created_at: '2026-03-07T00:00:00.000Z',
+        preview: 'Builder and Reviewer disagree.',
+        trigger_type: 'agent_conflict',
+        trigger_reason: 'Agent conflict detected for T4.9.',
+        recommendation: 'Review both options and choose the path you want to continue.',
+      },
+    });
+    fs.writeFileSync(path.join(projectDir, '.claude', 'collab', 'events.ndjson'), `${JSON.stringify({
+      schema_version: '1.0',
+      event_id: 'evt-control-trigger-1',
+      ts: '2026-03-07T00:00:00.000Z',
+      type: 'approval_required',
+      producer: 'orchestrate-auto',
+      correlation_id: 'gate:run-control-trigger-1:resolve_conflict',
+      data: {
+        actor: 'system',
+        gate_id: 'gate-control-trigger-1',
+        task_id: 'T4.9',
+        run_id: 'run-control-trigger-1',
+        choices: ['approve', 'reject'],
+        trigger_type: 'agent_conflict',
+        trigger_reason: 'Agent conflict detected for T4.9.',
+        recommendation: 'Review both options and choose the path you want to continue.',
+      },
+    })}
+${JSON.stringify({
+      schema_version: '1.0',
+      event_id: 'evt-control-trigger-2',
+      ts: '2026-03-07T00:00:01.000Z',
+      type: 'execution_paused',
+      producer: 'orchestrate-auto',
+      correlation_id: 'gate:run-control-trigger-1:resolve_conflict',
+      data: {
+        actor: 'system',
+        gate_id: 'gate-control-trigger-1',
+        task_id: 'T4.9',
+        run_id: 'run-control-trigger-1',
+      },
+    })}
+`, 'utf8');
+
+    const result = spawnSync(process.execPath, [whiteboxControlStateScript, `--project-dir=${projectDir}`, '--json'], {
+      encoding: 'utf8',
+    });
+
+    expect(result.status).toBe(0);
+    const state = JSON.parse(result.stdout);
+    expect(state.pending_approvals[0]).toMatchObject({
+      gate_id: 'gate-control-trigger-1',
+      task_id: 'T4.9',
+      trigger_type: 'agent_conflict',
+      trigger_reason: 'Agent conflict detected for T4.9.',
+      recommendation: 'Review both options and choose the path you want to continue.',
     });
   });
 
@@ -1023,6 +1152,33 @@ describe('whitebox control plane', () => {
     ]);
   });
 
+  test('whitebox explain includes trigger metadata for selective interventions', () => {
+    const projectDir = makeTempProject('whitebox-explain-trigger-');
+    writeJson(path.join(projectDir, '.claude', 'collab', 'control-state.json'), {
+      pending_approval_count: 1,
+      pending_approvals: [{
+        gate_id: 'gate-explain-trigger-1',
+        task_id: 'T6.9',
+        trigger_type: 'risk_acknowledgement',
+        trigger_reason: 'This step touches a high-risk path and needs explicit acknowledgement.',
+        recommendation: 'Approve only if you want the risky path to continue unchanged.',
+        evidence_paths: [path.join(projectDir, '.claude', 'collab', 'events.ndjson')],
+      }],
+    });
+    writeJson(path.join(projectDir, '.claude', 'collab', 'board-state.json'), { columns: { Backlog: [], 'In Progress': [], Blocked: [], Done: [] } });
+    fs.writeFileSync(path.join(projectDir, '.claude', 'collab', 'events.ndjson'), '', 'utf8');
+
+    const report = buildExplain({ projectDir, taskId: 'T6.9', reqId: '', gate: '' });
+    expect(report.ok).toBe(true);
+    expect(report.trigger).toEqual({
+      type: 'risk_acknowledgement',
+      recommendation: 'Approve only if you want the risky path to continue unchanged.',
+    });
+    expect(report.reason).toBe('This step touches a high-risk path and needs explicit acknowledgement.');
+    expect(report.remediation).toBe('Approve only if you want the risky path to continue unchanged.');
+    expect(report.options[0].recommendation).toBe('Approve only if you want the risky path to continue unchanged.');
+  });
+
   test('whitebox explain stays safe when evidence is missing', () => {
     const projectDir = makeTempProject('whitebox-explain-missing-');
     writeJson(path.join(projectDir, '.claude', 'collab', 'board-state.json'), { columns: { Backlog: [], 'In Progress': [], Blocked: [], Done: [] } });
@@ -1096,6 +1252,75 @@ describe('whitebox control plane', () => {
     expect(result.stdout).toContain('a approve');
     expect(result.stdout).toContain('r reject');
     expect(result.stdout).toContain('q quit');
+  });
+
+  test('board-builder projects intervention triggers into board decisions', () => {
+    const projectDir = makeTempProject('whitebox-board-trigger-');
+    fs.writeFileSync(path.join(projectDir, 'TASKS.md'), '## Phase 7\n### [ ] T7.9: Conflict task\n', 'utf8');
+    writeJson(path.join(projectDir, '.claude', 'orchestrate-state.json'), { tasks: [] });
+    writeJson(path.join(projectDir, '.claude', 'orchestrate', 'auto-state.json'), {
+      session_id: 'run-board-trigger-1',
+      pending_gate: {
+        gate_id: 'gate-board-trigger-1',
+        gate_name: 'Conflict Gate',
+        stage: 'resolve_conflict',
+        task_id: 'T7.9',
+        run_id: 'run-board-trigger-1',
+        correlation_id: 'gate:board-trigger-1',
+        choices: ['approve', 'reject'],
+        default_behavior: 'wait_for_operator',
+        timeout_policy: 'wait_60000ms',
+        created_at: '2026-03-07T00:00:00.000Z',
+        preview: 'conflict preview',
+        trigger_type: 'agent_conflict',
+        trigger_reason: 'Builder and Reviewer disagree on T7.9.',
+        recommendation: 'Review the conflict and choose a side before continuing.',
+      },
+    });
+    fs.writeFileSync(path.join(projectDir, '.claude', 'collab', 'events.ndjson'), `${JSON.stringify({
+      schema_version: '1.0',
+      event_id: 'evt-board-trigger-1',
+      ts: '2026-03-07T00:00:00.000Z',
+      type: 'approval_required',
+      producer: 'orchestrate-auto',
+      correlation_id: 'gate:board-trigger-1',
+      data: {
+        gate_id: 'gate-board-trigger-1',
+        gate_name: 'Conflict Gate',
+        task_id: 'T7.9',
+        run_id: 'run-board-trigger-1',
+        choices: ['approve', 'reject'],
+        trigger_type: 'agent_conflict',
+        trigger_reason: 'Builder and Reviewer disagree on T7.9.',
+        recommendation: 'Review the conflict and choose a side before continuing.',
+      },
+    })}
+${JSON.stringify({
+      schema_version: '1.0',
+      event_id: 'evt-board-trigger-2',
+      ts: '2026-03-07T00:00:01.000Z',
+      type: 'execution_paused',
+      producer: 'orchestrate-auto',
+      correlation_id: 'gate:board-trigger-1',
+      data: { gate_id: 'gate-board-trigger-1', task_id: 'T7.9', run_id: 'run-board-trigger-1' },
+    })}
+`, 'utf8');
+
+    const result = spawnSync(process.execPath, [boardBuilderScript, `--project-dir=${projectDir}`, '--json'], {
+      encoding: 'utf8',
+    });
+
+    expect(result.status).toBe(0);
+    const board = JSON.parse(result.stdout);
+    expect(board.decisions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: 'gate-board-trigger-1',
+        task_id: 'T7.9',
+        decision_type: 'agent_conflict',
+        trigger_type: 'agent_conflict',
+        recommendation: 'Review the conflict and choose a side before continuing.',
+      }),
+    ]));
   });
 
   test('interactive TUI approve key routes through whitebox control CLI', () => {
