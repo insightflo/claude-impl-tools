@@ -44,10 +44,10 @@ curl -fsSL https://raw.githubusercontent.com/insightflo/claude-imple-skills/main
 
 | Component | Count | Purpose |
 |-----------|-------|---------|
-| **Skills** | 20 | Task execution, analysis, automation |
-| **Agents** | 10 | Role-based specialist team |
-| **Hooks** | 17 | Auto-validation (security, quality, impact) |
-| **Templates** | 7 | Protocols, ADR, contracts |
+| **Skills** | 21 | Task execution, analysis, automation |
+| **Agents** | 13 | Canonical roles plus compatibility aliases |
+| **Hooks** | 18 | Auto-validation, gates, sync, and helper checks |
+| **Templates** | 11 | Project Team protocols, ADR, contracts, standards |
 
 ---
 
@@ -84,6 +84,7 @@ curl -fsSL https://raw.githubusercontent.com/insightflo/claude-imple-skills/main
 |-------|--------------|
 | `/orchestrate-standalone` | Execute 50-200 tasks with specialist agents (`--mode=sprint` for Agile PI planning + sprint review gates) |
 | `/multi-ai-run` | Parallel AI execution management |
+| `/whitebox` | Inspect execution state, task summaries, health, and control-plane details |
 
 ### Maintenance
 
@@ -106,29 +107,33 @@ For larger projects, deploy an **AI agent team** with automatic quality gates:
 
 ```
 project-team/
-├── agents/          # 9 specialists
-├── hooks/           # 17 auto-validators
+├── agents/          # 13 role definitions and aliases
+├── hooks/           # 18 validation and helper hooks
 ├── scripts/         # collaboration & conflict resolution
 ├── references/      # communication protocols
 ├── skills/          # 5 maintenance tools
 └── templates/       # protocols & contracts
 ```
 
-### Agents (10)
+### Agents (13)
 
 | Role | Responsibility |
 |------|----------------|
-| **Project Manager** | Coordination, task routing |
-| **Chief Architect** | Standards, ADR, VETO authority |
-| **Chief Designer** | Design system consistency |
-| **QA Manager** | Quality gates, testing standards |
-| **DBA** | Database schema, migrations |
-| **Security Specialist** | Vulnerability scanning |
-| **Frontend Specialist** | UI/UX implementation |
-| **Backend Specialist** | API, business logic |
-| **Maintenance Analyst** | Production impact analysis |
+| **Lead** | Canonical coordination role |
+| **Builder** | Canonical implementation role |
+| **Reviewer** | Canonical review role |
+| **Designer** | Canonical design specialist |
+| **DBA** | Canonical data specialist |
+| **Security Specialist** | Canonical security specialist |
+| **Project Manager** | Compatibility alias for coordination workflows |
+| **Chief Architect** | Compatibility alias for architecture workflows |
+| **Chief Designer** | Compatibility alias for design workflows |
+| **QA Manager** | Compatibility alias for review and QA workflows |
+| **Frontend Specialist** | Compatibility alias for frontend execution |
+| **Backend Specialist** | Compatibility alias for backend execution |
+| **Maintenance Analyst** | Compatibility alias for production-impact workflows |
 
-### Hooks (17)
+### Hooks (18)
 
 Automatic validations that run before/after file edits:
 
@@ -149,6 +154,13 @@ Automatic validations that run before/after file edits:
 | **Full** | Regulated industries | All agents, all hooks |
 
 See `project-team/docs/MODES.md` for details.
+
+### What changed in the current `main`
+
+- `--mode=wave` now uses the real worker pool path, emits `.claude/wave-plan.json`, and defaults to a 6-worker large-project profile.
+- Whitebox board surfacing opens automatically at orchestrate startup in TTY sessions, with `WHITEBOX_AUTO_OPEN_TUI=0` as the opt-out.
+- Layer failures now stop the run cleanly, report failed task IDs, and cancel same-layer sibling work instead of silently continuing.
+- Project Team installs now include the hook support libraries required by `policy-gate` and `permission-checker`.
 
 ---
 
@@ -192,13 +204,24 @@ Start
 
 **Wave mode (current CLI)**: For 80+ tasks, use `--mode=wave` for the large-project execution profile with whitebox board surfacing and a 6-worker default.
 
+### Tested execution flows
+
+These are the flows validated against the current `main` branch:
+
+| Project size | Recommended flow |
+|--------------|------------------|
+| Small (<=30 tasks) | `/agile auto` |
+| Medium (30-80 tasks) | `/workflow` -> `/governance-setup` -> `project-team/install.sh --mode=standard` -> `/orchestrate-standalone --mode=standard` |
+| Large (80+ tasks) | `/workflow` -> `/governance-setup` -> `project-team/install.sh --mode=standard` -> `/orchestrate-standalone --mode=wave` |
+| Failure-path verification | Installed `--mode=wave` run with deterministic task failure -> fail-fast + blocked downstream tasks |
+
 ---
 
 ## Repository Structure
 
 ```
 claude-imple-skills/
-├── skills/                    # 18 skills
+├── skills/                    # 21 skills
 │   ├── workflow-guide/        # Meta hub
 │   ├── governance-setup/      # Phase 0 setup
 │   ├── agile/                 # Layered sprints
@@ -216,12 +239,13 @@ claude-imple-skills/
 │   ├── changelog/             # Change history
 │   ├── coverage/              # Test coverage
 │   ├── architecture/          # Architecture map
+│   ├── whitebox/              # Execution state inspection and summaries
 │   └── statusline/            # TASKS.md progress in status bar
 │
 ├── project-team/              # Agent team system
 │   ├── install.sh             # Installation script
-│   ├── agents/                # 10 agent definitions
-│   ├── hooks/                 # 17 auto-validation hooks
+│   ├── agents/                # 13 role definitions and aliases
+│   ├── hooks/                 # 18 validation and helper hooks
 │   ├── scripts/               # Collaboration & conflict resolution scripts
 │   ├── references/            # Communication protocols & specs
 │   ├── skills/                # 5 maintenance skills
