@@ -84,7 +84,7 @@ curl -fsSL https://raw.githubusercontent.com/insightflo/claude-imple-skills/main
 |-------|--------------|
 | `/orchestrate-standalone` | Execute 50-200 tasks with specialist agents (`--mode=sprint` for Agile PI planning + sprint review gates) |
 | `/multi-ai-run` | Parallel AI execution management |
-| `/whitebox` | Inspect execution state, task summaries, health, and control-plane details |
+| `/whitebox` | Inspect execution state, task summaries, health, and intervention-aware control-plane details |
 
 ### Maintenance
 
@@ -97,7 +97,7 @@ curl -fsSL https://raw.githubusercontent.com/insightflo/claude-imple-skills/main
 | `/architecture` | Map project structure & domains |
 | `/compress` | Long Context optimization (H2O pattern) |
 | `/statusline` | Display TASKS.md progress in Claude Code status bar |
-| `/task-board` | Visualize agent tasks as a Kanban board (Backlog / In Progress / Blocked / Done) |
+| `/task-board` | Visualize agent tasks and pending interventions as a Kanban board |
 
 ---
 
@@ -159,6 +159,7 @@ See `project-team/docs/MODES.md` for details.
 
 - `--mode=wave` now uses the real worker pool path, emits `.claude/wave-plan.json`, and defaults to a 6-worker large-project profile.
 - Whitebox board surfacing opens automatically at orchestrate startup in TTY sessions, with `WHITEBOX_AUTO_OPEN_TUI=0` as the opt-out.
+- Whitebox approvals now surface typed intervention triggers such as `user_confirmation`, `agent_conflict`, and `risk_acknowledgement` across explain/status/task-board flows.
 - Layer failures now stop the run cleanly, report failed task IDs, and cancel same-layer sibling work instead of silently continuing.
 - Project Team installs now include the hook support libraries required by `policy-gate` and `permission-checker`.
 
@@ -202,7 +203,7 @@ Start
 | 80-200 | `/orchestrate --mode=wave` | Large-project wave profile | Recommended |
 | 200+ | Split into sub-projects | Domain-parallel agents | Required |
 
-**Wave mode (current CLI)**: For 80+ tasks, use `--mode=wave` for the large-project execution profile with whitebox board surfacing and a 6-worker default.
+**Wave mode (current CLI)**: For 80+ tasks, use `--mode=wave` for the large-project execution profile with whitebox board surfacing, typed intervention triggers, and a 6-worker default.
 
 ### Tested execution flows
 

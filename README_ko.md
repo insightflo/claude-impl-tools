@@ -88,7 +88,7 @@ cd claude-imple-skills/project-team
 |------|------|
 | `/orchestrate-standalone` | 50~200개 태스크를 전문가 에이전트로 실행 (`--mode=sprint`으로 Agile PI 계획 + 스프린트 리뷰 게이트) |
 | `/multi-ai-run` | 병렬 AI 실행 관리 |
-| `/whitebox` | 실행 상태, 태스크 요약, health, control-plane 정보를 점검 |
+| `/whitebox` | 실행 상태, 태스크 요약, health, 개입형 control-plane 정보를 점검 |
 
 ### 유지보수
 
@@ -101,7 +101,7 @@ cd claude-imple-skills/project-team
 | `/architecture` | 프로젝트 구조 & 도메인 맵 |
 | `/compress` | Long Context 최적화 (H2O 패턴) |
 | `/statusline` | Claude Code 상태바에 TASKS.md 진행 상황 표시 |
-| `/task-board` | 에이전트 태스크를 칸반 보드로 시각화 (Backlog / In Progress / Blocked / Done) |
+| `/task-board` | 에이전트 태스크와 대기 중인 개입 항목을 칸반 보드로 시각화 |
 
 ---
 
@@ -163,6 +163,7 @@ project-team/
 
 - `--mode=wave`가 실제 worker pool 경로를 사용하고, `.claude/wave-plan.json`을 생성하며, 대규모 프로젝트 기본값으로 6-worker profile을 사용합니다.
 - orchestrate 시작 시 TTY 환경에서는 whitebox board가 자동으로 열리며, `WHITEBOX_AUTO_OPEN_TUI=0`으로 opt-out 할 수 있습니다.
+- whitebox approval 흐름은 이제 `user_confirmation`, `agent_conflict`, `risk_acknowledgement` 같은 typed intervention trigger를 explain/status/task-board 전반에 표시합니다.
 - layer 실패 시 failed task ID를 출력하고, 같은 layer의 sibling 작업도 취소하며, 조용히 계속 진행하지 않습니다.
 - Project Team 설치 경로는 이제 `policy-gate`, `permission-checker`가 요구하는 hook support library도 함께 설치합니다.
 
@@ -206,7 +207,7 @@ project-team/
 | 80-200 | `/orchestrate --mode=wave` | 대규모 실행용 wave profile | 권장 |
 | 200+ | 하위 프로젝트 분할 | 도메인 병렬 에이전트 | 필수 |
 
-**Wave mode (current CLI)**: 80개 이상 태스크는 `--mode=wave`를 사용하세요. 현재 공개 CLI는 whitebox board surfacing과 6-worker 기본값을 제공합니다.
+**Wave mode (current CLI)**: 80개 이상 태스크는 `--mode=wave`를 사용하세요. 현재 공개 CLI는 whitebox board surfacing, typed intervention trigger, 6-worker 기본값을 제공합니다.
 
 ### 검증된 실행 흐름
 
