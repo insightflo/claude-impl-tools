@@ -1,6 +1,6 @@
 ---
 name: task-board
-description: AI 에이전트 태스크를 실시간 칸반 보드로 시각화합니다. TASKS.md + orchestrate-state + REQ 파일을 통합하여 board-state.json을 생성하고 터미널에 렌더링합니다.
+description: AI 에이전트 태스크를 실시간 칸반 보드로 시각화합니다. TASKS.md + orchestrate-state + REQ 파일을 통합하여 board-state.json을 생성하고, pending intervention queue 를 함께 터미널에 렌더링합니다.
 trigger: /task-board, "칸반 보드", "태스크 보드", "보드 보여줘", "진행 상황 시각화"
 version: 1.0.0
 updated: 2026-03-05
@@ -23,9 +23,9 @@ updated: 2026-03-05
 
 ## 명령어
 
-### `/task-board show` — 보드 + pending approvals 표시
+### `/task-board show` — 보드 + pending interventions 표시
 
-현재 `board-state.json`과 `control-state.json`을 읽어 칸반 + pending approval shell 을 렌더링:
+현재 `board-state.json`과 `control-state.json`을 읽어 칸반 + pending intervention shell 을 렌더링:
 
 ```bash
 bash skills/task-board/scripts/board-show.sh
@@ -96,6 +96,8 @@ node skills/task-board/scripts/decision-gate.js resolve --id=DEC-TASKSYNC-T0.1 -
 `board-show.sh --approve/--reject`가 whitebox UI 게이트웨이이고,
 `decision-gate.js`는 동일 동작의 직접 호출 경로입니다.
 
+pending decision 항목은 `trigger_type`, `reason`, `recommendation` 을 함께 보여주며, 현재 MVP 에서는 `user_confirmation`, `agent_conflict`, `risk_acknowledgement` 를 구분해서 surfacing 합니다.
+
 ## 칸반 컬럼 매핑
 
 | 컬럼 | orchestrate-state 상태 | REQ 상태 |
@@ -123,8 +125,8 @@ node skills/task-board/scripts/decision-gate.js resolve --id=DEC-TASKSYNC-T0.1 -
 ## Ratatui MVP keybindings
 
 - navigation: `j/k` 또는 화살표
-- `a`: selected pending approval approve (`whitebox-control.js approve` subprocess)
-- `r`: selected pending approval reject (`whitebox-control.js reject` subprocess)
+- `a`: selected pending intervention approve (`whitebox-control.js approve` subprocess)
+- `r`: selected pending intervention reject (`whitebox-control.js reject` subprocess)
 - `q` / `esc`: 종료
 
 Snapshot 모드(`WHITEBOX_TUI_CAPTURE=1` 또는 `--snapshot`)도 동일한 approval hints 를 표시한다.

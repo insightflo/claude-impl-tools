@@ -39,6 +39,7 @@ updated: 2026-03-05
 > - 6-worker 기본값
 > - startup/completion 시 whitebox board 자동 surfacing
 > - 기존 gate-chain / worker / board / control-plane 연동 유지
+> - paused gate 는 whitebox 에서 `user_confirmation`, `agent_conflict`, `risk_acknowledgement` trigger metadata 와 함께 surfacing 가능
 >
 > **아직 공개 CLI로 제공하지 않는 것**
 > - `--phase`

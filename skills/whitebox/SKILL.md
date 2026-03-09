@@ -1,6 +1,6 @@
 ---
 name: whitebox
-description: AI 코딩 과정을 관찰/설명/통제하는 화이트박스 컨트롤 플레인 엔트리포인트입니다. /whitebox 는 유일한 제품 경계이며 status|explain|health|approvals 가 현재 상태, 근거 기반 선택지, 승인 제어, 실행 환경 건전성을 노출합니다.
+description: AI 코딩 과정을 관찰/설명/통제하는 화이트박스 컨트롤 플레인 엔트리포인트입니다. /whitebox 는 유일한 제품 경계이며 status|explain|health|approvals 가 현재 상태, intervention trigger, 근거 기반 선택지, 승인 제어, 실행 환경 건전성을 노출합니다.
 trigger: /whitebox, /whitebox status, /whitebox explain, /whitebox health, /whitebox approvals, "화이트박스", "왜 막혔어", "상태 보여줘", "승인해", "거절해", "health check"
 version: 1.0.0
 updated: 2026-03-07
@@ -15,6 +15,7 @@ updated: 2026-03-07
 - 현재 진행(run)과 게이트 상태를 빠르게 파악한다.
 - 작업/REQ/게이트가 막힌 이유를 근거(아티팩트) 기반으로 설명한다.
 - 승인 게이트용 operator-intent/control artifact 계약을 `/whitebox` 표면에 고정한다.
+- pending approval queue 를 intervention queue 로 해석해 `user_confirmation`, `agent_conflict`, `risk_acknowledgement` 같은 개입 이유를 드러낸다.
 - 구독형 CLI 실행기(claude/codex/gemini)와 핵심 아티팩트의 건전성을 점검한다.
 
 ## 비목적 (Non-goals)
@@ -73,9 +74,15 @@ updated: 2026-03-07
 
 - Inputs: `.claude/collab/events.ndjson`, `.claude/collab/control-state.json`, `TASKS.md`, `.claude/orchestrate-state.json`, `.claude/collab/requests/*.md`, `.claude/collab/decisions/*.md`
 - Outputs:
-  - Human: "무엇이 / 왜 / 어디서" 막혔는지 + approval 인 경우 approve/reject 선택지
-  - JSON (`--json`): `{ ok, target, reason, options[], evidence_paths, correlation }`
+  - Human: "무엇이 / 왜 / 어디서" 막혔는지 + approval 인 경우 approve/reject 선택지 + trigger/recommendation
+  - JSON (`--json`): `{ ok, target, reason, options[], trigger, evidence_paths, correlation }`
 - Side effects: 없음 (inspection only)
+
+**Intervention trigger types**:
+
+- `user_confirmation` — 사용자의 명시적 확인이 필요한 경우
+- `agent_conflict` — 에이전트 간 권고가 충돌해서 operator 선택이 필요한 경우
+- `risk_acknowledgement` — 현재 계획을 계속 진행하려면 위험을 명시적으로 수용해야 하는 경우
 
 ### `/whitebox approvals` — canonical approval control surface
 
@@ -95,8 +102,10 @@ updated: 2026-03-07
   - `5` — `invalid_command`
   - `6` — `write_failed`
 - Side effects:
-  - `list/show`: 없음 (`control-state.json` query only)
+- `list/show`: 없음 (`control-state.json` query only)
   - `approve/reject`: shared mutation path 를 통해 `control.ndjson` append + audit event 기록
+
+`list`/`show` 결과의 pending approval 은 위 trigger metadata 를 포함할 수 있으며, 현재 MVP 에서는 approval flow 를 그대로 유지한 채 intervention queue 로 surfacing 한다.
 
 ### `/whitebox health` — 환경/아티팩트 건전성 점검
 
