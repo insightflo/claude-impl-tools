@@ -24,6 +24,7 @@ const crypto = require('crypto');
 
 const { readEvents } = require('../../../project-team/scripts/lib/whitebox-events');
 const { refreshWhiteboxSummary } = require('../../whitebox/scripts/whitebox-summary');
+const { buildControlState } = require('../../whitebox/scripts/whitebox-control-state');
 const {
   setStaleMarker,
   clearStaleMarker,
@@ -142,6 +143,24 @@ function parseDecisions(statePath) {
   } catch {
     return [];
   }
+}
+
+function parseInterventionQueue(projectDir) {
+  const controlState = buildControlState(projectDir);
+  const pending = Array.isArray(controlState.pending_approvals) ? controlState.pending_approvals : [];
+  return pending.map((gate) => ({
+    id: gate.gate_id,
+    title: gate.gate_name || gate.task_id || gate.gate_id,
+    status: 'decision_pending',
+    agent: null,
+    source: 'control-state',
+    decision_type: gate.trigger_type || 'user_confirmation',
+    task_id: gate.task_id || null,
+    allowed_actions: Array.isArray(gate.choices) && gate.choices.length > 0 ? gate.choices : ['approve', 'reject'],
+    reason: gate.trigger_reason || gate.preview || `Operator input required for ${gate.gate_name || gate.gate_id}`,
+    recommendation: gate.recommendation || null,
+    trigger_type: gate.trigger_type || null,
+  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -366,6 +385,8 @@ function buildBoard(cards, options = {}) {
       ...(card.task_id ? { task_id: card.task_id } : {}),
       ...(card.decision_type ? { decision_type: card.decision_type } : {}),
       ...(card.reason ? { reason: card.reason } : {}),
+      ...(card.recommendation ? { recommendation: card.recommendation } : {}),
+      ...(card.trigger_type ? { trigger_type: card.trigger_type } : {}),
       ...(Array.isArray(card.allowed_actions) && card.allowed_actions.length > 0 ? { allowed_actions: card.allowed_actions } : {}),
       run_id: eventMeta && eventMeta.run_id ? eventMeta.run_id : null,
       last_event_type: eventMeta && eventMeta.last_event_type ? eventMeta.last_event_type : null,
@@ -384,6 +405,8 @@ function buildBoard(cards, options = {}) {
         decision_type: card.decision_type || null,
         allowed_actions: card.allowed_actions,
         reason: card.reason || null,
+        recommendation: card.recommendation || null,
+        trigger_type: card.trigger_type || null,
       });
     }
   }
@@ -470,13 +493,14 @@ function main() {
   const orchestrateState = parseOrchestrateState(statePath);
   const reqs = parseReqFiles(path.join(p, '.claude', 'collab', 'requests'));
   const decisions = parseDecisions(statePath);
+  const interventions = parseInterventionQueue(p);
   const eventContext = parseEventContext(p);
   const fingerprint = computeCanonicalFingerprint(p, statePath);
   const staleMarkers = opts.dryRun
     ? activeStaleMarkers(p)
     : activeStaleMarkers(p, { artifactToClear: BOARD_STATE_REL_PATH });
 
-  const cards = mergeSources(tasksMd, orchestrateState, reqs, decisions);
+  const cards = mergeSources(tasksMd, orchestrateState, reqs, decisions.concat(interventions));
   const board = buildBoard(cards, {
     eventContext,
     fingerprint,

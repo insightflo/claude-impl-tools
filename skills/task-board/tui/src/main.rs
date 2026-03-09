@@ -95,7 +95,11 @@ struct PendingApproval {
     #[serde(default)]
     created_at: Option<String>,
     #[serde(default)]
+    trigger_type: Option<String>,
+    #[serde(default)]
     preview: String,
+    #[serde(default)]
+    recommendation: Option<String>,
     #[serde(default)]
     evidence_paths: Vec<String>,
 }
@@ -142,6 +146,16 @@ struct ExplainOption {
     effect: String,
     #[serde(default)]
     risk: String,
+    #[serde(default)]
+    recommendation: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+struct ExplainTrigger {
+    #[serde(rename = "type", default)]
+    trigger_type: String,
+    #[serde(default)]
+    recommendation: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -172,6 +186,8 @@ struct ExplainReport {
     options: Vec<ExplainOption>,
     #[serde(default)]
     evidence_paths: Vec<String>,
+    #[serde(default)]
+    trigger: Option<ExplainTrigger>,
     #[serde(default)]
     correlation: ExplainCorrelation,
 }
@@ -981,6 +997,13 @@ fn approval_detail_text(
                 approval.created_at.as_deref().unwrap_or("unknown")
             ),
             format!(
+                "trigger {}",
+                approval
+                    .trigger_type
+                    .as_deref()
+                    .unwrap_or("user_confirmation")
+            ),
+            format!(
                 "corr {}",
                 approval.correlation_id.as_deref().unwrap_or("none")
             ),
@@ -993,6 +1016,10 @@ fn approval_detail_text(
                 }
             ),
             format!("evidence {}", evidence),
+            format!(
+                "recommendation {}",
+                approval.recommendation.as_deref().unwrap_or("none")
+            ),
             "Explain details unavailable. Awaiting evidence-backed detail output.".to_string(),
         ];
     };
@@ -1033,6 +1060,24 @@ fn approval_detail_text(
             .unwrap_or_else(|| "none".to_string())
     ));
 
+    if let Some(trigger) = &report.trigger {
+        lines.push(format!(
+            "trigger {}",
+            if trigger.trigger_type.is_empty() {
+                "user_confirmation"
+            } else {
+                trigger.trigger_type.as_str()
+            }
+        ));
+        lines.push(format!(
+            "recommendation {}",
+            trigger
+                .recommendation
+                .clone()
+                .unwrap_or_else(|| "none".to_string())
+        ));
+    }
+
     if report.ok {
         let evidence = if report.evidence_paths.is_empty() {
             "none".to_string()
@@ -1069,6 +1114,11 @@ fn approval_detail_text(
             }
             if !option.risk.is_empty() {
                 lines.push(format!("risk {}", option.risk));
+            }
+            if let Some(recommendation) = &option.recommendation {
+                if !recommendation.is_empty() {
+                    lines.push(format!("option_recommendation {}", recommendation));
+                }
             }
         }
     }
@@ -2388,6 +2438,7 @@ mod tests {
                         command: "approve stale".to_string(),
                         effect: String::new(),
                         risk: String::new(),
+                        recommendation: None,
                     }],
                     ..Default::default()
                 }),
@@ -2419,6 +2470,7 @@ mod tests {
                         command: "approve active".to_string(),
                         effect: String::new(),
                         risk: String::new(),
+                        recommendation: None,
                     }],
                     ..Default::default()
                 }),

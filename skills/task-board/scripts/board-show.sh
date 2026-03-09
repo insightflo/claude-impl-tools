@@ -155,7 +155,9 @@ if (decisions.length > 0) {
     const actions = Array.isArray(decision.allowed_actions) ? decision.allowed_actions.join('/') : '';
     process.stdout.write(`- ${decision.id}: ${decision.title}\n`);
     if (decision.task_id) process.stdout.write(`  task: ${decision.task_id}\n`);
+    if (decision.trigger_type) process.stdout.write(`  trigger: ${decision.trigger_type}\n`);
     if (decision.reason) process.stdout.write(`  reason: ${decision.reason}\n`);
+    if (decision.recommendation) process.stdout.write(`  recommendation: ${decision.recommendation}\n`);
     if (actions) process.stdout.write(`  actions: ${actions}\n`);
     process.stdout.write(`  run: bash skills/task-board/scripts/board-show.sh --approve=${decision.id} --project-dir=.\n`);
   }
