@@ -14,6 +14,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BUILDER="$SCRIPT_DIR/board-builder.js"
 TUI_MANIFEST="$SCRIPT_DIR/../tui/Cargo.toml"
 TUI_BIN="$SCRIPT_DIR/../tui/target/debug/task-board-tui"
+SHELL_TUI_SCRIPT="$SCRIPT_DIR/board-shell-ui.js"
+NODE_BIN="${NODE_BIN:-${npm_node_execpath:-$(command -v node 2>/dev/null || true)}}"
 FORCE_TUI_CAPTURE="${WHITEBOX_TUI_CAPTURE:-0}"
 
 # ---------------------------------------------------------------------------
@@ -38,9 +40,27 @@ DERIVED_META_FILE="$PROJECT_DIR/.claude/collab/derived-meta.json"
 CONTROL_STATE_SCRIPT="$SCRIPT_DIR/../../whitebox/scripts/whitebox-control-state.js"
 WHITEBOX_SUMMARY_SCRIPT="$SCRIPT_DIR/../../whitebox/scripts/whitebox-summary.js"
 
+launch_shell_tui() {
+  local stty_state=""
+  local status=0
+  if [[ -t 0 ]]; then
+    stty_state="$(stty -g)"
+    stty -icanon -echo min 1 time 0
+  fi
+  NODE_OPTIONS= "$NODE_BIN" "$SHELL_TUI_SCRIPT" --project-dir="$PROJECT_DIR" || status=$?
+  if [[ -n "$stty_state" ]]; then
+    stty "$stty_state"
+  fi
+  return "$status"
+}
+
 if [[ -n "$DECISION_ID" ]]; then
-  node "$(dirname "$0")/decision-gate.js" resolve --project-dir="$PROJECT_DIR" --id="$DECISION_ID" --action="$DECISION_ACTION"
+  "$NODE_BIN" "$(dirname "$0")/decision-gate.js" resolve --project-dir="$PROJECT_DIR" --id="$DECISION_ID" --action="$DECISION_ACTION"
   REBUILD=true
+fi
+
+if [[ -t 0 && -t 1 ]] && [[ "$REBUILD" != "true" ]] && [[ -n "$NODE_BIN" ]] && [[ -f "$SHELL_TUI_SCRIPT" ]] && [[ -f "$BOARD_FILE" ]]; then
+  launch_shell_tui && exit 0
 fi
 
 # ---------------------------------------------------------------------------
@@ -57,13 +77,13 @@ elif [[ -f "$DERIVED_META_FILE" ]] && command -v node &>/dev/null; then
 fi
 
 if [[ "$needs_rebuild" == "true" ]]; then
-  if command -v node &>/dev/null && [[ -f "$BUILDER" ]]; then
-    node "$BUILDER" --project-dir="$PROJECT_DIR" 2>&1 || true
+  if [[ -n "$NODE_BIN" ]] && [[ -f "$BUILDER" ]]; then
+    "$NODE_BIN" "$BUILDER" --project-dir="$PROJECT_DIR" 2>&1 || true
     if [[ -f "$CONTROL_STATE_SCRIPT" ]]; then
-      node "$CONTROL_STATE_SCRIPT" --project-dir="$PROJECT_DIR" >/dev/null 2>&1 || echo "Warning: control-state rebuild failed" >&2
+      "$NODE_BIN" "$CONTROL_STATE_SCRIPT" --project-dir="$PROJECT_DIR" >/dev/null 2>&1 || echo "Warning: control-state rebuild failed" >&2
     fi
     if [[ -f "$WHITEBOX_SUMMARY_SCRIPT" ]]; then
-      node "$WHITEBOX_SUMMARY_SCRIPT" --project-dir="$PROJECT_DIR" >/dev/null 2>&1 || echo "Warning: whitebox-summary rebuild failed" >&2
+      "$NODE_BIN" "$WHITEBOX_SUMMARY_SCRIPT" --project-dir="$PROJECT_DIR" >/dev/null 2>&1 || echo "Warning: whitebox-summary rebuild failed" >&2
     fi
   fi
 fi
@@ -75,6 +95,10 @@ fi
 
 if [[ "$FORCE_TUI_CAPTURE" == "1" ]] && [[ -f "$TUI_MANIFEST" ]] && command -v cargo &>/dev/null; then
   cargo run --quiet --manifest-path "$TUI_MANIFEST" -- --project-dir="$PROJECT_DIR" --snapshot && exit 0
+fi
+
+if [[ -t 0 && -t 1 ]] && [[ -n "$NODE_BIN" ]] && [[ -f "$SHELL_TUI_SCRIPT" ]]; then
+  launch_shell_tui && exit 0
 fi
 
 if [[ -t 0 && -t 1 ]] && [[ -f "$TUI_MANIFEST" ]] && command -v cargo &>/dev/null; then
