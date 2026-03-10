@@ -164,6 +164,8 @@ project-team/
 - `--mode=wave`가 실제 worker pool 경로를 사용하고, `.claude/wave-plan.json`을 생성하며, 대규모 프로젝트 기본값으로 6-worker profile을 사용합니다.
 - orchestrate 시작 시 TTY 환경에서는 whitebox board가 자동으로 열리며, `WHITEBOX_AUTO_OPEN_TUI=0`으로 opt-out 할 수 있습니다.
 - whitebox approval 흐름은 이제 `user_confirmation`, `agent_conflict`, `risk_acknowledgement` 같은 typed intervention trigger를 explain/status/task-board 전반에 표시합니다.
+- escalated REQ conflict는 이제 whitebox explain, task-board, TUI detail pane 에서 연결된 `DEC-*` ruling metadata까지 함께 표시합니다.
+- `ESCALATED` REQ에 대한 `FINAL` DEC가 기록되면, 별도 수동 동기화 없이 canonical hook/event 경로를 통해 해당 REQ를 자동으로 `RESOLVED`로 전환합니다.
 - layer 실패 시 failed task ID를 출력하고, 같은 layer의 sibling 작업도 취소하며, 조용히 계속 진행하지 않습니다.
 - Project Team 설치 경로는 이제 `policy-gate`, `permission-checker`가 요구하는 hook support library도 함께 설치합니다.
 
@@ -207,7 +209,7 @@ project-team/
 | 80-200 | `/orchestrate --mode=wave` | 대규모 실행용 wave profile | 권장 |
 | 200+ | 하위 프로젝트 분할 | 도메인 병렬 에이전트 | 필수 |
 
-**Wave mode (current CLI)**: 80개 이상 태스크는 `--mode=wave`를 사용하세요. 현재 공개 CLI는 whitebox board surfacing, typed intervention trigger, 6-worker 기본값을 제공합니다.
+**Wave mode (current CLI)**: 80개 이상 태스크는 `--mode=wave`를 사용하세요. 현재 공개 CLI는 whitebox board surfacing, typed intervention trigger, agent conflict용 linked DEC detail, 6-worker 기본값을 제공합니다.
 
 ### 검증된 실행 흐름
 

@@ -160,6 +160,8 @@ See `project-team/docs/MODES.md` for details.
 - `--mode=wave` now uses the real worker pool path, emits `.claude/wave-plan.json`, and defaults to a 6-worker large-project profile.
 - Whitebox board surfacing opens automatically at orchestrate startup in TTY sessions, with `WHITEBOX_AUTO_OPEN_TUI=0` as the opt-out.
 - Whitebox approvals now surface typed intervention triggers such as `user_confirmation`, `agent_conflict`, and `risk_acknowledgement` across explain/status/task-board flows.
+- Escalated REQ conflicts now surface linked `DEC-*` ruling metadata in whitebox explain, task-board, and the TUI detail pane.
+- Writing a `FINAL` DEC for an `ESCALATED` REQ now auto-resolves that request through the canonical hook/event path instead of waiting for a separate manual sync step.
 - Layer failures now stop the run cleanly, report failed task IDs, and cancel same-layer sibling work instead of silently continuing.
 - Project Team installs now include the hook support libraries required by `policy-gate` and `permission-checker`.
 
@@ -203,7 +205,7 @@ Start
 | 80-200 | `/orchestrate --mode=wave` | Large-project wave profile | Recommended |
 | 200+ | Split into sub-projects | Domain-parallel agents | Required |
 
-**Wave mode (current CLI)**: For 80+ tasks, use `--mode=wave` for the large-project execution profile with whitebox board surfacing, typed intervention triggers, and a 6-worker default.
+**Wave mode (current CLI)**: For 80+ tasks, use `--mode=wave` for the large-project execution profile with whitebox board surfacing, typed intervention triggers, linked DEC detail for agent conflicts, and a 6-worker default.
 
 ### Tested execution flows
 
