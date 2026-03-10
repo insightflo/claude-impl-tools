@@ -10,6 +10,7 @@
 
 const { spawn, execSync } = require('child_process');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const {
   createRunId,
@@ -188,67 +189,232 @@ async function updateTaskState(statePath, taskId, status, data = {}, options = {
 // Routing Management
 // ---------------------------------------------------------------------------
 
-/**
- * Parses .claude/model-routing.yaml without external dependencies
- */
-function loadModelRouting(projectDir) {
-  const routingPath = path.join(projectDir, '.claude', 'model-routing.yaml');
-  const routing = { default: 'claude', routing: {} };
-
-  if (fs.existsSync(routingPath)) {
-    try {
-      const content = fs.readFileSync(routingPath, 'utf8');
-
-      const defaultMatch = content.match(/^default:\s*([^\s]+)/m);
-      if (defaultMatch) routing.default = defaultMatch[1];
-
-      const parts = content.split(/^routing:/m);
-      const routingSection = parts.length > 1 ? parts[1] : null;
-
-      if (routingSection) {
-        const regex = /^\s+([a-zA-Z0-9_-]+):\s*([^\s]+)/gm;
-        let match;
-        while ((match = regex.exec(routingSection)) !== null) {
-          routing.routing[match[1]] = match[2].replace(/['"]/g, '');
-        }
-      }
-    } catch (e) {
-      writeStderr(`Failed to parse model-routing.yaml: ${e.message}`);
-    }
-  }
-
-  return routing;
+function stripQuotes(value) {
+  return String(value || '').trim().replace(/^['"]|['"]$/g, '');
 }
 
-/**
- * Determines the appropriate CLI command based on task routing
- * Priority: task.model > model-routing.yaml[task.owner] > default (claude)
- */
-function resolveCliCommand(task, projectDir, defaultClaudePath = 'claude') {
-  let model = task.model;
-  let routeSource = 'task.model';
-  let fallbackReason = null;
+function normalizeExecutorCandidate(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return null;
+  if (raw === 'codex' || raw.startsWith('codex ')) return 'codex';
+  if (raw === 'gemini' || raw.startsWith('gemini ')) return 'gemini';
+  if (raw === 'claude' || raw.startsWith('claude ') || raw.startsWith('sonnet') || raw.startsWith('opus') || raw.startsWith('haiku')) {
+    return 'claude';
+  }
+  return raw;
+}
 
-  // 1. task.model이 없으면 model-routing.yaml에서 task.owner 기반으로 탐색
-  if (!model) {
-    const routingConfig = loadModelRouting(projectDir);
-    if (task.owner && routingConfig.routing[task.owner]) {
-      model = routingConfig.routing[task.owner];
-      routeSource = 'routing.owner';
-    } else {
-      model = routingConfig.default || 'claude';
-      routeSource = 'routing.default';
+function parseModelRoutingFile(filePath, scope) {
+  const config = {
+    default: 'claude',
+    routing: {},
+    domains: {},
+    taskTypes: {},
+    filePath,
+    scope,
+  };
+
+  const content = fs.readFileSync(filePath, 'utf8');
+  const lines = content.split(/\r?\n/);
+  let section = '';
+  let nested = '';
+
+  for (const rawLine of lines) {
+    const line = rawLine.replace(/\r$/, '');
+    if (!line.trim() || line.trim().startsWith('#') || line.trim() === '---') continue;
+
+    const topLevel = line.match(/^([a-zA-Z_][a-zA-Z0-9_-]*):\s*(.*)$/);
+    if (topLevel && !line.startsWith('  ')) {
+      section = topLevel[1];
+      nested = '';
+      if (section === 'default') {
+        config.default = stripQuotes(topLevel[2]) || config.default;
+      }
+      continue;
+    }
+
+    const child = line.match(/^  ([^:\s][^:]*):\s*(.*)$/);
+    if (!child) continue;
+
+    const key = child[1].trim();
+    const value = stripQuotes(child[2]);
+    if (section === 'routing') {
+      if (key === 'domains') {
+        nested = 'domains';
+        continue;
+      }
+      config.routing[key] = value;
+      nested = '';
+      continue;
+    }
+    if (section === 'task_types') {
+      config.taskTypes[key] = value;
+      continue;
+    }
+
+    const grandChild = line.match(/^    ([^:\s][^:]*):\s*(.*)$/);
+    if (section === 'routing' && nested === 'domains' && grandChild) {
+      config.domains[grandChild[1].trim()] = stripQuotes(grandChild[2]);
     }
   }
 
+  return config;
+}
+
+function loadModelRouting(projectDir) {
+  const candidates = [
+    { filePath: path.join(projectDir, '.claude', 'model-routing.yaml'), scope: 'project' },
+    { filePath: path.join(os.homedir(), '.claude', 'model-routing.yaml'), scope: 'global' },
+  ];
+
+  for (const candidate of candidates) {
+    if (!fs.existsSync(candidate.filePath)) continue;
+    try {
+      return parseModelRoutingFile(candidate.filePath, candidate.scope);
+    } catch (error) {
+      writeStderr(`Failed to parse model-routing.yaml (${candidate.filePath}): ${error.message}`);
+    }
+  }
+
+  return {
+    default: 'claude',
+    routing: {},
+    domains: {},
+    taskTypes: {},
+    filePath: null,
+    scope: 'default',
+  };
+}
+
+function wildcardMatches(pattern, value) {
+  const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
+  return new RegExp(`^${escaped}$`, 'i').test(String(value || ''));
+}
+
+function resolveRoutingConfig(task, routingConfig) {
+  if (!routingConfig) return null;
+  if (!routingConfig.filePath) return null;
+
+  const taskType = stripQuotes(task.task_type || task.type || '');
+  if (taskType && routingConfig.taskTypes[taskType]) {
+    return {
+      value: routingConfig.taskTypes[taskType],
+      source: `routing.${routingConfig.scope}.task_type`,
+    };
+  }
+
+  const owner = stripQuotes(task.owner || '');
+  if (owner && routingConfig.routing[owner]) {
+    return {
+      value: routingConfig.routing[owner],
+      source: `routing.${routingConfig.scope}.owner`,
+    };
+  }
+
+  if (owner) {
+    for (const [pattern, value] of Object.entries(routingConfig.routing)) {
+      if (!pattern.includes('*')) continue;
+      if (wildcardMatches(pattern, owner)) {
+        return {
+          value,
+          source: `routing.${routingConfig.scope}.wildcard`,
+        };
+      }
+    }
+  }
+
+  const domain = stripQuotes(task.domain || '');
+  if (domain && routingConfig.domains[domain]) {
+    return {
+      value: routingConfig.domains[domain],
+      source: `routing.${routingConfig.scope}.domain`,
+    };
+  }
+
+  if (routingConfig.default) {
+    return {
+      value: routingConfig.default,
+      source: `routing.${routingConfig.scope}.default`,
+    };
+  }
+
+  return null;
+}
+
+function toAgentFileCandidates(owner) {
+  const normalized = String(owner || '').trim();
+  if (!normalized) return [];
+  const pascal = normalized
+    .split('-')
+    .map((part) => part ? part[0].toUpperCase() + part.slice(1) : '')
+    .join('');
+  return [`${normalized}.md`, `${pascal}.md`];
+}
+
+function loadAgentCliCommand(owner, projectDir) {
+  const filenames = toAgentFileCandidates(owner);
+  const directories = [
+    path.join(projectDir, '.claude', 'agents'),
+    path.resolve(__dirname, '../../../../project-team/agents'),
+  ];
+
+  for (const directory of directories) {
+    for (const filename of filenames) {
+      const filePath = path.join(directory, filename);
+      if (!fs.existsSync(filePath)) continue;
+      const content = fs.readFileSync(filePath, 'utf8');
+      const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+      if (!match) continue;
+      for (const line of match[1].split(/\r?\n/)) {
+        const cliMatch = line.match(/^cli_command:\s*(.+)$/);
+        if (!cliMatch) continue;
+        const value = stripQuotes(cliMatch[1]);
+        if (!value) continue;
+        return {
+          value,
+          source: 'agent.cli_command',
+        };
+      }
+    }
+  }
+
+  return null;
+}
+
+function inferExecutorFromTask(task) {
+  const haystack = [task.owner, task.domain, task.description, task.title].filter(Boolean).join(' ').toLowerCase();
+  if (!haystack) return null;
+  if (/(frontend|ui|design|css|component|layout|ux|visual|react)/.test(haystack)) {
+    return { value: 'gemini', source: 'heuristic.frontend' };
+  }
+  if (/(backend|api|server|database|db|schema|migration|endpoint|test|testing|auth|payment)/.test(haystack)) {
+    return { value: 'codex', source: 'heuristic.backend' };
+  }
+  if (/(architecture|architect|planning|plan|governance|security|audit|review)/.test(haystack)) {
+    return { value: 'claude', source: 'heuristic.reasoning' };
+  }
+  return null;
+}
+
+function resolveCliCommand(task, projectDir, defaultClaudePath = 'claude') {
+  let resolution = task.model
+    ? { value: task.model, source: 'task.model' }
+    : loadAgentCliCommand(task.owner, projectDir)
+      || resolveRoutingConfig(task, loadModelRouting(projectDir))
+      || inferExecutorFromTask(task)
+      || { value: 'claude', source: 'fallback.default' };
+
+  let model = resolution.value;
+  let routeSource = resolution.source;
+  let fallbackReason = null;
+
   const rawModel = String(model || 'claude').trim().toLowerCase();
-  const claudeAliases = new Set(['claude', 'sonnet', 'opus', 'haiku']);
-  const isClaudeFamily = claudeAliases.has(rawModel) || rawModel.startsWith('claude-');
+  const normalizedExecutor = normalizeExecutorCandidate(rawModel);
 
   let resolvedModel = 'claude';
-  if (rawModel === 'codex' || rawModel === 'gemini') {
-    resolvedModel = rawModel;
-  } else if (isClaudeFamily) {
+  if (normalizedExecutor === 'codex' || normalizedExecutor === 'gemini') {
+    resolvedModel = normalizedExecutor;
+  } else if (normalizedExecutor === 'claude') {
     resolvedModel = 'claude';
   } else {
     writeStderr(`[Warning] Unknown model '${rawModel}'. Falling back to 'claude'.`);
@@ -258,9 +424,8 @@ function resolveCliCommand(task, projectDir, defaultClaudePath = 'claude') {
 
   let command = defaultClaudePath;
   let args = [];
-  const requestedExecutor = rawModel;
+  const requestedExecutor = normalizedExecutor || rawModel;
 
-  // 2. 모델명에 따른 CLI 커맨드 및 인자 매핑
   if (resolvedModel === 'codex') {
     command = 'codex';
     args = ['exec'];
@@ -269,7 +434,6 @@ function resolveCliCommand(task, projectDir, defaultClaudePath = 'claude') {
     args = [];
   }
 
-  // 3. Fallback: CLI가 시스템에 없으면 defaultClaudePath 사용
   if (command !== defaultClaudePath) {
     try {
       const checkCmd = process.platform === 'win32' ? 'where' : 'which';

@@ -83,7 +83,7 @@ function parseMetadata(metaStr) {
     risk: 'low',
     files: [],
     owner: null,
-    model: 'sonnet'
+    model: null
   };
 
   if (!metaStr) return metadata;

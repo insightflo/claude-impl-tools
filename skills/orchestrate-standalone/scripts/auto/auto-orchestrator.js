@@ -564,7 +564,8 @@ function buildDecomposePrompt(contract, feedback = '') {
     '- Each task must follow: - [ ] TASK_ID: Description',
     '- Each task must include indented metadata lines.',
     '- IDs must start with an uppercase letter and support dependency references such as T1, T1.1, P1-T1, AUTH-03.',
-    '- Each task must include at least deps, domain, risk, owner, model.',
+    '- Each task must include at least deps, domain, risk, and owner.',
+    '- Add model only when you need an explicit override of owner/model-routing based executor selection.',
     '- Keep tasks implementation-sized and dependency-aware.',
     '- Sequence tasks so parseTasks() and DAG scheduling can execute them.',
     '',
@@ -574,7 +575,6 @@ function buildDecomposePrompt(contract, feedback = '') {
     '  - domain: backend',
     '  - risk: low',
     '  - owner: default',
-    '  - model: sonnet',
     ''
   ].concat(feedback ? ['Human feedback to incorporate:', feedback, ''] : []).join('\n');
 }
@@ -835,7 +835,7 @@ function syncBridgeState(tasks, totalLayers, projectDir = process.cwd()) {
       domain: task.domain || null,
       risk: task.risk || 'low',
       owner: task.owner || 'default',
-      model: task.model || 'sonnet',
+      model: task.model || null,
       status: existing && existing.status ? existing.status : fallbackStatus,
       updated_at: new Date().toISOString(),
       created_at: existing && existing.created_at ? existing.created_at : new Date().toISOString()
@@ -2112,6 +2112,7 @@ if (require.main === module) {
 module.exports = {
   main,
   parseCliArgs,
+  syncBridgeState,
   resolveGateDecision,
   waitForFileGateDecision,
   shouldTriggerMultiAiReview,
