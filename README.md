@@ -82,9 +82,9 @@ curl -fsSL https://raw.githubusercontent.com/insightflo/claude-impl-tools/main/s
 
 | Skill | What it does |
 |-------|--------------|
-| `/orchestrate-standalone` | Execute 50-200 tasks with specialist agents (`--mode=sprint` for Agile PI planning + sprint review gates) |
-| `/multi-ai-run` | Parallel AI execution management |
-| `/whitebox` | Inspect execution state, task summaries, health, and intervention-aware control-plane details |
+| `/orchestrate-standalone` | Execute 50-200 tasks with specialist agents and auto-surface the whitebox dashboard (`--mode=sprint` for Agile PI planning + sprint review gates) |
+| `/multi-ai-run` | Parallel AI execution management with automatic CLI routing defaults (Claude/Gemini/Codex) |
+| `/whitebox` | Open the visible execution dashboard, inspect health/state, and handle intervention-aware control-plane decisions |
 
 ### Maintenance
 
@@ -97,7 +97,7 @@ curl -fsSL https://raw.githubusercontent.com/insightflo/claude-impl-tools/main/s
 | `/architecture` | Map project structure & domains |
 | `/compress` | Long Context optimization (H2O pattern) |
 | `/statusline` | Display TASKS.md progress in Claude Code status bar |
-| `/task-board` | Visualize agent tasks and pending interventions as a Kanban board |
+| `/task-board` | Whitebox fallback surface for Kanban/task intervention rendering when browser surfacing is unavailable |
 
 ---
 
@@ -158,11 +158,12 @@ See `project-team/docs/MODES.md` for details.
 ### What changed in the current `main`
 
 - `--mode=wave` now uses the real worker pool path, emits `.claude/wave-plan.json`, and defaults to a 6-worker large-project profile.
-- Whitebox board surfacing opens automatically at orchestrate startup in TTY sessions, with `WHITEBOX_AUTO_OPEN_TUI=0` as the opt-out.
+- Whitebox now opens a local web dashboard automatically from `orchestrate` and `whitebox status`, with `WHITEBOX_AUTO_OPEN_BROWSER=0` as the browser opt-out and `WHITEBOX_AUTO_OPEN_TUI=0` as the terminal fallback opt-out.
 - Whitebox approvals now surface typed intervention triggers such as `user_confirmation`, `agent_conflict`, and `risk_acknowledgement` across explain/status/task-board flows.
 - Escalated REQ conflicts now surface linked `DEC-*` ruling metadata in whitebox explain, task-board, and the TUI detail pane.
 - Writing a `FINAL` DEC for an `ESCALATED` REQ now auto-resolves that request through the canonical hook/event path instead of waiting for a separate manual sync step.
 - Layer failures now stop the run cleanly, report failed task IDs, and cancel same-layer sibling work instead of silently continuing.
+- Worker CLI routing now defaults in this order: `task.model` -> agent `cli_command` -> project/global `model-routing.yaml` -> heuristics -> Claude fallback, so users do not need to name the executor for common agent roles.
 - Project Team installs now include the hook support libraries required by `policy-gate` and `permission-checker`.
 
 ---

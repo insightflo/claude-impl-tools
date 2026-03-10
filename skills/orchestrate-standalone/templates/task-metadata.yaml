@@ -1,184 +1,68 @@
-# Task Metadata Format
-
-> Extended TASKS.md format for orchestrate-standalone
->
-> This format enables dependency-based parallel execution
-
----
-
-## Format Specification
-
-### Basic Task
-
-```markdown
-- [ ] T1.1: Task description
-```
-
-### Task with Metadata
-
-```markdown
-- [ ] T1.1: Task description
-  - deps: [T1.0, T0.5]
-  - domain: backend
-  - risk: medium
-  - files: src/domains/user/*
-  - owner: backend-specialist
-  - model: sonnet
-```
-
----
-
-## Metadata Fields
-
-| Field | Type | Description | Example |
-|-------|------|-------------|---------|
-| `deps` | List | Dependency task IDs | `[T1.1, T1.2]` |
-| `domain` | String | Domain: backend, frontend, shared | `backend` |
-| `risk` | String | Risk level: low, medium, high, critical | `critical` |
-| `files` | List | Files this task modifies | `src/auth/*` |
-| `owner` | String | Responsible agent | `backend-specialist` |
-| `model` | String | AI model to use | `sonnet`, `gemini` |
-
----
-
-## Dependency Examples
-
-### Sequential Tasks
-
-```yaml
-- [ ] T1.1: Design database schema
-  - deps: []
-  - domain: backend
-
-- [ ] T1.2: Create migration
-  - deps: [T1.1]
-  - domain: backend
-
-- [ ] T1.3: Run migration
-  - deps: [T1.2]
-  - domain: backend
-  - risk: critical
-```
-
-### Parallel Tasks (no deps)
-
-```yaml
-- [ ] T1.1: User API design
-  - deps: []
-  - domain: backend
-
-- [ ] T1.2: Product API design
-  - deps: []
-  - domain: backend
-
-# Both T1.1 and T1.2 run in parallel
-```
-
-### Fan-out Pattern
-
-```yaml
-- [ ] T1.1: Define User interface
-  - deps: []
-
-- [ ] T1.2: Backend implementation
-  - deps: [T1.1]
-
-- [ ] T1.3: Frontend implementation
-  - deps: [T1.1]
-
-# T1.2 and T1.3 run in parallel after T1.1
-```
-
----
-
-## Risk Levels
-
-| Level | Behavior |
-|-------|----------|
-| `low` | Normal execution, can parallelize |
-| `medium` | Pre-check required, domain serialization |
-| `high` | Serial execution within domain |
-| `critical` | Always serial execution |
-
----
-
-## File Conflict Detection
-
-Tasks specifying the same file pattern are executed serially:
-
-```yaml
-- [ ] T1.1: Modify auth service
-  - files: src/auth/*
-  - domain: backend
-
-- [ ] T2.1: Add auth tests
-  - files: src/auth/*
-  - domain: backend
-
-# These will execute sequentially (file conflict)
-```
-
----
-
-## Domain-based Execution
-
-| Mode | Behavior |
-|------|----------|
-| `lite` | Domains can run in parallel |
-| `standard` | Domains run sequentially |
-| `full` | Each task runs individually with checks |
-
----
-
-## Example: Complete TASKS.md
-
-```markdown
-# TASKS.md
-
-## Phase 1 - User Domain
-
-### T1 - Backend
-
-- [ ] T1.1: User API design
-  - deps: []
-  - domain: backend
-  - risk: low
-  - owner: backend-specialist
-
-- [ ] T1.2: User API implementation
-  - deps: [T1.1]
-  - domain: backend
-  - risk: medium
-  - files: src/domains/user/*
-  - owner: backend-specialist
-
-### T2 - Frontend
-
-- [ ] T2.1: User list component
-  - deps: [T1.2]
-  - domain: frontend
-  - risk: low
-  - files: src/screens/UserList.tsx
-  - owner: frontend-specialist
-  - model: gemini
-
-## Phase 2 - Auth Domain
-
-- [ ] T2.1: Login API
-  - deps: []
-  - domain: backend
-  - risk: critical
-  - files: src/auth/*
-  - owner: backend-specialist
-
-- [ ] T2.2: Login screen
-  - deps: [T2.1]
-  - domain: frontend
-  - risk: medium
-  - files: src/screens/Login.tsx
-  - owner: frontend-specialist
-```
-
----
-
-**Last Updated**: 2026-03-03
+title: Task Metadata Format
+description: Extended TASKS.md reference for orchestrate-standalone.
+basic_task: "- [ ] T1.1: Task description"
+task_with_metadata:
+  task: "- [ ] T1.1: Task description"
+  metadata:
+    deps: [T1.0, T0.5]
+    domain: backend
+    risk: medium
+    files:
+      - src/domains/user/*
+    owner: backend-specialist
+    model: codex
+fields:
+  deps: Dependency task IDs
+  domain: backend | frontend | shared
+  risk: low | medium | high | critical
+  files: File patterns used for conflict detection
+  owner: Responsible agent
+  model: Optional explicit override for executor/model routing
+notes:
+  - Omit model when owner or model-routing.yaml should decide the executor.
+  - Add model only when a task must be pinned to a specific executor.
+examples:
+  sequential:
+    - task: "- [ ] T1.1: Design database schema"
+      metadata:
+        deps: []
+        domain: backend
+    - task: "- [ ] T1.2: Create migration"
+      metadata:
+        deps: [T1.1]
+        domain: backend
+    - task: "- [ ] T1.3: Run migration"
+      metadata:
+        deps: [T1.2]
+        domain: backend
+        risk: critical
+  parallel:
+    - task: "- [ ] T1.1: User API design"
+      metadata:
+        deps: []
+        domain: backend
+    - task: "- [ ] T1.2: Product API design"
+      metadata:
+        deps: []
+        domain: backend
+  complete_fragment:
+    - task: "- [ ] T1.1: User API design"
+      metadata:
+        deps: []
+        domain: backend
+        risk: low
+        owner: backend-specialist
+    - task: "- [ ] T1.2: User list component"
+      metadata:
+        deps: [T1.1]
+        domain: frontend
+        risk: low
+        files:
+          - src/screens/UserList.tsx
+        owner: frontend-specialist
+    - task: "- [ ] T1.3: Pixel-perfect landing page polish"
+      metadata:
+        deps: [T1.2]
+        domain: frontend
+        owner: frontend-specialist
+        model: gemini

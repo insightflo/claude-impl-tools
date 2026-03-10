@@ -115,7 +115,6 @@ updated: 2026-03-05
   - domain: backend
   - risk: low
   - owner: backend-specialist
-  - model: sonnet
 
 - [ ] T1.2: User API 구현
   - deps: [T1.1]
@@ -134,7 +133,7 @@ updated: 2026-03-05
 | `risk` | low/medium/high/critical | 선택 |
 | `files` | 영향받는 파일 패턴 | 선택 |
 | `owner` | 담당 에이전트 | 선택 |
-| `model` | 사용 모델 (sonnet/gemini) | 선택 |
+| `model` | owner/model-routing 자동 라우팅을 덮는 명시적 override | 선택 |
 
 ---
 

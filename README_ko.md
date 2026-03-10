@@ -86,9 +86,9 @@ cd claude-impl-tools/project-team
 
 | 스킬 | 기능 |
 |------|------|
-| `/orchestrate-standalone` | 50~200개 태스크를 전문가 에이전트로 실행 (`--mode=sprint`으로 Agile PI 계획 + 스프린트 리뷰 게이트) |
-| `/multi-ai-run` | 병렬 AI 실행 관리 |
-| `/whitebox` | 실행 상태, 태스크 요약, health, 개입형 control-plane 정보를 점검 |
+| `/orchestrate-standalone` | 50~200개 태스크를 전문가 에이전트로 실행하고 whitebox 대시보드를 자동으로 surfacing (`--mode=sprint`으로 Agile PI 계획 + 스프린트 리뷰 게이트) |
+| `/multi-ai-run` | Claude/Gemini/Codex 기본 정책을 따르는 자동 CLI 라우팅 기반 병렬 AI 실행 관리 |
+| `/whitebox` | 보이는 실행 대시보드를 열고, health/state를 확인하며, 개입형 control-plane 결정을 처리 |
 
 ### 유지보수
 
@@ -101,7 +101,7 @@ cd claude-impl-tools/project-team
 | `/architecture` | 프로젝트 구조 & 도메인 맵 |
 | `/compress` | Long Context 최적화 (H2O 패턴) |
 | `/statusline` | Claude Code 상태바에 TASKS.md 진행 상황 표시 |
-| `/task-board` | 에이전트 태스크와 대기 중인 개입 항목을 칸반 보드로 시각화 |
+| `/task-board` | 브라우저 surfacing이 불가능할 때 사용하는 whitebox fallback 칸반/개입 렌더러 |
 
 ---
 
@@ -162,11 +162,12 @@ project-team/
 ### 현재 `main`에서 바뀐 점
 
 - `--mode=wave`가 실제 worker pool 경로를 사용하고, `.claude/wave-plan.json`을 생성하며, 대규모 프로젝트 기본값으로 6-worker profile을 사용합니다.
-- orchestrate 시작 시 TTY 환경에서는 whitebox board가 자동으로 열리며, `WHITEBOX_AUTO_OPEN_TUI=0`으로 opt-out 할 수 있습니다.
+- 이제 `orchestrate`와 `whitebox status`는 로컬 웹 대시보드를 자동으로 열며, 브라우저 자동 열기를 끄려면 `WHITEBOX_AUTO_OPEN_BROWSER=0`, 터미널 fallback까지 끄려면 `WHITEBOX_AUTO_OPEN_TUI=0`을 사용합니다.
 - whitebox approval 흐름은 이제 `user_confirmation`, `agent_conflict`, `risk_acknowledgement` 같은 typed intervention trigger를 explain/status/task-board 전반에 표시합니다.
 - escalated REQ conflict는 이제 whitebox explain, task-board, TUI detail pane 에서 연결된 `DEC-*` ruling metadata까지 함께 표시합니다.
 - `ESCALATED` REQ에 대한 `FINAL` DEC가 기록되면, 별도 수동 동기화 없이 canonical hook/event 경로를 통해 해당 REQ를 자동으로 `RESOLVED`로 전환합니다.
 - layer 실패 시 failed task ID를 출력하고, 같은 layer의 sibling 작업도 취소하며, 조용히 계속 진행하지 않습니다.
+- worker CLI 라우팅 기본 순서는 `task.model` -> agent `cli_command` -> project/global `model-routing.yaml` -> heuristic -> Claude fallback 이며, 일반적인 agent 역할은 사용자가 실행기를 직접 지정하지 않아도 됩니다.
 - Project Team 설치 경로는 이제 `policy-gate`, `permission-checker`가 요구하는 hook support library도 함께 설치합니다.
 
 ---
