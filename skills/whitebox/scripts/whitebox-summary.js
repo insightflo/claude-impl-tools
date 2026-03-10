@@ -73,6 +73,20 @@ function flattenColumns(columns = {}) {
     .flatMap((name) => Array.isArray(columns[name]) ? columns[name] : []);
 }
 
+function classifyPendingDecision(decision = {}) {
+  if (decision.decision_class) return decision.decision_class;
+  if (decision.source === 'req-conflict' || decision.decision_type === 'agent_conflict') return 'conflict';
+  if (decision.source === 'hook-event') return 'validation';
+  return 'decision';
+}
+
+function decisionPriority(decisionClass) {
+  if (decisionClass === 'conflict') return 0;
+  if (decisionClass === 'decision') return 1;
+  if (decisionClass === 'validation') return 2;
+  return 3;
+}
+
 function latestRunCard(cards) {
   const withRun = cards.filter((card) => card && card.run_id);
   if (!withRun.length) return null;
@@ -166,8 +180,13 @@ function buildWhiteboxSummary(projectDir) {
   const staleMarkers = readMarkers(projectDir).filter((entry) => entry && !entry.cleared_by);
   const blockedCards = Array.isArray(board.columns?.Blocked) ? board.columns.Blocked : [];
   const pendingDecisions = Array.isArray(board.decisions)
-    ? board.decisions.filter((decision) => decision && decision.status === 'decision_pending')
+    ? board.decisions.filter((decision) => decision
+        && decision.status === 'decision_pending'
+        && (!Array.isArray(decision.allowed_actions) || decision.allowed_actions.length === 0))
+      .sort((a, b) => decisionPriority(classifyPendingDecision(a)) - decisionPriority(classifyPendingDecision(b)) || String(a.id || '').localeCompare(String(b.id || '')))
     : [];
+  const pendingConflictDecisions = pendingDecisions.filter((decision) => classifyPendingDecision(decision) === 'conflict');
+  const pendingValidationSignals = pendingDecisions.filter((decision) => classifyPendingDecision(decision) === 'validation');
   const inProgressCards = Array.isArray(board.columns?.['In Progress']) ? board.columns['In Progress'] : [];
   const allCards = flattenColumns(board.columns);
   const runCard = latestRunCard(allCards);
@@ -184,6 +203,8 @@ function buildWhiteboxSummary(projectDir) {
     blocked_count: blockedCards.length,
     pending_approval_count: pendingApprovals.length,
     pending_decision_count: pendingDecisions.length,
+    pending_conflict_count: pendingConflictDecisions.length,
+    pending_validation_count: pendingValidationSignals.length,
     pending_approvals: pendingApprovals.slice(0, 10).map((gate) => ({
       gate_id: gate.gate_id,
       gate_name: gate.gate_name || null,
@@ -217,6 +238,16 @@ function buildWhiteboxSummary(projectDir) {
       blocker_source: card.blocker_source || null,
       remediation: card.remediation || null,
       run_id: card.run_id || null,
+    })),
+    pending_decisions: pendingDecisions.slice(0, 10).map((decision) => ({
+      id: decision.id,
+      task_id: decision.task_id || null,
+      req_id: decision.req_id || null,
+      source: decision.source || null,
+      decision_class: classifyPendingDecision(decision),
+      trigger_type: decision.trigger_type || decision.decision_type || null,
+      reason: decision.reason || null,
+      recommendation: decision.recommendation || null,
     })),
     derived_from: {
       board_state: BOARD_STATE_REL_PATH,

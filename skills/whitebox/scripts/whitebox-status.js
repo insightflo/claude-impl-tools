@@ -13,6 +13,8 @@ function formatHuman(summary) {
     `blocked_count: ${summary.blocked_count}`,
     `pending_approval_count: ${summary.pending_approval_count || 0}`,
     `pending_decision_count: ${summary.pending_decision_count || 0}`,
+    `pending_conflict_count: ${summary.pending_conflict_count || 0}`,
+    `pending_validation_count: ${summary.pending_validation_count || 0}`,
     `run_id: ${summary.run_id || 'none'}`,
     `stale_artifacts: ${summary.stale_artifact_count}`,
   ];

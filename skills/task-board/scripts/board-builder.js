@@ -225,6 +225,7 @@ function parseHookInterventions(projectDir) {
       status: 'decision_pending',
       agent: null,
       source: 'hook-event',
+      decision_class: 'validation',
       decision_type: triggerType,
       task_id: taskId,
       allowed_actions: [],
@@ -354,6 +355,7 @@ function parseReqConflictInterventions(reqs, decisionsByReq = new Map()) {
         status: 'decision_pending',
         agent: req.agent || null,
         source: 'req-conflict',
+        decision_class: 'conflict',
         decision_type: 'agent_conflict',
         req_id: req.id,
         allowed_actions: [],
@@ -369,6 +371,21 @@ function parseReqConflictInterventions(reqs, decisionsByReq = new Map()) {
         decision_status: linkedDecision ? linkedDecision.status : null,
       };
     });
+}
+
+function classifyDecisionCard(card = {}) {
+  if (Array.isArray(card.allowed_actions) && card.allowed_actions.length > 0) return 'mutable';
+  if (card.decision_class) return card.decision_class;
+  if (card.source === 'req-conflict' || card.decision_type === 'agent_conflict') return 'conflict';
+  if (card.source === 'hook-event') return 'validation';
+  return 'decision';
+}
+
+function decisionPriority(decisionClass) {
+  if (decisionClass === 'conflict') return 0;
+  if (decisionClass === 'decision') return 1;
+  if (decisionClass === 'validation') return 2;
+  return 3;
 }
 
 function readTextIfExists(filePath) {
@@ -554,6 +571,7 @@ function buildBoard(cards, options = {}) {
       status: card.status,
       agent: card.agent || null,
       source: card.source,
+      ...(card.decision_class ? { decision_class: card.decision_class } : {}),
       ...(card.task_id ? { task_id: card.task_id } : {}),
       ...(card.req_id ? { req_id: card.req_id } : {}),
       ...(card.decision_id ? { decision_id: card.decision_id } : {}),
@@ -572,11 +590,14 @@ function buildBoard(cards, options = {}) {
       remediation: eventMeta && eventMeta.remediation ? eventMeta.remediation : null,
     });
 
+    const decisionClass = classifyDecisionCard(card);
     if (card.decision_type || (Array.isArray(card.allowed_actions) && card.allowed_actions.length > 0)) {
       state.decisions.push({
         id: card.id,
         title: card.title,
         status: card.status,
+        source: card.source || null,
+        decision_class: decisionClass,
         task_id: card.task_id || null,
         req_id: card.req_id || null,
         decision_id: card.decision_id || null,
@@ -594,6 +615,12 @@ function buildBoard(cards, options = {}) {
   for (const cardsInColumn of Object.values(state.columns)) {
     cardsInColumn.sort((a, b) => a.id.localeCompare(b.id));
   }
+
+  state.decisions.sort((a, b) => {
+    const classDiff = decisionPriority(a.decision_class) - decisionPriority(b.decision_class);
+    if (classDiff !== 0) return classDiff;
+    return String(a.id || '').localeCompare(String(b.id || ''));
+  });
 
   return state;
 }

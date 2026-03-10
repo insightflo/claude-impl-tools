@@ -61,11 +61,19 @@ struct PendingDecision {
     #[serde(default)]
     title: String,
     #[serde(default)]
+    status: String,
+    #[serde(default)]
+    source: Option<String>,
+    #[serde(default)]
+    decision_class: Option<String>,
+    #[serde(default)]
     task_id: Option<String>,
     #[serde(default)]
     req_id: Option<String>,
     #[serde(default)]
     decision_type: Option<String>,
+    #[serde(default)]
+    allowed_actions: Vec<String>,
     #[serde(default)]
     trigger_type: Option<String>,
     #[serde(default)]
@@ -142,6 +150,10 @@ struct WhiteboxSummary {
     pending_approval_count: usize,
     #[serde(default)]
     pending_decision_count: usize,
+    #[serde(default)]
+    pending_conflict_count: usize,
+    #[serde(default)]
+    pending_validation_count: usize,
     #[serde(default)]
     stale_artifact_count: usize,
     #[serde(default)]
@@ -675,25 +687,36 @@ fn load_snapshot(project_dir: &Path) -> SnapshotState {
 }
 
 fn queue_items(snapshot: &SnapshotState) -> Vec<QueueItem> {
+    let mut decisions: Vec<PendingDecision> = snapshot
+        .board
+        .decisions
+        .iter()
+        .filter(|decision| {
+            decision.status == "decision_pending" && decision.allowed_actions.is_empty()
+        })
+        .cloned()
+        .collect();
+    decisions.sort_by(|a, b| {
+        let class_diff = decision_priority(decision_class_value(a))
+            .cmp(&decision_priority(decision_class_value(b)));
+        if class_diff != std::cmp::Ordering::Equal {
+            return class_diff;
+        }
+        a.id.cmp(&b.id)
+    });
+
     snapshot
         .control
         .pending_approvals
         .iter()
         .cloned()
         .map(QueueItem::Approval)
-        .chain(
-            snapshot
-                .board
-                .decisions
-                .iter()
-                .cloned()
-                .map(QueueItem::Decision),
-        )
+        .chain(decisions.into_iter().map(QueueItem::Decision))
         .collect()
 }
 
 fn queue_len(snapshot: &SnapshotState) -> usize {
-    snapshot.control.pending_approvals.len() + snapshot.board.decisions.len()
+    queue_items(snapshot).len()
 }
 
 fn queue_item_key(item: &QueueItem) -> String {
@@ -710,18 +733,60 @@ fn queue_item_label(item: &QueueItem) -> String {
             .clone()
             .or_else(|| approval.gate_name.clone())
             .unwrap_or_else(|| approval.gate_id.clone()),
-        QueueItem::Decision(decision) => decision
-            .task_id
-            .clone()
-            .or_else(|| decision.req_id.clone())
-            .filter(|value| !value.is_empty())
-            .unwrap_or_else(|| {
-                if decision.title.is_empty() {
-                    decision.id.clone()
-                } else {
-                    decision.title.clone()
-                }
-            }),
+        QueueItem::Decision(decision) => {
+            let class = decision_class_value(decision);
+            if class == "conflict" {
+                return decision
+                    .req_id
+                    .clone()
+                    .or_else(|| decision.task_id.clone())
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or_else(|| decision.title.clone());
+            }
+            if class == "validation" {
+                return decision
+                    .task_id
+                    .clone()
+                    .map(|task_id| format!("{} · {}", task_id, decision.title))
+                    .unwrap_or_else(|| decision.title.clone());
+            }
+            decision
+                .task_id
+                .clone()
+                .or_else(|| decision.req_id.clone())
+                .filter(|value| !value.is_empty())
+                .unwrap_or_else(|| {
+                    if decision.title.is_empty() {
+                        decision.id.clone()
+                    } else {
+                        decision.title.clone()
+                    }
+                })
+        }
+    }
+}
+
+fn decision_class_value(decision: &PendingDecision) -> &str {
+    if let Some(decision_class) = decision.decision_class.as_deref() {
+        return decision_class;
+    }
+    if decision.source.as_deref() == Some("req-conflict")
+        || decision.decision_type.as_deref() == Some("agent_conflict")
+    {
+        return "conflict";
+    }
+    if decision.source.as_deref() == Some("hook-event") {
+        return "validation";
+    }
+    "decision"
+}
+
+fn decision_priority(decision_class: &str) -> usize {
+    match decision_class {
+        "conflict" => 0,
+        "decision" => 1,
+        "validation" => 2,
+        _ => 3,
     }
 }
 
@@ -735,12 +800,27 @@ fn queue_item_task_id(item: &QueueItem) -> Option<&str> {
 fn queue_item_tag(item: &QueueItem) -> &'static str {
     match item {
         QueueItem::Approval(_) => "approval",
-        QueueItem::Decision(_) => "decision",
+        QueueItem::Decision(decision) => match decision_class_value(decision) {
+            "conflict" => "conflict",
+            "validation" => "guardrail",
+            _ => "decision",
+        },
     }
 }
 
 fn queue_item_supports_control(item: &QueueItem) -> bool {
     matches!(item, QueueItem::Approval(_))
+}
+
+fn queue_item_mode(item: &QueueItem) -> &'static str {
+    match item {
+        QueueItem::Approval(_) => "mutable approval",
+        QueueItem::Decision(decision) => match decision_class_value(decision) {
+            "conflict" => "read-only conflict",
+            "validation" => "read-only guardrail",
+            _ => "read-only decision",
+        },
+    }
 }
 
 fn selected_item_supports_control(app: &App) -> bool {
@@ -1162,6 +1242,7 @@ fn intervention_detail_text(
             }
             QueueItem::Decision(decision) => vec![
                 queue_item_label(item),
+                format!("mode {}", queue_item_mode(item)),
                 format!("decision {}", decision.id),
                 format!(
                     "dec {}{}",
@@ -1186,6 +1267,7 @@ fn intervention_detail_text(
                 ),
                 format!("task {}", decision.task_id.as_deref().unwrap_or("none")),
                 format!("req {}", decision.req_id.as_deref().unwrap_or("none")),
+                format!("source {}", decision.source.as_deref().unwrap_or("none")),
                 format!("reason {}", decision.reason.as_deref().unwrap_or("none")),
                 format!(
                     "recommendation {}",
@@ -1239,6 +1321,7 @@ fn intervention_detail_text(
             .clone()
             .unwrap_or_else(|| "none".to_string())
     ));
+    lines.push(format!("mode {}", queue_item_mode(item)));
 
     if let Some(linked_decision) = &report.linked_decision {
         lines.push(format!(
@@ -1425,6 +1508,38 @@ fn pending_intervention_task_tags(app: &App) -> HashMap<String, &'static str> {
         .collect()
 }
 
+fn pending_decision_breakdown(app: &App) -> (usize, usize) {
+    let counts = queue_items(&app.snapshot)
+        .iter()
+        .fold((0, 0), |(conflicts, guardrails), item| match item {
+            QueueItem::Decision(decision) => match decision_class_value(decision) {
+                "conflict" => (conflicts + 1, guardrails),
+                "validation" => (conflicts, guardrails + 1),
+                _ => (conflicts, guardrails),
+            },
+            QueueItem::Approval(_) => (conflicts, guardrails),
+        });
+
+    if counts == (0, 0)
+        && (app.snapshot.summary.pending_conflict_count > 0
+            || app.snapshot.summary.pending_validation_count > 0)
+    {
+        (
+            app.snapshot.summary.pending_conflict_count,
+            app.snapshot.summary.pending_validation_count,
+        )
+    } else {
+        counts
+    }
+}
+
+fn pending_read_only_decision_count(app: &App) -> usize {
+    queue_items(&app.snapshot)
+        .iter()
+        .filter(|item| matches!(item, QueueItem::Decision(_)))
+        .count()
+}
+
 fn recent_highlight_label<'a>(app: &'a App, card_id: &str) -> Option<&'a str> {
     app.transient
         .recent_highlight
@@ -1467,6 +1582,7 @@ fn render_header(app: &App, area: Rect, frame: &mut ratatui::Frame) {
         .as_ref()
         .map(|next| format!("{} - {}", next.id, next.reason))
         .unwrap_or_else(|| "No remediation pending".to_string());
+    let (conflicts, guardrails) = pending_decision_breakdown(app);
 
     let lines = vec![
         Line::from(vec![
@@ -1499,7 +1615,7 @@ fn render_header(app: &App, area: Rect, frame: &mut ratatui::Frame) {
                 app.snapshot
                     .summary
                     .pending_decision_count
-                    .max(app.snapshot.board.decisions.len())
+                    .max(pending_read_only_decision_count(app))
             )),
             Span::raw("  "),
             Span::raw(format!(
@@ -1510,11 +1626,13 @@ fn render_header(app: &App, area: Rect, frame: &mut ratatui::Frame) {
             Span::raw(format!("run={run}")),
         ]),
         Line::from(format!(
-            "tasks {}/{}  |  phase {}  |  next task {}  |  next {}",
+            "tasks {}/{}  |  phase {}  |  next task {}  |  conflicts {}  |  guardrails {}  |  next {}",
             app.snapshot.summary.tasks.done,
             app.snapshot.summary.tasks.total,
             phase,
             next_task,
+            conflicts,
+            guardrails,
             next
         )),
     ];
@@ -1661,6 +1779,7 @@ fn render_approvals(app: &App, area: Rect, frame: &mut ratatui::Frame) {
         .collect();
 
     let selected = queue.get(app.selection.selected_approval);
+    let (conflicts, guardrails) = pending_decision_breakdown(app);
     let detail_lines: Vec<Line> =
         intervention_detail_text(selected, app.detail.explain_report.as_ref())
             .into_iter()
@@ -1685,12 +1804,14 @@ fn render_approvals(app: &App, area: Rect, frame: &mut ratatui::Frame) {
     let list = List::new(items).block(
         Block::default()
             .title(format!(
-                "Interventions ({} approvals, {} decisions)",
+                "Interventions ({} approvals, {} decisions, {} conflicts, {} guardrails)",
                 app.snapshot.control.pending_approval_count,
                 app.snapshot
                     .summary
                     .pending_decision_count
-                    .max(app.snapshot.board.decisions.len())
+                    .max(pending_read_only_decision_count(app)),
+                conflicts,
+                guardrails
             ))
             .borders(Borders::ALL)
             .border_style(if selected_gate.is_empty() {
@@ -1714,6 +1835,7 @@ fn render_approvals(app: &App, area: Rect, frame: &mut ratatui::Frame) {
 fn render_context_pane(app: &App, area: Rect, frame: &mut ratatui::Frame) {
     let queue = queue_items(&app.snapshot);
     let selected = queue.get(app.selection.selected_approval);
+    let (conflicts, guardrails) = pending_decision_breakdown(app);
     let mut preview_lines: Vec<Line> =
         intervention_detail_text(selected, app.detail.explain_report.as_ref())
             .into_iter()
@@ -1757,7 +1879,12 @@ fn render_context_pane(app: &App, area: Rect, frame: &mut ratatui::Frame) {
 
     let queue = List::new(approval_items).block(
         Block::default()
-            .title(format!("Intervention Queue ({})", queue_len(&app.snapshot)))
+            .title(format!(
+                "Intervention Queue ({} total, {} conflicts, {} guardrails)",
+                queue_len(&app.snapshot),
+                conflicts,
+                guardrails
+            ))
             .borders(Borders::ALL),
     );
     frame.render_widget(queue, chunks[0]);
@@ -2283,9 +2410,13 @@ mod tests {
                     decisions: vec![PendingDecision {
                         id: "req-conflict-REQ-77".to_string(),
                         title: "REQ conflict REQ-77".to_string(),
+                        status: "decision_pending".to_string(),
+                        source: Some("req-conflict".to_string()),
+                        decision_class: Some("conflict".to_string()),
                         task_id: Some("T9.1".to_string()),
                         req_id: Some("REQ-77".to_string()),
                         decision_type: Some("agent_conflict".to_string()),
+                        allowed_actions: vec![],
                         trigger_type: Some("agent_conflict".to_string()),
                         reason: Some("Request escalated for mediation.".to_string()),
                         recommendation: Some(
@@ -2304,6 +2435,8 @@ mod tests {
                     blocked_count: 1,
                     pending_approval_count: 0,
                     pending_decision_count: 1,
+                    pending_conflict_count: 1,
+                    pending_validation_count: 0,
                     stale_artifact_count: 0,
                     run_id_short: Some("run-decision".to_string()),
                     tasks: TasksSummary {
@@ -2447,9 +2580,13 @@ mod tests {
             Some(&QueueItem::Decision(PendingDecision {
                 id: "req-conflict-REQ-77".to_string(),
                 title: "REQ conflict REQ-77".to_string(),
+                status: "decision_pending".to_string(),
+                source: Some("req-conflict".to_string()),
+                decision_class: Some("conflict".to_string()),
                 task_id: Some("T9.1".to_string()),
                 req_id: Some("REQ-77".to_string()),
                 decision_type: Some("agent_conflict".to_string()),
+                allowed_actions: vec![],
                 trigger_type: Some("agent_conflict".to_string()),
                 reason: Some("Request escalated for mediation.".to_string()),
                 recommendation: Some("Apply the DEC ruling.".to_string()),
@@ -2708,7 +2845,7 @@ mod tests {
 
         assert!(snapshot.contains("Backlog (1)"));
         assert!(snapshot.contains("Blocked (1)"));
-        assert!(snapshot.contains("Intervention Queue (1)"));
+        assert!(snapshot.contains("Intervention Queue (1 total"));
         assert!(snapshot.contains("Context Preview"));
         assert!(snapshot.contains("Enter detail"));
     }
@@ -2776,8 +2913,8 @@ mod tests {
 
         assert!(snapshot.contains("gate=decision_pending"));
         assert!(snapshot.contains("decisions=1"));
-        assert!(snapshot.contains("Intervention Queue (1)"));
-        assert!(snapshot.contains("[decision] T9.1"));
+        assert!(snapshot.contains("Intervention Queue (1 total"));
+        assert!(snapshot.contains("[conflict] REQ-77"));
         assert!(snapshot.contains("dec DEC-20260309-001 (FINAL)"));
         assert!(snapshot.contains("trigger agent_conflict"));
         assert!(snapshot.contains("read-only selection"));

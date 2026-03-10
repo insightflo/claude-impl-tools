@@ -147,13 +147,34 @@ for (let row = 0; row < maxRows; row++) {
   process.stdout.write('\n');
 }
 
-const decisions = Array.isArray(board.decisions) ? board.decisions.filter((d) => d.status === 'decision_pending') : [];
+function classifyDecision(decision) {
+  if (decision.decision_class) return decision.decision_class;
+  if (decision.source === 'req-conflict' || decision.decision_type === 'agent_conflict') return 'conflict';
+  if (decision.source === 'hook-event') return 'validation';
+  return 'decision';
+}
+
+function decisionLabel(decision) {
+  const kind = classifyDecision(decision);
+  if (kind === 'conflict') return 'conflict';
+  if (kind === 'validation') return 'guardrail';
+  return 'decision';
+}
+
+const decisions = Array.isArray(board.decisions)
+  ? board.decisions
+    .filter((d) => d.status === 'decision_pending' && (!Array.isArray(d.allowed_actions) || d.allowed_actions.length === 0))
+    .sort((a, b) => decisionLabel(a).localeCompare(decisionLabel(b)) || String(a.id || '').localeCompare(String(b.id || '')))
+  : [];
 if (decisions.length > 0) {
-  process.stdout.write('Pending Decisions\n');
+  const conflictCount = decisions.filter((decision) => decisionLabel(decision) === 'conflict').length;
+  const guardrailCount = decisions.filter((decision) => decisionLabel(decision) === 'guardrail').length;
+  process.stdout.write(`Pending Decisions (${conflictCount} conflicts, ${guardrailCount} guardrails)\n`);
   process.stdout.write('-----------------\n');
   for (const decision of decisions) {
     const actions = Array.isArray(decision.allowed_actions) ? decision.allowed_actions.join('/') : '';
     process.stdout.write(`- ${decision.id}: ${decision.title}\n`);
+    process.stdout.write(`  kind: ${decisionLabel(decision)}\n`);
     if (decision.task_id) process.stdout.write(`  task: ${decision.task_id}\n`);
     if (decision.req_id) process.stdout.write(`  req: ${decision.req_id}\n`);
     if (decision.decision_id) process.stdout.write(`  dec: ${decision.decision_id}${decision.decision_status ? ` (${decision.decision_status})` : ''}\n`);

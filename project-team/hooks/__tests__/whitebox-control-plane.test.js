@@ -183,6 +183,8 @@ describe('whitebox control plane', () => {
         id: 'req-conflict-REQ-77',
         title: 'REQ conflict REQ-77',
         status: 'decision_pending',
+        source: 'req-conflict',
+        decision_class: 'conflict',
         req_id: 'REQ-77',
         decision_type: 'agent_conflict',
         trigger_type: 'agent_conflict',
@@ -197,9 +199,96 @@ describe('whitebox control plane', () => {
     expect(summary.ok).toBe(false);
     expect(summary.gate_status).toBe('decision_pending');
     expect(summary.pending_decision_count).toBe(1);
+    expect(summary.pending_conflict_count).toBe(1);
+    expect(summary.pending_validation_count).toBe(0);
+    expect(summary.pending_decisions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: 'req-conflict-REQ-77',
+        decision_class: 'conflict',
+      }),
+    ]));
     expect(summary.next_remediation_target).toMatchObject({
       type: 'decision',
       id: 'req-conflict-REQ-77',
+      trigger_type: 'agent_conflict',
+    });
+  });
+
+  test('buildWhiteboxSummary keeps approvals actionable in mixed intervention states', () => {
+    const projectDir = makeTempProject('whitebox-summary-mixed-interventions-');
+    writeJson(path.join(projectDir, '.claude', 'collab', 'board-state.json'), {
+      schema_version: '1.1',
+      columns: { Backlog: [], 'In Progress': [], Blocked: [], Done: [] },
+      decisions: [
+        {
+          id: 'gate-mixed-1',
+          title: 'Conflict Gate',
+          status: 'decision_pending',
+          task_id: 'T7.2',
+          decision_type: 'agent_conflict',
+          trigger_type: 'agent_conflict',
+          recommendation: 'Review the conflict and choose a side before continuing.',
+          allowed_actions: ['approve', 'reject'],
+        },
+        {
+          id: 'req-conflict-REQ-77',
+          title: 'REQ conflict REQ-77',
+          status: 'decision_pending',
+          source: 'req-conflict',
+          decision_class: 'conflict',
+          req_id: 'REQ-77',
+          decision_type: 'agent_conflict',
+          trigger_type: 'agent_conflict',
+          reason: 'Request escalated for mediation.',
+          recommendation: 'Review the escalated request and create or apply a DEC ruling before continuing.',
+          allowed_actions: [],
+        },
+        {
+          id: 'hook-pre-edit-impact-check-T8.4',
+          title: 'pre-edit-impact-check intervention',
+          status: 'decision_pending',
+          source: 'hook-event',
+          decision_class: 'validation',
+          task_id: 'T8.4',
+          decision_type: 'risk_acknowledgement',
+          trigger_type: 'risk_acknowledgement',
+          reason: 'HIGH risk for T8.4; 1 direct dependent, 4 indirect dependents.',
+          recommendation: 'Review the impact report before proceeding.',
+          allowed_actions: [],
+        },
+      ],
+      derived_from: { fingerprint: 'fixture-mixed-fingerprint' },
+    });
+    writeJson(path.join(projectDir, '.claude', 'collab', 'control-state.json'), {
+      pending_approval_count: 1,
+      pending_approvals: [{
+        gate_id: 'gate-mixed-1',
+        gate_name: 'Conflict Gate',
+        task_id: 'T7.2',
+        correlation_id: 'gate:mixed-1',
+        created_at: '2026-03-10T00:00:00.000Z',
+        trigger_type: 'agent_conflict',
+        recommendation: 'Review the conflict and choose a side before continuing.',
+        evidence_paths: [],
+      }],
+    });
+
+    const summary = buildWhiteboxSummary(projectDir);
+    expect(summary.gate_status).toBe('approval_required');
+    expect(summary.pending_approval_count).toBe(1);
+    expect(summary.pending_decision_count).toBe(2);
+    expect(summary.pending_conflict_count).toBe(1);
+    expect(summary.pending_validation_count).toBe(1);
+    expect(summary.pending_decisions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'req-conflict-REQ-77', decision_class: 'conflict' }),
+      expect.objectContaining({ id: 'hook-pre-edit-impact-check-T8.4', decision_class: 'validation' }),
+    ]));
+    expect(summary.pending_decisions).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'gate-mixed-1' }),
+    ]));
+    expect(summary.next_remediation_target).toMatchObject({
+      type: 'approval',
+      id: 'gate-mixed-1',
       trigger_type: 'agent_conflict',
     });
   });
@@ -1177,13 +1266,13 @@ ${JSON.stringify({
       'fixture preview',
       'unused modify prompt',
       autoState,
-      {
-        projectDir,
-        stage: 'final_gate',
-        approvalPollIntervalMs: 10,
-        approvalWaitMs: 500,
-      }
-    );
+        {
+          projectDir,
+          stage: 'final_gate',
+          approvalPollIntervalMs: 10,
+          approvalWaitMs: 1500,
+        }
+      );
 
     await new Promise((resolve) => setTimeout(resolve, 25));
     const state = JSON.parse(fs.readFileSync(path.join(projectDir, '.claude', 'orchestrate', 'auto-state.json'), 'utf8'));
@@ -1386,11 +1475,101 @@ ${JSON.stringify({
     });
 
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain('Intervention Queue (1)');
+    expect(result.stdout).toContain('Intervention Queue (1 total');
     expect(result.stdout).toContain('Enter detail');
     expect(result.stdout).toContain('a approve');
     expect(result.stdout).toContain('r reject');
     expect(result.stdout).toContain('q quit');
+  });
+
+  test('board-show capture separates approval, conflict, and guardrail in one queue', () => {
+    const projectDir = makeTempProject('whitebox-board-mixed-capture-');
+    fs.writeFileSync(path.join(projectDir, 'TASKS.md'), '## Phase 7\n### [ ] T7.2: Mixed queue\n### [ ] T8.4: Risky task\n', 'utf8');
+    writeJson(path.join(projectDir, '.claude', 'orchestrate-state.json'), { tasks: [] });
+    writeJson(path.join(projectDir, '.claude', 'collab', 'board-state.json'), {
+      columns: { Backlog: [], 'In Progress': [], Blocked: [], Done: [] },
+      derived_from: {},
+      decisions: [
+        {
+          id: 'gate-mixed-1',
+          title: 'Conflict Gate',
+          status: 'decision_pending',
+          task_id: 'T7.2',
+          decision_type: 'agent_conflict',
+          trigger_type: 'agent_conflict',
+          recommendation: 'Review the conflict and choose a side before continuing.',
+          allowed_actions: ['approve', 'reject'],
+        },
+        {
+          id: 'req-conflict-REQ-77',
+          title: 'REQ conflict REQ-77',
+          status: 'decision_pending',
+          source: 'req-conflict',
+          decision_class: 'conflict',
+          req_id: 'REQ-77',
+          trigger_type: 'agent_conflict',
+          reason: 'Request escalated for mediation.',
+          recommendation: 'Review the escalated request and create or apply a DEC ruling before continuing.',
+          allowed_actions: [],
+        },
+        {
+          id: 'hook-pre-edit-impact-check-T8.4',
+          title: 'pre-edit-impact-check intervention',
+          status: 'decision_pending',
+          source: 'hook-event',
+          decision_class: 'validation',
+          task_id: 'T8.4',
+          trigger_type: 'risk_acknowledgement',
+          reason: 'HIGH risk for T8.4; 1 direct dependent, 4 indirect dependents.',
+          recommendation: 'Review the impact report before proceeding.',
+          allowed_actions: [],
+        },
+      ],
+    });
+    writeJson(path.join(projectDir, '.claude', 'collab', 'whitebox-summary.json'), {
+      gate_status: 'approval_required',
+      blocked_count: 0,
+      pending_approval_count: 1,
+      pending_decision_count: 2,
+      pending_conflict_count: 1,
+      pending_validation_count: 1,
+      stale_artifact_count: 0,
+      tasks: { done: 0, total: 2 },
+      next_remediation_target: {
+        id: 'gate-mixed-1',
+        reason: 'Approval required for T7.2',
+        remediation: 'Approve or reject',
+      },
+    });
+    writeJson(path.join(projectDir, '.claude', 'collab', 'control-state.json'), {
+      pending_approval_count: 1,
+      pending_approvals: [{
+        gate_id: 'gate-mixed-1',
+        task_id: 'T7.2',
+        created_at: '2026-03-10T00:00:00.000Z',
+        correlation_id: 'gate:mixed-1',
+        trigger_type: 'agent_conflict',
+        evidence_paths: [],
+      }],
+      resolved_approvals: [],
+    });
+    fs.writeFileSync(path.join(projectDir, '.claude', 'collab', 'events.ndjson'), '', 'utf8');
+
+    const result = spawnSync('bash', [boardShowScript, `--project-dir=${projectDir}`], {
+      encoding: 'utf8',
+      env: { ...process.env, WHITEBOX_TUI_CAPTURE: '1' },
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('gate=approval_required');
+    expect(result.stdout).toContain('approvals=1');
+    expect(result.stdout).toContain('decisions=2');
+    expect(result.stdout).toContain('Intervention Queue (3 total, 1 conflicts, 1 guard');
+    expect(result.stdout).toContain('[approval] T7.2');
+    expect(result.stdout).toContain('[conflict] REQ-77');
+    expect(result.stdout).toContain('[guardrail] T8.4');
+    expect(result.stdout).toContain('a approve');
+    expect(result.stdout).toContain('r reject');
   });
 
   test('board-builder projects intervention triggers into board decisions', () => {
@@ -1509,6 +1688,8 @@ ${JSON.stringify({
         id: 'hook-pre-edit-impact-check-T8.4',
         title: 'pre-edit-impact-check intervention',
         status: 'decision_pending',
+        source: 'hook-event',
+        decision_class: 'validation',
         task_id: 'T8.4',
         trigger_type: 'risk_acknowledgement',
         reason: 'HIGH risk for T8.4; 1 direct dependent, 4 indirect dependents.',
@@ -1524,6 +1705,8 @@ ${JSON.stringify({
     });
 
     expect(result.status).toBe(0);
+    expect(result.stdout).toContain('Pending Decisions (0 conflicts, 1 guardrails)');
+    expect(result.stdout).toContain('kind: guardrail');
     expect(result.stdout).toContain('inspect: node skills/whitebox/scripts/whitebox-explain.js --task-id=T8.4 --project-dir=.');
     expect(result.stdout).not.toContain('--approve=hook-pre-edit-impact-check-T8.4');
   });
@@ -1558,6 +1741,8 @@ Escalated contract disagreement.
     expect(board.decisions).toEqual(expect.arrayContaining([
       expect.objectContaining({
         title: 'REQ conflict REQ-77',
+        source: 'req-conflict',
+        decision_class: 'conflict',
         req_id: 'REQ-77',
         decision_type: 'agent_conflict',
         trigger_type: 'agent_conflict',
@@ -1620,6 +1805,8 @@ Use the backend contract and adapt the frontend mapper.
         id: 'req-conflict-REQ-77',
         title: 'REQ conflict REQ-77',
         status: 'decision_pending',
+        source: 'req-conflict',
+        decision_class: 'conflict',
         req_id: 'REQ-77',
         trigger_type: 'agent_conflict',
         reason: 'Request escalated for mediation.',
@@ -1635,6 +1822,8 @@ Use the backend contract and adapt the frontend mapper.
     });
 
     expect(result.status).toBe(0);
+    expect(result.stdout).toContain('Pending Decisions (1 conflicts, 0 guardrails)');
+    expect(result.stdout).toContain('kind: conflict');
     expect(result.stdout).toContain('inspect: node skills/whitebox/scripts/whitebox-explain.js --req-id=REQ-77 --project-dir=.');
     expect(result.stdout).not.toContain('--approve=req-conflict-REQ-77');
   });
@@ -1647,6 +1836,8 @@ Use the backend contract and adapt the frontend mapper.
         id: 'req-conflict-REQ-77',
         title: 'REQ conflict REQ-77',
         status: 'decision_pending',
+        source: 'req-conflict',
+        decision_class: 'conflict',
         req_id: 'REQ-77',
         decision_id: 'DEC-20260309-001',
         decision_status: 'FINAL',
