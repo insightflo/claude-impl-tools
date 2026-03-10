@@ -1,6 +1,6 @@
 ---
 name: whitebox
-description: AI 코딩 과정을 관찰/설명/통제하는 화이트박스 컨트롤 플레인 엔트리포인트입니다. /whitebox 는 유일한 제품 경계이며 status|explain|health|approvals 가 현재 상태, intervention trigger, 근거 기반 선택지, 승인 제어, 실행 환경 건전성을 노출합니다.
+description: AI 코딩 과정을 관찰/설명/통제하는 화이트박스 컨트롤 플레인 엔트리포인트입니다. /whitebox 는 유일한 제품 경계이며 status|explain|health|approvals 가 현재 상태, intervention trigger, linked DEC 근거, 승인 제어, 실행 환경 건전성을 노출합니다.
 trigger: /whitebox, /whitebox status, /whitebox explain, /whitebox health, /whitebox approvals, "화이트박스", "왜 막혔어", "상태 보여줘", "승인해", "거절해", "health check"
 version: 1.0.0
 updated: 2026-03-07
@@ -16,6 +16,7 @@ updated: 2026-03-07
 - 작업/REQ/게이트가 막힌 이유를 근거(아티팩트) 기반으로 설명한다.
 - 승인 게이트용 operator-intent/control artifact 계약을 `/whitebox` 표면에 고정한다.
 - pending approval queue 를 intervention queue 로 해석해 `user_confirmation`, `agent_conflict`, `risk_acknowledgement` 같은 개입 이유를 드러낸다.
+- `agent_conflict` 인 경우 linked `DEC-*` ruling metadata 와 required action 을 explain/TUI 표면에 함께 드러낸다.
 - 구독형 CLI 실행기(claude/codex/gemini)와 핵심 아티팩트의 건전성을 점검한다.
 
 ## 비목적 (Non-goals)
@@ -60,8 +61,8 @@ updated: 2026-03-07
 
 - Inputs: `TASKS.md`, `.claude/orchestrate-state.json`, `.claude/collab/board-state.json`, `.claude/collab/derived-meta.json`
 - Outputs:
-  - Human: 요약(진행 run, blocked 수, 주요 게이트 상태) + 보드/TUI 안내
-  - JSON (`--json`): `{ ok, run_id, blocked_count, gate_status, stale_artifacts }`
+  - Human: 요약(진행 run, blocked 수, 주요 게이트 상태, pending approval/decision count) + 보드/TUI 안내
+  - JSON (`--json`): `{ ok, run_id, blocked_count, gate_status, pending_approval_count, pending_decision_count, stale_artifacts }`
 - Side effects:
   - stale derived artifact 가 있으면 authoritative projector 로 자동 rebuild 시도
   - TTY에서는 `/task-board` operator shell 로 진입해 approval shell 을 렌더링할 수 있음
@@ -74,8 +75,8 @@ updated: 2026-03-07
 
 - Inputs: `.claude/collab/events.ndjson`, `.claude/collab/control-state.json`, `TASKS.md`, `.claude/orchestrate-state.json`, `.claude/collab/requests/*.md`, `.claude/collab/decisions/*.md`
 - Outputs:
-  - Human: "무엇이 / 왜 / 어디서" 막혔는지 + approval 인 경우 approve/reject 선택지 + trigger/recommendation
-  - JSON (`--json`): `{ ok, target, reason, options[], trigger, evidence_paths, correlation }`
+  - Human: "무엇이 / 왜 / 어디서" 막혔는지 + approval 인 경우 approve/reject 선택지 + trigger/recommendation + linked DEC metadata
+  - JSON (`--json`): `{ ok, target, reason, options[], trigger, linked_decision, evidence_paths, correlation }`
 - Side effects: 없음 (inspection only)
 
 **Intervention trigger types**:
@@ -105,7 +106,7 @@ updated: 2026-03-07
 - `list/show`: 없음 (`control-state.json` query only)
   - `approve/reject`: shared mutation path 를 통해 `control.ndjson` append + audit event 기록
 
-`list`/`show` 결과의 pending approval 은 위 trigger metadata 를 포함할 수 있으며, 현재 MVP 에서는 approval flow 를 그대로 유지한 채 intervention queue 로 surfacing 한다.
+`list`/`show` 결과의 pending approval 은 위 trigger metadata 를 포함할 수 있으며, read-only decision 은 `/whitebox explain` 과 `/task-board`에서 inspect 중심으로 surfacing 됩니다. `approve/reject`는 mutable approval gate 에만 적용됩니다.
 
 ### `/whitebox health` — 환경/아티팩트 건전성 점검
 
@@ -122,11 +123,12 @@ updated: 2026-03-07
 ## 신규 사용자 흐름
 
 1. `/orchestrate-standalone` 로 작업을 시작한다.
-2. `/whitebox status` 로 paused gate / blocked 상태를 본다.
-3. `/whitebox explain` 로 근거와 approve/reject 선택지를 확인한다.
-4. `/whitebox approvals list|show` 로 pending gate 를 확인한다.
+2. `/whitebox status` 로 paused gate / blocked 상태와 pending decision 수를 본다.
+3. `/whitebox explain` 로 근거, trigger, linked DEC, approve/reject 선택지 또는 inspect-only 결정을 확인한다.
+4. `/whitebox approvals list|show` 로 mutable pending gate 를 확인한다.
 5. `/whitebox approvals approve|reject --gate-id=...` 로 canonical control command 를 기록한다.
-6. `/whitebox status` 또는 `/task-board show` 로 resumed/blocked 상태를 다시 확인한다.
+6. ChiefArchitect 가 `FINAL` DEC 를 기록하면 matching `ESCALATED` REQ 는 canonical hook/event 경로에서 자동 `RESOLVED` 된다.
+7. `/whitebox status` 또는 `/task-board show` 로 resumed/blocked 상태를 다시 확인한다.
 
 **규칙**:
 

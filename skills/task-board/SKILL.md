@@ -1,6 +1,6 @@
 ---
 name: task-board
-description: AI 에이전트 태스크를 실시간 칸반 보드로 시각화합니다. TASKS.md + orchestrate-state + REQ 파일을 통합하여 board-state.json을 생성하고, pending intervention queue 를 함께 터미널에 렌더링합니다.
+description: AI 에이전트 태스크를 실시간 칸반 보드로 시각화합니다. TASKS.md + orchestrate-state + REQ/DEC 파일을 통합하여 board-state.json을 생성하고, pending intervention queue 와 linked DEC 컨텍스트를 함께 터미널에 렌더링합니다.
 trigger: /task-board, "칸반 보드", "태스크 보드", "보드 보여줘", "진행 상황 시각화"
 version: 1.0.0
 updated: 2026-03-05
@@ -10,7 +10,7 @@ updated: 2026-03-05
 
 > **화이트박스 제품 표면 안에서 동작하는 AI 에이전트 태스크의 실시간 칸반 렌더러**
 >
-> TASKS.md + `.claude/orchestrate-state.json` + `.claude/collab/requests/` 를 통합하여
+> TASKS.md + `.claude/orchestrate-state.json` + `.claude/collab/requests/` + `.claude/collab/decisions/` 를 통합하여
 > Backlog / In Progress / Blocked / Done 칸반 보드를 터미널에 렌더링합니다.
 
 ## 원칙
@@ -25,7 +25,7 @@ updated: 2026-03-05
 
 ### `/task-board show` — 보드 + pending interventions 표시
 
-현재 `board-state.json`과 `control-state.json`을 읽어 칸반 + pending intervention shell 을 렌더링:
+현재 `board-state.json`과 `control-state.json`을 읽어 칸반 + pending intervention shell 을 렌더링합니다. mutable approval 은 approve/reject 를 유지하고, read-only decision 은 inspect 중심으로 linked DEC metadata 를 보여줍니다:
 
 ```bash
 bash skills/task-board/scripts/board-show.sh
@@ -35,7 +35,7 @@ bash skills/task-board/scripts/board-show.sh --reject=DEC-TASKSYNC-T0.1
 
 ### `/task-board rebuild` — 보드 재빌드
 
-TASKS.md + orchestrate-state + REQ 파일에서 `board-state.json` 재생성:
+TASKS.md + orchestrate-state + REQ/DEC 파일에서 `board-state.json` 재생성:
 
 ```bash
 node skills/task-board/scripts/board-builder.js
@@ -96,7 +96,7 @@ node skills/task-board/scripts/decision-gate.js resolve --id=DEC-TASKSYNC-T0.1 -
 `board-show.sh --approve/--reject`가 whitebox UI 게이트웨이이고,
 `decision-gate.js`는 동일 동작의 직접 호출 경로입니다.
 
-pending decision 항목은 `trigger_type`, `reason`, `recommendation` 을 함께 보여주며, 현재 MVP 에서는 `user_confirmation`, `agent_conflict`, `risk_acknowledgement` 를 구분해서 surfacing 합니다.
+pending decision 항목은 `trigger_type`, `reason`, `recommendation` 을 함께 보여주며, `agent_conflict` 계열은 linked `DEC-*` 의 `decision_id`, `decision_status`, `decision_path` 까지 표시할 수 있습니다. `FINAL` DEC 작성은 matching `ESCALATED` REQ 를 canonical hook/event 경로로 자동 `RESOLVED` 처리합니다.
 
 ## 칸반 컬럼 매핑
 
@@ -119,17 +119,20 @@ pending decision 항목은 `trigger_type`, `reason`, `recommendation` 을 함께
 | `task_blocked` | TaskUpdate → failed/timeout | Blocked 이유 재계산 필요 |
 | `req_escalated` | REQ status = ESCALATED | REQ blocker 컨텍스트 갱신 |
 | `req_resolved` | REQ status = RESOLVED/REJECTED | 완료 상태 재계산 필요 |
+| `decision_written` | `DEC-*.md` write/update | linked ruling 컨텍스트 반영 + 최종 DEC 기반 REQ 완료 재계산 |
 
 이 이벤트들은 canonical 입력일 뿐이며, `board-state.json` 자체를 직접 수정하지 않습니다. authoritative writer 는 항상 `skills/task-board/scripts/board-builder.js` 입니다. Control 관련 상태 역시 `control.ndjson`/`events.ndjson` 에서 projector 가 만드는 `control-state.json` 을 읽어야 하며 renderer 가 직접 수정하면 안 됩니다.
 
 ## Ratatui MVP keybindings
 
 - navigation: `j/k` 또는 화살표
-- `a`: selected pending intervention approve (`whitebox-control.js approve` subprocess)
-- `r`: selected pending intervention reject (`whitebox-control.js reject` subprocess)
+- `a`: selected mutable approval approve (`whitebox-control.js approve` subprocess)
+- `r`: selected mutable approval reject (`whitebox-control.js reject` subprocess)
 - `q` / `esc`: 종료
 
-Snapshot 모드(`WHITEBOX_TUI_CAPTURE=1` 또는 `--snapshot`)도 동일한 approval hints 를 표시한다.
+read-only decision selection 은 inspect-only 이며 approve/reject 를 노출하지 않습니다.
+
+Snapshot 모드(`WHITEBOX_TUI_CAPTURE=1` 또는 `--snapshot`)도 동일한 intervention hints 와 linked DEC detail 을 표시합니다.
 
 ## 파일 구조
 

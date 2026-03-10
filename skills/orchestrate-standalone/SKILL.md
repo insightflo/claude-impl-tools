@@ -40,6 +40,7 @@ updated: 2026-03-05
 > - startup/completion 시 whitebox board 자동 surfacing
 > - 기존 gate-chain / worker / board / control-plane 연동 유지
 > - paused gate 는 whitebox 에서 `user_confirmation`, `agent_conflict`, `risk_acknowledgement` trigger metadata 와 함께 surfacing 가능
+> - `agent_conflict` 는 linked `DEC-*` ruling detail 로 이어지며, `FINAL` DEC 작성 시 matching `ESCALATED` REQ 가 canonical hook/event 경로에서 자동 `RESOLVED` 될 수 있음
 >
 > **아직 공개 CLI로 제공하지 않는 것**
 > - `--phase`

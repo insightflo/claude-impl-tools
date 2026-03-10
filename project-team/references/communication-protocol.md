@@ -49,7 +49,7 @@ OPEN → PENDING (receiver acknowledged, under analysis)
 PENDING → RESOLVED (accepted and implemented)
 PENDING → REJECTED (denied, justification in Response section)
 PENDING → ESCALATED (negotiation_count >= max_negotiation → ChiefArchitect intervenes)
-ESCALATED → RESOLVED (ChiefArchitect creates DEC file, ruling enforced)
+ESCALATED → RESOLVED (ChiefArchitect creates FINAL DEC file, ruling enforced)
 ```
 
 ## 5. REQ Lifecycle Rules
@@ -57,6 +57,7 @@ ESCALATED → RESOLVED (ChiefArchitect creates DEC file, ruling enforced)
 - **Negotiation Limit**: `max_negotiation: 2` (default). If `negotiation_count` reaches this limit, status must transition to `ESCALATED`.
 - **Thread Management**: Use the same `thread_id` for related follow-ups. Prevents duplicate REQs for the same issue.
 - **Escalation Trigger**: When a REQ reaches `ESCALATED`, ChiefArchitect takes ownership and creates a corresponding DEC file. All agents must comply with the DEC ruling.
+- **FINAL DEC Auto-Resolution**: Writing a `DEC-*.md` with `status: FINAL` for an `ESCALATED` REQ auto-updates the matching REQ to `RESOLVED`, appends the canonical `req_resolved` event, and marks task-board derived artifacts stale for rebuild.
 - **Context Limit**: Change Summary must be ≤500 characters. Include only what the receiving agent needs to decide.
 - **Wave Archive**: At wave completion, all RESOLVED/REJECTED REQs move to `.claude/collab/archive/wave-N/`.
 
@@ -129,7 +130,8 @@ To request a cross-domain change, create a REQ file instead.
 4. **Resolve**: BackendSpecialist accepts, FrontendSpecialist sets status to `RESOLVED` and implements AuthGuard update.
 5. **Escalate** (if no agreement after 2 rounds): status auto-set to `ESCALATED` by `conflict-resolver.js`.
 6. **Mediate**: ChiefArchitect reads both positions, creates `DEC-20260305-001.md` with final ruling.
-7. **Archive**: After wave completion, REQ and DEC move to `.claude/collab/archive/wave-N/`.
+7. **Auto-resolve**: Once that DEC is `FINAL`, the matching `ESCALATED` REQ is rewritten to `RESOLVED` via the canonical hook/event path.
+8. **Archive**: After wave completion, REQ and DEC move to `.claude/collab/archive/wave-N/`.
 
 ## 10. Kanban Board Status Mapping
 
@@ -152,6 +154,7 @@ The task board (`/task-board`) unifies two status systems into four visual colum
 | `task_blocked` | `failed` / `timeout` status | In Progress → Blocked |
 | `req_escalated` | REQ status = ESCALATED | new Blocked card |
 | `req_resolved` | REQ status = RESOLVED/REJECTED | Blocked → Done |
+| `decision_written` | `DEC-*.md` write/update | refresh linked ruling context and trigger final-DEC resolution flow |
 
 ### Board State Files
 
@@ -163,6 +166,7 @@ The task board (`/task-board`) unifies two status systems into four visual colum
 
 **Single Source of Truth**: `TASKS.md` + `.claude/orchestrate-state.json` are canonical.
 `board-state.json` is always derivable via `node skills/task-board/scripts/board-builder.js`.
+Escalated REQ cards may also surface linked `DEC-*` metadata (`decision_id`, `decision_status`, `decision_path`) so whitebox/task-board/TUI can show the final ruling context without manual file inspection.
 
 ## 11. Wave Integration
 
