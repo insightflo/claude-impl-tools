@@ -1083,8 +1083,62 @@ describe('whitebox control plane', () => {
       }],
       resolved_approvals: [],
     });
-    fs.writeFileSync(path.join(projectDir, '.claude', 'collab', 'events.ndjson'), '', 'utf8');
+    writeJson(path.join(projectDir, '.claude', 'orchestrate', 'auto-state.json'), {
+      session_id: 'run-tui-1',
+      pending_gate: {
+        gate_id: 'gate-tui-1',
+        gate_name: 'Interactive Gate',
+        stage: 'final_gate',
+        task_id: 'T7.2',
+        run_id: 'run-tui-1',
+        correlation_id: 'gate:tui-1',
+        choices: ['approve', 'reject'],
+        default_behavior: 'wait_for_operator',
+        timeout_policy: 'wait_60000ms',
+        created_at: '2026-03-07T00:00:00.000Z',
+        preview: 'interactive fixture preview',
+      },
+    });
+    fs.writeFileSync(path.join(projectDir, '.claude', 'collab', 'events.ndjson'), `${JSON.stringify({
+      schema_version: '1.0',
+      event_id: 'evt-tui-1',
+      ts: '2026-03-07T00:00:00.000Z',
+      type: 'approval_required',
+      producer: 'orchestrate-auto',
+      correlation_id: 'gate:tui-1',
+      data: {
+        actor: 'system',
+        gate_id: 'gate-tui-1',
+        task_id: 'T7.2',
+        run_id: 'run-tui-1',
+        choices: ['approve', 'reject'],
+        default_behavior: 'wait_for_operator',
+        timeout_policy: 'wait_60000ms',
+      },
+    })}\n${JSON.stringify({
+      schema_version: '1.0',
+      event_id: 'evt-tui-2',
+      ts: '2026-03-07T00:00:01.000Z',
+      type: 'execution_paused',
+      producer: 'orchestrate-auto',
+      correlation_id: 'gate:tui-1',
+      data: {
+        actor: 'system',
+        gate_id: 'gate-tui-1',
+        task_id: 'T7.2',
+        run_id: 'run-tui-1',
+      },
+    })}\n`, 'utf8');
     fs.writeFileSync(path.join(projectDir, '.claude', 'collab', 'control.ndjson'), '', 'utf8');
+
+    const show = spawnSync(process.execPath, [whiteboxControlScript, 'show', `--project-dir=${projectDir}`, '--gate-id=gate-tui-1', '--json'], {
+      encoding: 'utf8',
+    });
+    expect(show.status).toBe(0);
+    expect(JSON.parse(show.stdout)).toMatchObject({
+      result: 'ok',
+      gate: expect.objectContaining({ gate_id: 'gate-tui-1', task_id: 'T7.2' }),
+    });
 
     spawnSync('cargo', ['build', '--manifest-path', path.resolve(__dirname, '../../../skills/task-board/tui/Cargo.toml')], {
       cwd: path.resolve(__dirname, '../../..'),
@@ -1096,9 +1150,9 @@ describe('whitebox control plane', () => {
     expect(launch.status).toBe(0);
     try {
       spawnSync('tmux', ['send-keys', '-t', session, `${boardShowScript} --project-dir="${projectDir}"`, 'Enter'], { encoding: 'utf8' });
-      spawnSync('bash', ['-lc', 'sleep 1'], { encoding: 'utf8' });
+      spawnSync('bash', ['-lc', 'sleep 3'], { encoding: 'utf8' });
       spawnSync('tmux', ['send-keys', '-t', session, 'a'], { encoding: 'utf8' });
-      spawnSync('bash', ['-lc', 'sleep 1'], { encoding: 'utf8' });
+      spawnSync('bash', ['-lc', 'sleep 3'], { encoding: 'utf8' });
       spawnSync('tmux', ['send-keys', '-t', session, 'q'], { encoding: 'utf8' });
     } finally {
       spawnSync('tmux', ['kill-session', '-t', session], { encoding: 'utf8' });
