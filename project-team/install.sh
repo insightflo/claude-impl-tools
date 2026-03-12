@@ -529,60 +529,7 @@ install_registry_category() {
 }
 
 build_hook_config_json() {
-    local hooks_path
-    if [ "$INSTALL_MODE" = "global" ]; then
-        hooks_path='${HOME}/.claude/hooks'
-    else
-        hooks_path='${CLAUDE_PROJECT_DIR:-.}/.claude/hooks'
-    fi
-
-    REGISTRY_MODE_JSON="$REGISTRY_MODE_JSON" INSTALL_MODE="$INSTALL_MODE" HOOKS_PATH="$hooks_path" node - <<'NODE'
-const path = require('path');
-const payload = JSON.parse(process.env.REGISTRY_MODE_JSON);
-const defs = [...payload.hooks.active, ...payload.hooks.helpers];
-const grouped = {};
-const commands = [];
-
-for (const def of defs) {
-  const event = def.event;
-  const matcher = def.matcher || null;
-  const key = `${event}::${matcher || ''}`;
-  if (!grouped[key]) {
-    grouped[key] = { event, matcher, hooks: [] };
-  }
-  const command = `node "${process.env.HOOKS_PATH}/${path.basename(def.artifact)}"`;
-  commands.push(command);
-  grouped[key].hooks.push({
-    type: 'command',
-    command,
-    timeout: event === 'Stop' ? 10 : 5,
-    statusMessage: `Running ${def.name}...`
-  });
-}
-
-const hooks = {};
-for (const entry of Object.values(grouped)) {
-  if (!hooks[entry.event]) {
-    hooks[entry.event] = [];
-  }
-  const group = { hooks: entry.hooks };
-  if (entry.matcher) {
-    group.matcher = entry.matcher;
-  }
-  hooks[entry.event].push(group);
-}
-
-process.stdout.write(`${JSON.stringify({
-  managed: {
-    installer: 'project-team',
-    registryVersion: payload.registryVersion || 'unknown',
-    mode: payload.mode,
-    installMode: process.env.INSTALL_MODE,
-    commands: [...new Set(commands)].sort()
-  },
-  hooks
-}, null, 2)}\n`);
-NODE
+    node "$REGISTRY_SCRIPT" hook-config "$MODE" "$INSTALL_MODE"
 }
 
 write_hook_config_file() {
@@ -823,8 +770,8 @@ NODE
     fi
 }
 
-verify_installation() {
-    header "Verifying Installation"
+verify_install_completeness() {
+    header "Verifying Install Completeness"
 
     local ok=true
     local category relpath target
@@ -862,6 +809,59 @@ verify_installation() {
     else
         log_error "Settings JSON is invalid: ${TARGET_SETTINGS}"
         ok=false
+    fi
+
+    if [ "$ok" = false ]; then
+        ERRORS=$((ERRORS + 1))
+        return 1
+    fi
+}
+
+runtime_missing_lines() {
+    local report_json="$1"
+    local level="$2"
+    REPORT_JSON="$report_json" LEVEL="$level" node - <<'NODE'
+const report = JSON.parse(process.env.REPORT_JSON);
+const bucket = report[process.env.LEVEL] || { missing: [] };
+for (const entry of bucket.missing || []) {
+  process.stdout.write(`${entry.capabilityId}|${entry.artifact}|${entry.kind}|${entry.remediationSource || 'n/a'}|${entry.reinstallCommand || 'n/a'}\n`);
+}
+NODE
+}
+
+verify_runtime_health() {
+    header "Verifying Runtime Health"
+
+    local report_json
+    local ok=true
+    if report_json="$(node "$REGISTRY_SCRIPT" runtime-health "$MODE" "$TARGET_BASE" "$INSTALL_MODE")"; then
+        ok=true
+    else
+        ok=false
+    fi
+
+    local required_count advisory_count
+    required_count="$(JSON_INPUT="$report_json" node -e 'const d = JSON.parse(process.env.JSON_INPUT); process.stdout.write(String((d.required || { missing: [] }).missing.length));')"
+    advisory_count="$(JSON_INPUT="$report_json" node -e 'const d = JSON.parse(process.env.JSON_INPUT); process.stdout.write(String((d.advisory || { missing: [] }).missing.length));')"
+
+    if [ "$required_count" -eq 0 ]; then
+        log_success "Required runtime capabilities are healthy"
+    else
+        while IFS='|' read -r capability artifact kind remediation_source reinstall_command; do
+            [ -n "$capability" ] || continue
+            log_error "Missing required ${kind} runtime artifact: ${TARGET_BASE}/${artifact} (capability: ${capability})"
+            log_error "Remediation: ${reinstall_command} (reference: ${remediation_source})"
+        done < <(runtime_missing_lines "$report_json" required)
+    fi
+
+    if [ "$advisory_count" -gt 0 ]; then
+        while IFS='|' read -r capability artifact kind remediation_source reinstall_command; do
+            [ -n "$capability" ] || continue
+            log_warn "Missing advisory ${kind} runtime artifact: ${TARGET_BASE}/${artifact} (capability: ${capability})"
+            log_warn "Advisory remediation: ${reinstall_command} (reference: ${remediation_source})"
+        done < <(runtime_missing_lines "$report_json" advisory)
+    else
+        log_success "No advisory runtime gaps detected"
     fi
 
     if [ "$ok" = false ]; then
@@ -1035,7 +1035,8 @@ do_install() {
     write_install_manifest
 
     if [ "$DRY_RUN" = false ]; then
-        verify_installation
+        verify_install_completeness
+        verify_runtime_health
     fi
 
     print_summary

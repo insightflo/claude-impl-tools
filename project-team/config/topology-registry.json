@@ -1,6 +1,11 @@
 {
   "schemaVersion": 1,
   "registryVersion": "2026-03-07",
+  "capabilityManifest": {
+    "path": "config/capability-manifest.json",
+    "schemaVersion": 1,
+    "canonicalWriter": "project-team/config/capability-manifest.json"
+  },
   "canonicalRoleOrder": [
     "lead",
     "builder",
@@ -16,6 +21,12 @@
     "countAliasesInCanonicalTotals": false,
     "fullModeAddsCompatibilityProfiles": true,
     "fullModeRestoresLegacyRuntime": false
+  },
+  "runtimeHealth": {
+    "reinstallCommands": {
+      "global": "project-team/install.sh --global --mode={mode} --force",
+      "local": "project-team/install.sh --local --mode={mode} --force"
+    }
   },
   "roles": {
     "lead": {

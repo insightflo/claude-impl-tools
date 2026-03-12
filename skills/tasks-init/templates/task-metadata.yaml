@@ -5,6 +5,7 @@
 # 각 태스크는 다음 메타데이터를 가질 수 있습니다:
 #
 # - [ ] T1.1: 태스크 제목
+#   - verify_cmd: make verify        # 단일 검증 엔트리 (프로젝트 단위)
 #   - description: 상세 설명
 #   - deps: [T1.0, T0.5]           # 선행 태스크 ID 목록
 #   - domain: backend|frontend|shared  # 도메인 분리 (병렬 실행 제어)
@@ -15,6 +16,12 @@
 #
 # 메타데이터 설명:
 # =================
+#
+# verify_cmd (검증 계약)
+#   - 프로젝트 전체 완료 상태를 검증하는 단일 엔트리 명령
+#   - Make 기반 프로젝트: make verify
+#   - 비 Make 프로젝트: bash scripts/verify_all.sh
+#   - 자동 감지 실패 시 tasks-init은 생성을 중단하고 명시적 계약을 요구
 #
 # deps (의존성)
 #   - 선행 태스크가 완료되어야만 실행 가능

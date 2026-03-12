@@ -6,56 +6,15 @@ const path = require('path');
 
 const SCRIPT_DIR = __dirname;
 const PROJECT_TEAM_DIR = path.resolve(SCRIPT_DIR, '..');
-const REGISTRY_PATH = path.join(PROJECT_TEAM_DIR, 'config', 'topology-registry.json');
-const EXPECTED_CANONICAL_ROLES = [
-  'lead',
-  'builder',
-  'reviewer',
-  'designer',
-  'dba',
-  'security-specialist'
-];
-const EXPECTED_MODE_ROLE_MAP = {
-  lite: ['lead', 'builder', 'reviewer'],
-  standard: ['lead', 'builder', 'reviewer', 'designer', 'dba', 'security-specialist'],
-  full: ['lead', 'builder', 'reviewer', 'designer', 'dba', 'security-specialist']
-};
-const EXPECTED_MODE_HOOK_MAP = {
-  lite: ['permission-checker', 'policy-gate', 'security-scan', 'task-board-sync'],
-  standard: [
-    'permission-checker',
-    'policy-gate',
-    'security-scan',
-    'task-board-sync',
-    'quality-gate',
-    'contract-gate',
-    'pre-edit-impact-check'
-  ],
-  full: [
-    'permission-checker',
-    'policy-gate',
-    'security-scan',
-    'task-board-sync',
-    'quality-gate',
-    'contract-gate',
-    'pre-edit-impact-check',
-    'docs-gate',
-    'risk-gate',
-    'domain-boundary-enforcer',
-    'architecture-updater',
-    'changelog-recorder',
-    'cross-domain-notifier',
-    'interface-validator',
-    'standards-validator',
-    'design-validator',
-    'task-sync'
-  ]
-};
-const EXPECTED_FULL_COMPATIBILITY_PROFILES = [
-  'part-leader',
-  'domain-designer',
-  'domain-developer'
-];
+const REGISTRY_PATH = process.env.PROJECT_TEAM_REGISTRY_PATH
+  ? path.resolve(process.env.PROJECT_TEAM_REGISTRY_PATH)
+  : path.join(PROJECT_TEAM_DIR, 'config', 'topology-registry.json');
+const CAPABILITY_MANIFEST_PATH = process.env.PROJECT_TEAM_CAPABILITY_MANIFEST_PATH
+  ? path.resolve(process.env.PROJECT_TEAM_CAPABILITY_MANIFEST_PATH)
+  : path.join(PROJECT_TEAM_DIR, 'config', 'capability-manifest.json');
+const EXPECTED_MODES = ['full', 'lite', 'standard'];
+const REQUIRED_LEVEL = 'required';
+const ADVISORY_LEVEL = 'advisory';
 
 function stableArray(values) {
   return [...new Set(values)].sort();
@@ -65,13 +24,19 @@ function readRegistry() {
   return JSON.parse(fs.readFileSync(REGISTRY_PATH, 'utf8'));
 }
 
+function readCapabilityManifest() {
+  return JSON.parse(fs.readFileSync(CAPABILITY_MANIFEST_PATH, 'utf8'));
+}
+
 function usage() {
   process.stderr.write(
     [
       'Usage:',
       '  node project-team/scripts/install-registry.js validate',
       '  node project-team/scripts/install-registry.js mode <lite|standard|full>',
-      '  node project-team/scripts/install-registry.js owned <lite|standard|full>'
+      '  node project-team/scripts/install-registry.js owned <lite|standard|full>',
+      '  node project-team/scripts/install-registry.js hook-config <lite|standard|full> [global|local] [hooks-path]',
+      '  node project-team/scripts/install-registry.js runtime-health <lite|standard|full> <target-base> [global|local]'
     ].join('\n') + '\n'
   );
 }
@@ -81,6 +46,41 @@ function arraysEqual(left, right) {
     return false;
   }
   return left.every((value, index) => value === right[index]);
+}
+
+function ensureModeName(modeName) {
+  if (!EXPECTED_MODES.includes(modeName)) {
+    throw new Error(`Unknown mode: ${modeName}`);
+  }
+}
+
+function getCapabilityCatalog(manifest) {
+  return manifest && manifest.closureMatrix && manifest.closureMatrix.capabilities
+    ? manifest.closureMatrix.capabilities
+    : {};
+}
+
+function getCapabilitiesForMode(manifest, modeName, kind, level = REQUIRED_LEVEL) {
+  ensureModeName(modeName);
+  return Object.entries(getCapabilityCatalog(manifest))
+    .filter(([, capability]) => capability.kind === kind && capability.installModes && capability.installModes[modeName] === level)
+    .map(([capabilityId]) => capabilityId);
+}
+
+function getCapabilitiesByModeLevel(manifest, modeName, level) {
+  ensureModeName(modeName);
+  return Object.entries(getCapabilityCatalog(manifest)).filter(([, capability]) => capability.installModes && capability.installModes[modeName] === level);
+}
+
+function formatCapabilityIssue(capabilityId, capability, detail) {
+  const remediation = capability && capability.remediationSource
+    ? ` Remediation: ${capability.remediationSource}`
+    : '';
+  return `${capabilityId}: ${detail}.${remediation}`;
+}
+
+function listMissingArtifacts(runtimeArtifacts = []) {
+  return runtimeArtifacts.filter((artifactPath) => !fs.existsSync(path.join(PROJECT_TEAM_DIR, artifactPath)));
 }
 
 function getModeConfig(registry, modeName) {
@@ -159,6 +159,115 @@ function getModeArtifacts(registry, modeName) {
   };
 }
 
+function getDefaultHooksPath(installMode) {
+  return installMode === 'global'
+    ? '${HOME}/.claude/hooks'
+    : '${CLAUDE_PROJECT_DIR:-.}/.claude/hooks';
+}
+
+function buildHookConfigPayload(registry, modeName, options = {}) {
+  const installMode = options.installMode === 'global' ? 'global' : 'local';
+  const hooksPath = options.hooksPath || getDefaultHooksPath(installMode);
+  const payload = buildModePayload(registry, modeName);
+  const defs = [...payload.hooks.active, ...payload.hooks.helpers];
+  const grouped = {};
+  const commands = [];
+
+  for (const def of defs) {
+    const event = def.event;
+    const matcher = def.matcher || null;
+    const key = `${event}::${matcher || ''}`;
+    if (!grouped[key]) {
+      grouped[key] = { event, matcher, hooks: [] };
+    }
+    const command = `node "${hooksPath}/${path.basename(def.artifact)}"`;
+    commands.push(command);
+    grouped[key].hooks.push({
+      type: 'command',
+      command,
+      timeout: event === 'Stop' ? 10 : 5,
+      statusMessage: `Running ${def.name}...`
+    });
+  }
+
+  const hooks = {};
+  for (const entry of Object.values(grouped)) {
+    if (!hooks[entry.event]) {
+      hooks[entry.event] = [];
+    }
+    const group = { hooks: entry.hooks };
+    if (entry.matcher) {
+      group.matcher = entry.matcher;
+    }
+    hooks[entry.event].push(group);
+  }
+
+  return {
+    managed: {
+      installer: 'project-team',
+      registryVersion: payload.registryVersion || 'unknown',
+      mode: payload.mode,
+      installMode,
+      commands: stableArray(commands)
+    },
+    hooks
+  };
+}
+
+function buildReinstallCommand(registry, modeName, installMode) {
+  const modeTemplates = ((registry.runtimeHealth || {}).reinstallCommands) || {};
+  const template = modeTemplates[installMode] || modeTemplates.local || 'project-team/install.sh --local --mode={mode} --force';
+  return template.replace('{mode}', modeName);
+}
+
+function buildRuntimeHealthReport(registry, manifest, modeName, targetBase, installMode) {
+  ensureModeName(modeName);
+  const absoluteBase = path.resolve(targetBase);
+  const requiredEntries = getCapabilitiesByModeLevel(manifest, modeName, REQUIRED_LEVEL);
+  const advisoryEntries = getCapabilitiesByModeLevel(manifest, modeName, ADVISORY_LEVEL);
+  const report = {
+    ok: true,
+    registryVersion: registry.registryVersion || 'unknown',
+    mode: modeName,
+    installMode,
+    targetBase: absoluteBase,
+    required: {
+      checkedCapabilities: requiredEntries.length,
+      missing: []
+    },
+    advisory: {
+      checkedCapabilities: advisoryEntries.length,
+      missing: []
+    }
+  };
+
+  const evaluateEntries = (entries, bucket, required) => {
+    for (const [capabilityId, capability] of entries) {
+      for (const artifactPath of capability.runtimeArtifacts || []) {
+        const absoluteArtifactPath = path.join(absoluteBase, artifactPath);
+        if (fs.existsSync(absoluteArtifactPath)) {
+          continue;
+        }
+        bucket.missing.push({
+          capabilityId,
+          kind: capability.kind,
+          artifact: artifactPath,
+          remediationSource: capability.remediationSource,
+          reinstallCommand: buildReinstallCommand(registry, modeName, installMode),
+          validationCommand: capability.validationCommand || manifest.defaultValidationCommand || 'node project-team/scripts/install-registry.js validate'
+        });
+        if (required) {
+          report.ok = false;
+        }
+      }
+    }
+  };
+
+  evaluateEntries(requiredEntries, report.required, true);
+  evaluateEntries(advisoryEntries, report.advisory, false);
+  return report;
+}
+
 function buildModePayload(registry, modeName) {
   const mode = getModeConfig(registry, modeName);
   const artifacts = getModeArtifacts(registry, modeName);
@@ -186,39 +295,43 @@ function buildModePayload(registry, modeName) {
   };
 }
 
-function validateRegistry(registry) {
+function validateRegistry(registry, capabilityManifest) {
   const issues = [];
+  const capabilityCatalog = getCapabilityCatalog(capabilityManifest);
+  const expectedCanonicalRoles = capabilityManifest.closureMatrix.canonicalRoleOrder;
 
-  if (!arraysEqual(registry.canonicalRoleOrder, EXPECTED_CANONICAL_ROLES)) {
-    issues.push('canonicalRoleOrder must match the fixed canonical role sequence');
+  if (!arraysEqual(registry.canonicalRoleOrder, expectedCanonicalRoles)) {
+    issues.push('canonicalRoleOrder must match capability-manifest.json');
   }
 
   const modeNames = Object.keys(registry.modes).sort();
-  if (!arraysEqual(modeNames, ['full', 'lite', 'standard'])) {
+  if (!arraysEqual(modeNames, EXPECTED_MODES)) {
     issues.push('modes must be exactly lite, standard, and full');
   }
 
-  for (const roleName of EXPECTED_CANONICAL_ROLES) {
+  for (const roleName of expectedCanonicalRoles) {
     if (!registry.roles[roleName]) {
       issues.push(`missing canonical role definition: ${roleName}`);
     }
   }
 
-  for (const [modeName, expectedRoles] of Object.entries(EXPECTED_MODE_ROLE_MAP)) {
+  for (const modeName of EXPECTED_MODES) {
     const mode = registry.modes[modeName];
     if (!mode) {
       continue;
     }
+    const expectedRoles = getCapabilitiesForMode(capabilityManifest, modeName, 'role');
+    const expectedHooks = getCapabilitiesForMode(capabilityManifest, modeName, 'hook');
+    const expectedProfiles = getCapabilitiesForMode(capabilityManifest, modeName, 'profile');
     if (!arraysEqual(mode.canonicalRoles, expectedRoles)) {
-      issues.push(`${modeName} canonicalRoles diverged from the plan`);
+      issues.push(`${modeName} canonicalRoles diverged from capability-manifest.json`);
     }
-    if (!arraysEqual(mode.hookNames, EXPECTED_MODE_HOOK_MAP[modeName])) {
-      issues.push(`${modeName} hookNames diverged from the plan`);
+    if (!arraysEqual(mode.hookNames, expectedHooks)) {
+      issues.push(`${modeName} hookNames diverged from capability-manifest.json`);
     }
-  }
-
-  if (!arraysEqual(registry.modes.full.compatibilityProfiles, EXPECTED_FULL_COMPATIBILITY_PROFILES)) {
-    issues.push('full compatibilityProfiles must match the fixed compatibility profile set');
+    if (!arraysEqual(mode.compatibilityProfiles, expectedProfiles)) {
+      issues.push(`${modeName} compatibilityProfiles diverged from capability-manifest.json`);
+    }
   }
 
   if ((registry.modes.lite.compatibilityProfiles || []).length !== 0) {
@@ -239,6 +352,50 @@ function validateRegistry(registry) {
 
   if (registry.compatibility.fullModeRestoresLegacyRuntime !== false) {
     issues.push('full mode must not restore the legacy runtime');
+  }
+
+  if (registry.capabilityManifest && registry.capabilityManifest.path !== path.relative(PROJECT_TEAM_DIR, CAPABILITY_MANIFEST_PATH).replace(/\\/g, '/')) {
+    issues.push('topology registry capabilityManifest.path must point at the active capability manifest');
+  }
+
+  for (const [capabilityId, capability] of Object.entries(capabilityCatalog)) {
+    if (!capability.validationCommand) {
+      issues.push(formatCapabilityIssue(capabilityId, capability, 'missing validationCommand'));
+    }
+    if (!capability.remediationSource) {
+      issues.push(formatCapabilityIssue(capabilityId, capability, 'missing remediationSource'));
+    }
+    if (!capability.runtimeArtifacts || capability.runtimeArtifacts.length === 0) {
+      issues.push(formatCapabilityIssue(capabilityId, capability, 'missing runtimeArtifacts'));
+      continue;
+    }
+
+    const missingArtifacts = listMissingArtifacts(capability.runtimeArtifacts);
+    if (missingArtifacts.length > 0) {
+      issues.push(formatCapabilityIssue(capabilityId, capability, `missing runtime artifact(s): ${missingArtifacts.join(', ')}`));
+    }
+
+    if (capability.kind === 'role' && registry.roles[capabilityId]) {
+      if (!arraysEqual(registry.roles[capabilityId].artifacts, capability.runtimeArtifacts)) {
+        issues.push(formatCapabilityIssue(capabilityId, capability, 'role artifacts differ from topology-registry.json'));
+      }
+    }
+
+    if ((capability.kind === 'hook' || capability.kind === 'helper-hook') && registry.hooks.definitions[capabilityId]) {
+      const registryArtifact = registry.hooks.definitions[capabilityId].artifact;
+      if (!capability.runtimeArtifacts.includes(registryArtifact)) {
+        issues.push(formatCapabilityIssue(capabilityId, capability, `hook artifact ${registryArtifact} is not covered by the manifest runtimeArtifacts`));
+      }
+    }
+
+    if (capability.kind === 'profile') {
+      const profile = registry.legacyAliases.profiles.find((entry) => entry.alias === capabilityId);
+      if (!profile) {
+        issues.push(formatCapabilityIssue(capabilityId, capability, 'missing compatibility profile definition in topology-registry.json'));
+      } else if (!capability.runtimeArtifacts.includes(profile.artifact)) {
+        issues.push(formatCapabilityIssue(capabilityId, capability, `profile artifact ${profile.artifact} is not covered by the manifest runtimeArtifacts`));
+      }
+    }
   }
 
   for (const alias of registry.legacyAliases.agents) {
@@ -265,6 +422,11 @@ function validateRegistry(registry) {
   const riskHelper = registry.hooks.definitions['risk-area-warning'];
   if (!riskHelper || riskHelper.installType !== 'helper') {
     issues.push('risk-area-warning must be registered as a helper hook');
+  }
+
+  const advisoryHelpers = getCapabilitiesForMode(capabilityManifest, 'full', 'helper-hook', ADVISORY_LEVEL);
+  if (!advisoryHelpers.includes('risk-area-warning')) {
+    issues.push('risk-area-warning must stay advisory in capability-manifest.json');
   }
 
   const matcherList = riskHelper && riskHelper.matcherListKey
@@ -315,11 +477,12 @@ function main(argv) {
   }
 
   const registry = readRegistry();
+  const capabilityManifest = readCapabilityManifest();
 
   try {
     switch (command) {
       case 'validate': {
-        const result = validateRegistry(registry);
+        const result = validateRegistry(registry, capabilityManifest);
         printJson(result, result.ok ? 0 : 1);
         break;
       }
@@ -346,6 +509,28 @@ function main(argv) {
         );
         break;
       }
+      case 'hook-config': {
+        if (!argument) {
+          throw new Error('Missing mode name');
+        }
+        const installMode = argv[4] === 'global' ? 'global' : 'local';
+        const hooksPath = argv[5];
+        printJson(buildHookConfigPayload(registry, argument, { installMode, hooksPath }), 0);
+        break;
+      }
+      case 'runtime-health': {
+        if (!argument) {
+          throw new Error('Missing mode name');
+        }
+        const targetBase = argv[4];
+        if (!targetBase) {
+          throw new Error('Missing target base path');
+        }
+        const installMode = argv[5] === 'global' ? 'global' : 'local';
+        const report = buildRuntimeHealthReport(registry, capabilityManifest, argument, targetBase, installMode);
+        printJson(report, report.ok ? 0 : 1);
+        break;
+      }
       default:
         usage();
         process.exit(2);
@@ -362,8 +547,13 @@ if (require.main === module) {
 
 module.exports = {
   buildModePayload,
+  getCapabilitiesForMode,
+  getCapabilitiesByModeLevel,
   getModeArtifacts,
   getActiveHelperHooks,
+  buildHookConfigPayload,
+  buildRuntimeHealthReport,
+  readCapabilityManifest,
   readRegistry,
   validateRegistry
 };

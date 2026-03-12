@@ -19,6 +19,70 @@ class TaskGenerator {
     this.analysis = analysisResult;
     this.tasks = [];
     this.taskIdCounter = { T0: 0, T1: 0, T2: 0, T3: 0 };
+    this.verifyContract = this.resolveVerifyContract();
+  }
+
+  resolveVerifyContract() {
+    const rootDir = process.cwd();
+    const override = String(process.env.VERIFY_CMD || '').trim();
+    if (override) {
+      this.assertVerifyCommandIsSupported(override, rootDir, true);
+      return {
+        verifyCmd: override,
+        source: 'env:VERIFY_CMD'
+      };
+    }
+
+    const makefilePath = `${rootDir}/Makefile`;
+    if (fs.existsSync(makefilePath)) {
+      const makefile = fs.readFileSync(makefilePath, 'utf8');
+      if (/^verify\s*:/m.test(makefile)) {
+        return {
+          verifyCmd: 'make verify',
+          source: 'Makefile:verify'
+        };
+      }
+    }
+
+    const scriptPath = `${rootDir}/scripts/verify_all.sh`;
+    if (fs.existsSync(scriptPath)) {
+      return {
+        verifyCmd: 'bash scripts/verify_all.sh',
+        source: 'scripts/verify_all.sh'
+      };
+    }
+
+    throw new Error(
+      'No executable verification contract found. Add a `verify` target to Makefile, add `scripts/verify_all.sh`, or set VERIFY_CMD explicitly.'
+    );
+  }
+
+  assertVerifyCommandIsSupported(command, rootDir, strict = false) {
+    if (command === 'make verify') {
+      const makefilePath = `${rootDir}/Makefile`;
+      if (!fs.existsSync(makefilePath)) {
+        throw new Error('VERIFY_CMD is set to `make verify` but Makefile is missing.');
+      }
+      const makefile = fs.readFileSync(makefilePath, 'utf8');
+      if (!/^verify\s*:/m.test(makefile)) {
+        throw new Error('VERIFY_CMD is set to `make verify` but Makefile has no `verify` target.');
+      }
+      return;
+    }
+
+    if (command === 'bash scripts/verify_all.sh' || command === './scripts/verify_all.sh') {
+      const scriptPath = `${rootDir}/scripts/verify_all.sh`;
+      if (!fs.existsSync(scriptPath)) {
+        throw new Error('VERIFY_CMD points to scripts/verify_all.sh but the file does not exist.');
+      }
+      return;
+    }
+
+    if (strict) {
+      throw new Error(
+        'Unsupported VERIFY_CMD. Supported values: `make verify`, `bash scripts/verify_all.sh`, `./scripts/verify_all.sh`.'
+      );
+    }
   }
 
   /**
@@ -405,9 +469,22 @@ class TaskGenerator {
 
     lines.push('---');
     lines.push('');
+    lines.push('## 실행 검증 계약');
+    lines.push('');
+    lines.push('```yaml');
+    lines.push(`# verify_cmd: 단일 실행 검증 명령 (프로젝트 루트 기준)`);
+    lines.push(`verify_cmd: ${this.verifyContract.verifyCmd}`);
+    lines.push(`# source: verify_cmd를 제공하는 근거 파일/입력`);
+    lines.push(`source: ${this.verifyContract.source}`);
+    lines.push('```');
+    lines.push('');
+
+    lines.push('---');
+    lines.push('');
     lines.push('## 메타데이터 설명');
     lines.push('');
     lines.push('```yaml');
+    lines.push('# verify_cmd: 완료 검증 단일 엔트리 (make verify 또는 scripts/verify_all.sh 등)');
     lines.push('# deps: 의존 태스크 ID 목록 (선행 태스크)');
     lines.push('# domain: backend | frontend | shared');
     lines.push('# risk: low | medium | critical (병렬 실행 제어용)');

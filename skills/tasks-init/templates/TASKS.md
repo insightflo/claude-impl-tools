@@ -6,6 +6,15 @@
 
 ---
 
+## 실행 검증 계약
+
+```yaml
+verify_cmd: {{VERIFY_CMD}}
+source: {{VERIFY_SOURCE}}
+```
+
+---
+
 ## T0 - Skeleton (구조)
 
 - [ ] T0.1: 프로젝트 초기 설정
@@ -106,6 +115,7 @@
 ## 메타데이터 설명
 
 ```yaml
+# verify_cmd: 완료 검증 단일 엔트리 (make verify 또는 scripts/verify_all.sh 등)
 # deps: 의존 태스크 ID 목록 (선행 태스크가 완료되어야 실행)
 # domain: backend | frontend | shared (도메인 분리)
 # risk: low | medium | critical (위험도, critical은 항상 직렬)

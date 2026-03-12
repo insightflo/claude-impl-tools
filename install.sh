@@ -120,9 +120,9 @@ select_project_team() {
 
         # Select mode
         PROJECT_TEAM_MODE=$(gum choose --cursor.foreground 212 \
-            "standard - 권장 훅 + 에이전트" \
-            "lite - 에이전트만 (훅 없음)" \
-            "full - 모든 훅 + 에이전트")
+            "lite - Canonical MVP topology" \
+            "standard - Lite + specialists + added gates" \
+            "full - Standard + compatibility profile surfaces")
 
         if [[ "$PROJECT_TEAM_MODE" == *"lite"* ]]; then
             PROJECT_TEAM_MODE_FLAG="lite"
@@ -302,67 +302,23 @@ install_project_team() {
         fi
     fi
 
-    # Install agents
-    mkdir -p "$TARGET_DIR/agents"
-    if [[ -d "$SCRIPT_DIR/project-team/agents" ]]; then
-        gum spin --spinner dot --title "에이전트 설치 중..." -- \
-            bash -c "rsync -a \"$SCRIPT_DIR/project-team/agents/\" \"$TARGET_DIR/agents/\" 2>/dev/null || cp -r \"$SCRIPT_DIR/project-team/agents/.\" \"$TARGET_DIR/agents/\""
-        local agent_count=$(ls -1 "$TARGET_DIR/agents"/*.md 2>/dev/null | wc -l | tr -d ' ')
-        echo -e "${GREEN}✓ $agent_count 에이전트 설치됨${NC}"
+    local project_team_installer="$SCRIPT_DIR/project-team/install.sh"
+    if [[ ! -x "$project_team_installer" ]]; then
+        echo -e "${RED}❌ Project Team installer를 찾을 수 없습니다: $project_team_installer${NC}"
+        exit 1
     fi
 
-    # Install templates
-    mkdir -p "$TARGET_DIR/templates"
-    if [[ -d "$SCRIPT_DIR/project-team/templates" ]]; then
-        gum spin --spinner dot --title "템플릿 설치 중..." -- \
-            bash -c "rsync -a \"$SCRIPT_DIR/project-team/templates/\" \"$TARGET_DIR/templates/\" 2>/dev/null || cp -r \"$SCRIPT_DIR/project-team/templates/.\" \"$TARGET_DIR/templates/\""
-        echo -e "${GREEN}✓ 템플릿 설치됨${NC}"
+    local scope_flag="--local"
+    if [[ "$TARGET_DIR" == "$GLOBAL_CLAUDE_DIR" ]]; then
+        scope_flag="--global"
     fi
 
-    mkdir -p "$TARGET_DIR/project-team/scripts"
-    if [[ -d "$SCRIPT_DIR/project-team/scripts" ]]; then
-        gum spin --spinner dot --title "협업 런타임 스크립트 설치 중..." -- \
-            bash -c "rsync -a \"$SCRIPT_DIR/project-team/scripts/\" \"$TARGET_DIR/project-team/scripts/\" 2>/dev/null || cp -r \"$SCRIPT_DIR/project-team/scripts/.\" \"$TARGET_DIR/project-team/scripts/\""
-        find "$TARGET_DIR/project-team/scripts" \( -name '*.js' -o -name '*.sh' \) -exec chmod +x {} + 2>/dev/null || true
-        echo -e "${GREEN}✓ project-team runtime scripts 설치됨${NC}"
-    fi
+    gum spin --spinner dot --title "Project Team registry installer 실행 중..." -- \
+        bash "$project_team_installer" "$scope_flag" "--mode=$PROJECT_TEAM_MODE_FLAG" --force --quiet
 
-    mkdir -p "$TARGET_DIR/scripts"
-    if [[ -d "$SCRIPT_DIR/project-team/scripts" ]]; then
-        gum spin --spinner dot --title "훅 런타임 스크립트 alias 설치 중..." -- \
-            bash -c "rsync -a \"$SCRIPT_DIR/project-team/scripts/\" \"$TARGET_DIR/scripts/\" 2>/dev/null || cp -r \"$SCRIPT_DIR/project-team/scripts/.\" \"$TARGET_DIR/scripts/\""
-        find "$TARGET_DIR/scripts" \( -name '*.js' -o -name '*.sh' \) -exec chmod +x {} + 2>/dev/null || true
-        echo -e "${GREEN}✓ hook runtime script aliases 설치됨${NC}"
-    fi
-
-    mkdir -p "$TARGET_DIR/services"
-    if [[ -d "$SCRIPT_DIR/project-team/services" ]]; then
-        gum spin --spinner dot --title "훅 서비스 런타임 설치 중..." -- \
-            bash -c "rsync -a \"$SCRIPT_DIR/project-team/services/\" \"$TARGET_DIR/services/\" 2>/dev/null || cp -r \"$SCRIPT_DIR/project-team/services/.\" \"$TARGET_DIR/services/\""
-        find "$TARGET_DIR/services" -name '*.js' -exec chmod +x {} + 2>/dev/null || true
-        echo -e "${GREEN}✓ hook service runtime 설치됨${NC}"
-    fi
-
-    # Install hooks (based on mode)
-    if [[ "$PROJECT_TEAM_MODE_FLAG" != "lite" ]]; then
-        mkdir -p "$TARGET_DIR/hooks"
-        if [[ -d "$SCRIPT_DIR/project-team/hooks" ]]; then
-            gum spin --spinner dot --title "훅 설치 중..." -- \
-                bash -c "rsync -a \"$SCRIPT_DIR/project-team/hooks/\" \"$TARGET_DIR/hooks/\" 2>/dev/null || cp -r \"$SCRIPT_DIR/project-team/hooks/.\" \"$TARGET_DIR/hooks/\""
-            if [[ -d "$SCRIPT_DIR/project-team/hook-shims" ]]; then
-                gum spin --spinner dot --title "프로젝트 훅 shim 설치 중..." -- \
-                    bash -c "rsync -a \"$SCRIPT_DIR/project-team/hook-shims/\" \"$TARGET_DIR/hooks/\" 2>/dev/null || cp -r \"$SCRIPT_DIR/project-team/hook-shims/.\" \"$TARGET_DIR/hooks/\""
-            fi
-            chmod +x "$TARGET_DIR/hooks/"*.js 2>/dev/null || true
-            local hook_count=$(ls -1 "$TARGET_DIR/hooks"/*.js 2>/dev/null | wc -l | tr -d ' ')
-            echo -e "${GREEN}✓ $hook_count 훅 설치됨${NC}"
-
-            # Configure hooks in settings.json
-            configure_hooks
-        fi
-    else
-        echo -e "${YELLOW}⏭️  훅 설치 건너뜀 (lite 모드)${NC}"
-    fi
+    local hook_count=$(ls -1 "$TARGET_DIR/hooks"/*.js 2>/dev/null | wc -l | tr -d ' ')
+    local agent_count=$(ls -1 "$TARGET_DIR/agents"/*.md 2>/dev/null | wc -l | tr -d ' ')
+    echo -e "${GREEN}✓ Project Team 설치 완료 (agents: $agent_count, hooks: $hook_count)${NC}"
 }
 
 configure_hooks() {

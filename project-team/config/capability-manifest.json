@@ -1,0 +1,396 @@
+{
+  "schemaVersion": 1,
+  "manifestVersion": "2026-03-11",
+  "canonicalWriter": "project-team/config/capability-manifest.json",
+  "defaultValidationCommand": "node project-team/scripts/install-registry.js validate",
+  "closureMatrix": {
+    "canonicalRoleOrder": [
+      "lead",
+      "builder",
+      "reviewer",
+      "designer",
+      "dba",
+      "security-specialist"
+    ],
+    "capabilities": {
+      "lead": {
+        "kind": "role",
+        "documentedPromise": "Canonical coordination role is installable in every mode.",
+        "installModes": {
+          "lite": "required",
+          "standard": "required",
+          "full": "required"
+        },
+        "runtimeArtifacts": [
+          "agents/Lead.md"
+        ],
+        "validationCommand": "node project-team/scripts/install-registry.js validate",
+        "remediationSource": "project-team/docs/INSTALLATION.md#hook-modes"
+      },
+      "builder": {
+        "kind": "role",
+        "documentedPromise": "Canonical implementation role is installable in every mode.",
+        "installModes": {
+          "lite": "required",
+          "standard": "required",
+          "full": "required"
+        },
+        "runtimeArtifacts": [
+          "agents/Builder.md"
+        ],
+        "validationCommand": "node project-team/scripts/install-registry.js validate",
+        "remediationSource": "project-team/docs/INSTALLATION.md#hook-modes"
+      },
+      "reviewer": {
+        "kind": "role",
+        "documentedPromise": "Canonical review role is installable in every mode.",
+        "installModes": {
+          "lite": "required",
+          "standard": "required",
+          "full": "required"
+        },
+        "runtimeArtifacts": [
+          "agents/Reviewer.md"
+        ],
+        "validationCommand": "node project-team/scripts/install-registry.js validate",
+        "remediationSource": "project-team/docs/INSTALLATION.md#hook-modes"
+      },
+      "designer": {
+        "kind": "role",
+        "documentedPromise": "Design specialist is added outside lite mode.",
+        "installModes": {
+          "lite": "off",
+          "standard": "required",
+          "full": "required"
+        },
+        "runtimeArtifacts": [
+          "agents/Designer.md"
+        ],
+        "validationCommand": "node project-team/scripts/install-registry.js validate",
+        "remediationSource": "project-team/docs/INSTALLATION.md#hook-modes"
+      },
+      "dba": {
+        "kind": "role",
+        "documentedPromise": "Data specialist is added outside lite mode.",
+        "installModes": {
+          "lite": "off",
+          "standard": "required",
+          "full": "required"
+        },
+        "runtimeArtifacts": [
+          "agents/DBA.md"
+        ],
+        "validationCommand": "node project-team/scripts/install-registry.js validate",
+        "remediationSource": "project-team/docs/INSTALLATION.md#hook-modes"
+      },
+      "security-specialist": {
+        "kind": "role",
+        "documentedPromise": "Security specialist is added outside lite mode.",
+        "installModes": {
+          "lite": "off",
+          "standard": "required",
+          "full": "required"
+        },
+        "runtimeArtifacts": [
+          "agents/SecuritySpecialist.md"
+        ],
+        "validationCommand": "node project-team/scripts/install-registry.js validate",
+        "remediationSource": "project-team/docs/INSTALLATION.md#hook-modes"
+      },
+      "permission-checker": {
+        "kind": "hook",
+        "documentedPromise": "Pre-edit permission enforcement is active in every install mode.",
+        "installModes": {
+          "lite": "required",
+          "standard": "required",
+          "full": "required"
+        },
+        "runtimeArtifacts": [
+          "hooks/permission-checker.js"
+        ],
+        "validationCommand": "node project-team/scripts/install-registry.js validate",
+        "remediationSource": "project-team/docs/INSTALLATION.md#hook-modes"
+      },
+      "policy-gate": {
+        "kind": "hook",
+        "documentedPromise": "Policy gate is active in every install mode.",
+        "installModes": {
+          "lite": "required",
+          "standard": "required",
+          "full": "required"
+        },
+        "runtimeArtifacts": [
+          "hooks/policy-gate.js"
+        ],
+        "validationCommand": "node project-team/scripts/install-registry.js validate",
+        "remediationSource": "project-team/docs/INSTALLATION.md#hook-modes"
+      },
+      "security-scan": {
+        "kind": "hook",
+        "documentedPromise": "Security scan runs in every install mode.",
+        "installModes": {
+          "lite": "required",
+          "standard": "required",
+          "full": "required"
+        },
+        "runtimeArtifacts": [
+          "hooks/security-scan.js"
+        ],
+        "validationCommand": "node project-team/scripts/install-registry.js validate",
+        "remediationSource": "project-team/docs/INSTALLATION.md#hook-modes"
+      },
+      "task-board-sync": {
+        "kind": "hook",
+        "documentedPromise": "Task board sync is active in every install mode.",
+        "installModes": {
+          "lite": "required",
+          "standard": "required",
+          "full": "required"
+        },
+        "runtimeArtifacts": [
+          "hooks/task-board-sync.js"
+        ],
+        "validationCommand": "node project-team/scripts/install-registry.js validate",
+        "remediationSource": "project-team/docs/INSTALLATION.md#hook-modes"
+      },
+      "quality-gate": {
+        "kind": "hook",
+        "documentedPromise": "Layer or stop-time quality gating is enabled outside lite mode.",
+        "installModes": {
+          "lite": "off",
+          "standard": "required",
+          "full": "required"
+        },
+        "runtimeArtifacts": [
+          "hooks/quality-gate.js"
+        ],
+        "validationCommand": "node project-team/scripts/install-registry.js validate",
+        "remediationSource": "project-team/docs/INSTALLATION.md#hook-modes"
+      },
+      "contract-gate": {
+        "kind": "hook",
+        "documentedPromise": "Contract validation is enabled outside lite mode.",
+        "installModes": {
+          "lite": "off",
+          "standard": "required",
+          "full": "required"
+        },
+        "runtimeArtifacts": [
+          "hooks/contract-gate.js"
+        ],
+        "validationCommand": "node project-team/scripts/install-registry.js validate",
+        "remediationSource": "project-team/docs/INSTALLATION.md#hook-modes"
+      },
+      "pre-edit-impact-check": {
+        "kind": "hook",
+        "documentedPromise": "Pre-edit impact analysis is enabled outside lite mode.",
+        "installModes": {
+          "lite": "off",
+          "standard": "required",
+          "full": "required"
+        },
+        "runtimeArtifacts": [
+          "hooks/pre-edit-impact-check.js"
+        ],
+        "validationCommand": "node project-team/scripts/install-registry.js validate",
+        "remediationSource": "project-team/docs/INSTALLATION.md#hook-modes"
+      },
+      "docs-gate": {
+        "kind": "hook",
+        "documentedPromise": "Documentation closure enforcement is available in full mode.",
+        "installModes": {
+          "lite": "off",
+          "standard": "off",
+          "full": "required"
+        },
+        "runtimeArtifacts": [
+          "hooks/docs-gate.js"
+        ],
+        "validationCommand": "node project-team/scripts/install-registry.js validate",
+        "remediationSource": "project-team/docs/INSTALLATION.md#hook-modes"
+      },
+      "risk-gate": {
+        "kind": "hook",
+        "documentedPromise": "Explicit risk gating is available in full mode.",
+        "installModes": {
+          "lite": "off",
+          "standard": "off",
+          "full": "required"
+        },
+        "runtimeArtifacts": [
+          "hooks/risk-gate.js"
+        ],
+        "validationCommand": "node project-team/scripts/install-registry.js validate",
+        "remediationSource": "project-team/docs/INSTALLATION.md#hook-modes"
+      },
+      "domain-boundary-enforcer": {
+        "kind": "hook",
+        "documentedPromise": "Domain boundary enforcement is available in full mode.",
+        "installModes": {
+          "lite": "off",
+          "standard": "off",
+          "full": "required"
+        },
+        "runtimeArtifacts": [
+          "hooks/domain-boundary-enforcer.js"
+        ],
+        "validationCommand": "node project-team/scripts/install-registry.js validate",
+        "remediationSource": "project-team/docs/INSTALLATION.md#hook-modes"
+      },
+      "architecture-updater": {
+        "kind": "hook",
+        "documentedPromise": "Architecture updates are available in full mode.",
+        "installModes": {
+          "lite": "off",
+          "standard": "off",
+          "full": "required"
+        },
+        "runtimeArtifacts": [
+          "hooks/architecture-updater.js"
+        ],
+        "validationCommand": "node project-team/scripts/install-registry.js validate",
+        "remediationSource": "project-team/docs/INSTALLATION.md#hook-modes"
+      },
+      "changelog-recorder": {
+        "kind": "hook",
+        "documentedPromise": "Changelog recording is available in full mode.",
+        "installModes": {
+          "lite": "off",
+          "standard": "off",
+          "full": "required"
+        },
+        "runtimeArtifacts": [
+          "hooks/changelog-recorder.js"
+        ],
+        "validationCommand": "node project-team/scripts/install-registry.js validate",
+        "remediationSource": "project-team/docs/INSTALLATION.md#hook-modes"
+      },
+      "cross-domain-notifier": {
+        "kind": "hook",
+        "documentedPromise": "Cross-domain notifications are available in full mode.",
+        "installModes": {
+          "lite": "off",
+          "standard": "off",
+          "full": "required"
+        },
+        "runtimeArtifacts": [
+          "hooks/cross-domain-notifier.js"
+        ],
+        "validationCommand": "node project-team/scripts/install-registry.js validate",
+        "remediationSource": "project-team/docs/INSTALLATION.md#hook-modes"
+      },
+      "interface-validator": {
+        "kind": "hook",
+        "documentedPromise": "Interface contract validation is available in full mode.",
+        "installModes": {
+          "lite": "off",
+          "standard": "off",
+          "full": "required"
+        },
+        "runtimeArtifacts": [
+          "hooks/interface-validator.js"
+        ],
+        "validationCommand": "node project-team/scripts/install-registry.js validate",
+        "remediationSource": "project-team/docs/INSTALLATION.md#hook-modes"
+      },
+      "standards-validator": {
+        "kind": "hook",
+        "documentedPromise": "Standards validation is available in full mode.",
+        "installModes": {
+          "lite": "off",
+          "standard": "off",
+          "full": "required"
+        },
+        "runtimeArtifacts": [
+          "hooks/standards-validator.js"
+        ],
+        "validationCommand": "node project-team/scripts/install-registry.js validate",
+        "remediationSource": "project-team/docs/INSTALLATION.md#hook-modes"
+      },
+      "design-validator": {
+        "kind": "hook",
+        "documentedPromise": "Design validation is available in full mode.",
+        "installModes": {
+          "lite": "off",
+          "standard": "off",
+          "full": "required"
+        },
+        "runtimeArtifacts": [
+          "hooks/design-validator.js"
+        ],
+        "validationCommand": "node project-team/scripts/install-registry.js validate",
+        "remediationSource": "project-team/docs/INSTALLATION.md#hook-modes"
+      },
+      "task-sync": {
+        "kind": "hook",
+        "documentedPromise": "Canonical task file synchronization is available in full mode.",
+        "installModes": {
+          "lite": "off",
+          "standard": "off",
+          "full": "required"
+        },
+        "runtimeArtifacts": [
+          "hooks/task-sync.js"
+        ],
+        "validationCommand": "node project-team/scripts/install-registry.js validate",
+        "remediationSource": "project-team/docs/INSTALLATION.md#hook-modes"
+      },
+      "risk-area-warning": {
+        "kind": "helper-hook",
+        "documentedPromise": "Risk-area helper warning remains advisory across all modes.",
+        "installModes": {
+          "lite": "advisory",
+          "standard": "advisory",
+          "full": "advisory"
+        },
+        "runtimeArtifacts": [
+          "hooks/risk-area-warning.js"
+        ],
+        "validationCommand": "node project-team/scripts/install-registry.js validate",
+        "remediationSource": "project-team/docs/INSTALLATION.md#hook-modes"
+      },
+      "part-leader": {
+        "kind": "profile",
+        "documentedPromise": "Compatibility profile is restored only in full mode.",
+        "installModes": {
+          "lite": "off",
+          "standard": "off",
+          "full": "required"
+        },
+        "runtimeArtifacts": [
+          "agents/templates/PartLeader.md"
+        ],
+        "validationCommand": "node project-team/scripts/install-registry.js validate",
+        "remediationSource": "README.md#project-team"
+      },
+      "domain-designer": {
+        "kind": "profile",
+        "documentedPromise": "Compatibility profile is restored only in full mode.",
+        "installModes": {
+          "lite": "off",
+          "standard": "off",
+          "full": "required"
+        },
+        "runtimeArtifacts": [
+          "agents/templates/DomainDesigner.md"
+        ],
+        "validationCommand": "node project-team/scripts/install-registry.js validate",
+        "remediationSource": "README.md#project-team"
+      },
+      "domain-developer": {
+        "kind": "profile",
+        "documentedPromise": "Compatibility profile is restored only in full mode.",
+        "installModes": {
+          "lite": "off",
+          "standard": "off",
+          "full": "required"
+        },
+        "runtimeArtifacts": [
+          "agents/templates/DomainDeveloper.md"
+        ],
+        "validationCommand": "node project-team/scripts/install-registry.js validate",
+        "remediationSource": "README.md#project-team"
+      }
+    }
+  }
+}
