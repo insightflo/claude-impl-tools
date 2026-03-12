@@ -37,6 +37,7 @@ updated: 2026-03-07
 - `.claude/collab/board-state.json` (derived renderer state)
 - `.claude/collab/control-state.json` (derived control query state)
 - `.claude/collab/derived-meta.json` (derived stale markers)
+- `management/requests/`, `management/responses/`, `management/handoffs/` (generated compatibility exports, read-only)
 
 ## Single Surface Contract
 
@@ -51,6 +52,8 @@ updated: 2026-03-07
 - `.claude/collab/control.ndjson` 은 append-only operator-intent log 이며 Node writer 만 기록한다.
 - TUI는 subprocess delegation 으로만 control command 를 보낸다.
 - `.claude/collab/control-state.json` 은 disposable derived state 이며 직접 수정하지 않는다.
+- `management/requests|responses|handoffs` 는 canonical source 가 아니라 regenerate 가능한 compatibility export 이다.
+- semantic event 를 `.claude/collab/*` 와 `management/*` 에 동시에 직접 쓰면 single-source-of-truth 위반이다.
 - Duplicate command 처리는 `idempotency_key` 와 correlation-aware filtering 으로 고정한다.
 
 ## 명령어
@@ -65,6 +68,7 @@ updated: 2026-03-07
   - JSON (`--json`): `{ ok, run_id, blocked_count, gate_status, pending_approval_count, pending_decision_count, stale_artifacts }`
 - Side effects:
   - stale derived artifact 가 있으면 authoritative projector 로 자동 rebuild 시도
+  - compatibility export 가 stale 하거나 비어 있으면 canonical `.claude/collab/*` 에서 `management/*` read-only view 를 재생성
   - TTY에서는 `/task-board` operator shell 로 진입해 approval shell 을 렌더링할 수 있음
 
 **관계**: 보드 렌더링은 `/task-board show`를 재사용할 수 있다. `/whitebox status`는 "화이트박스" 관점의 요약/헤더/경고(derived stale 등)를 추가로 노출한다.

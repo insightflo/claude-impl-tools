@@ -17,6 +17,11 @@ const {
   emitRunEventDetailed,
   withExecutorMetadata,
 } = require('../../../../project-team/scripts/lib/whitebox-run');
+const {
+  saveRecoverySnapshot,
+  clearRecoverySnapshot,
+  loadRecoverySnapshot,
+} = require('./state');
 
 const STATE_FILE = '.claude/orchestrate-state.json';
 
@@ -176,6 +181,28 @@ async function updateTaskState(statePath, taskId, status, data = {}, options = {
       }
 
       writeStderr(`Failed to write orchestrate.task.status_changed for ${taskId}: ${eventResult.failure.message}`);
+    }
+
+    if (status === 'failed' || status === 'timeout') {
+      saveRecoverySnapshot({
+        schema_version: 1,
+        source: 'orchestrate-state',
+        type: 'task_failure',
+        status: 'blocked',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        task_id: taskId,
+        error: data.error || null,
+        remediation: data.error
+          ? `Investigate failure for ${taskId}: ${data.error}`
+          : `Investigate failure for ${taskId} and rerun orchestration.`,
+        evidence_paths: [statePath].filter((filePath) => fs.existsSync(filePath)),
+      }, projectDir);
+    } else if (status === 'completed') {
+      const existingSnapshot = loadRecoverySnapshot(projectDir);
+      if (existingSnapshot && existingSnapshot.source === 'orchestrate-state' && existingSnapshot.task_id === taskId) {
+        clearRecoverySnapshot(projectDir);
+      }
     }
 
     return { ok: true, previousStatus, eventWarning: eventResult.ok ? null : eventResult.failure };

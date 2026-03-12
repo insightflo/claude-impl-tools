@@ -23,6 +23,7 @@ const {
 const CONTROL_STATE_SCHEMA_VERSION = '1.0';
 const EVENTS_REL_PATH = '.claude/collab/events.ndjson';
 const AUTO_STATE_REL_PATH = '.claude/orchestrate/auto-state.json';
+const RUNS_REL_PATH = '.claude/collab/runs';
 
 function controlStatePath(projectDir) {
   return path.join(projectDir, CONTROL_STATE_ARTIFACT);
@@ -64,12 +65,24 @@ function writeJsonAtomic(filePath, payload) {
   fs.renameSync(tmpPath, filePath);
 }
 
-function commandEvidencePaths(projectDir, gateId) {
+function normalizeRunId(value) {
+  return String(value || '').trim().replace(/[\\/]+/g, '_');
+}
+
+function runReportPath(projectDir, runId) {
+  const normalizedRunId = normalizeRunId(runId);
+  if (!normalizedRunId) return null;
+  return path.join(projectDir, RUNS_REL_PATH, normalizedRunId, 'report.json');
+}
+
+function commandEvidencePaths(projectDir, gateId, runId) {
   const paths = [
     path.join(projectDir, CONTROL_LOG_REL_PATH),
     path.join(projectDir, EVENTS_REL_PATH),
     path.join(projectDir, AUTO_STATE_REL_PATH),
   ];
+  const reportPath = runReportPath(projectDir, runId);
+  if (reportPath) paths.push(reportPath);
   if (gateId) {
     return paths.filter((filePath) => fs.existsSync(filePath));
   }
@@ -109,7 +122,7 @@ function collectGateRegistry(projectDir, events) {
       trigger_type: autoGate.trigger_type || null,
       trigger_reason: autoGate.trigger_reason || null,
       recommendation: autoGate.recommendation || null,
-      evidence_paths: commandEvidencePaths(projectDir, autoGate.gate_id),
+      evidence_paths: commandEvidencePaths(projectDir, autoGate.gate_id, autoGate.run_id),
     });
   }
 
@@ -132,7 +145,7 @@ function collectGateRegistry(projectDir, events) {
       trigger_type: data.trigger_type || null,
       trigger_reason: data.trigger_reason || null,
       recommendation: data.recommendation || null,
-      evidence_paths: commandEvidencePaths(projectDir, gateId),
+      evidence_paths: commandEvidencePaths(projectDir, gateId, data.run_id),
     };
 
     registry.set(gateId, {
@@ -150,7 +163,7 @@ function collectGateRegistry(projectDir, events) {
       trigger_type: existing.trigger_type || data.trigger_type || null,
       trigger_reason: existing.trigger_reason || data.trigger_reason || null,
       recommendation: existing.recommendation || data.recommendation || null,
-      evidence_paths: existing.evidence_paths,
+      evidence_paths: existing.evidence_paths.length ? existing.evidence_paths : commandEvidencePaths(projectDir, gateId, existing.run_id || data.run_id),
     });
   }
 

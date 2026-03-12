@@ -42,7 +42,8 @@ let messagingService = null;
 try {
   const messagingPath = path.join(__dirname, '../services/messaging.js');
   if (require('fs').existsSync(messagingPath)) {
-    const { AgentMessagingService } = require(messagingPath);
+    const messagingModule = require(messagingPath);
+    const AgentMessagingService = messagingModule.AgentMessagingService || messagingModule;
     messagingService = new AgentMessagingService();
   }
 } catch (error) {
@@ -1212,12 +1213,30 @@ async function notifyAgents(notifications, category) {
 
         // Use broadcastDomainChange for breaking changes
         if (notif.notification.breaking) {
+          const actionable = {
+            recipient: notif.notification.to,
+            what_changed: `${category} contract update (${notif.notification.changeCount} change(s))`,
+            why: 'Cross-domain compatibility risk detected from contract/design edits.',
+            next_action: notif.notification.to === 'broadcast'
+              ? 'Review impacted consumer surfaces and confirm migration readiness.'
+              : `Review and apply required updates in ${notif.notification.to} domain.`,
+            required_artifacts: [notif.path],
+            constraints: [
+              'Treat .claude/collab as canonical artifact source.',
+              'Do not ship without consumer compatibility confirmation.'
+            ]
+          };
           const change = {
             type: category,
+            domain: notif.notification.from,
             from: notif.notification.from,
+            initiator: notif.notification.from,
+            severity: notif.notification.priority,
+            actionRequired: true,
             breaking: true,
             changeCount: notif.notification.changeCount,
             description: notif.content,
+            actionable,
             timestamp: new Date().toISOString()
           };
 
@@ -1234,10 +1253,20 @@ async function notifyAgents(notifications, category) {
           // Use notifyAgent for non-breaking changes
           for (const agentId of targetAgents) {
             try {
+              const actionable = {
+                recipient: agentId,
+                what_changed: `${category} notification (${notif.notification.changeCount} change(s))`,
+                why: 'Consumer awareness needed to avoid stale contract assumptions.',
+                next_action: 'Review the notification artifact and decide whether code changes are needed.',
+                required_artifacts: [notif.path],
+                constraints: ['Treat .claude/collab artifacts as canonical.']
+              };
               await messagingService.notifyAgent(agentId, {
                 type: 'cross-domain-notification',
                 category,
                 breaking: false,
+                recipient: agentId,
+                actionable,
                 content: notif.content,
                 notificationFile: notif.path,
                 timestamp: new Date().toISOString()

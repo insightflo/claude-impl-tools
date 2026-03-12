@@ -17,6 +17,7 @@ const path = require('path');
 
 const STATE_FILE = '.claude/orchestrate-state.json';
 const BACKUP_DIR = '.claude/backups';
+const RECOVERY_SNAPSHOT_FILE = '.claude/orchestrate/recovery-snapshot.json';
 
 /**
  * Load orchestration state
@@ -57,6 +58,42 @@ function saveState(state, projectDir = process.cwd()) {
     fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
   } catch (error) {
     throw new Error(`Failed to save state: ${error.message}`);
+  }
+}
+
+function recoverySnapshotPath(projectDir = process.cwd()) {
+  return path.join(projectDir, RECOVERY_SNAPSHOT_FILE);
+}
+
+function loadRecoverySnapshot(projectDir = process.cwd()) {
+  const snapshotPath = recoverySnapshotPath(projectDir);
+
+  if (!fs.existsSync(snapshotPath)) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(fs.readFileSync(snapshotPath, 'utf8'));
+  } catch (error) {
+    throw new Error(`Failed to load recovery snapshot: ${error.message}`);
+  }
+}
+
+function saveRecoverySnapshot(snapshot, projectDir = process.cwd()) {
+  const snapshotPath = recoverySnapshotPath(projectDir);
+
+  try {
+    fs.mkdirSync(path.dirname(snapshotPath), { recursive: true });
+    fs.writeFileSync(snapshotPath, JSON.stringify(snapshot, null, 2));
+  } catch (error) {
+    throw new Error(`Failed to save recovery snapshot: ${error.message}`);
+  }
+}
+
+function clearRecoverySnapshot(projectDir = process.cwd()) {
+  const snapshotPath = recoverySnapshotPath(projectDir);
+  if (fs.existsSync(snapshotPath)) {
+    fs.unlinkSync(snapshotPath);
   }
 }
 
@@ -338,8 +375,14 @@ Commands:
 }
 
 module.exports = {
+  STATE_FILE,
+  RECOVERY_SNAPSHOT_FILE,
   loadState,
   saveState,
+  recoverySnapshotPath,
+  loadRecoverySnapshot,
+  saveRecoverySnapshot,
+  clearRecoverySnapshot,
   backupState,
   updateTask,
   getTask,

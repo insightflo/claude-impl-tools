@@ -20,6 +20,7 @@ updated: 2026-03-05
 - **Derived, never edit**: `board-state.json`은 직접 편집 금지. `board-builder.js`로 재생성.
 - **Whitebox renderer**: `/task-board`는 별도 제품이 아니라 `/whitebox`의 renderer/TUI surface 다.
 - **Control query separation**: `control.ndjson` 은 canonical operator-intent log, `control-state.json` 은 파생 control query state 다.
+- **Compatibility exports are read-only**: `management/requests|responses|handoffs` 는 `.claude/collab/*` 에서 생성되는 human-readable export 이며 직접 수정 금지다.
 
 ## 명령어
 
@@ -55,6 +56,7 @@ node project-team/scripts/collab-init.js
 ```
 
 `.claude/collab/` 디렉토리 구조 + `board-state.json`/`control-state.json` 파생 파일 + `events.ndjson`/`control.ndjson` canonical log 를 준비한다.
+필요하면 `management/*` compatibility export 도 같은 canonical source 에서 재생성한다.
 
 ### `/task-board health` — 보드 상태 점검
 
@@ -122,6 +124,8 @@ pending decision 항목은 `trigger_type`, `reason`, `recommendation` 을 함께
 | `decision_written` | `DEC-*.md` write/update | linked ruling 컨텍스트 반영 + 최종 DEC 기반 REQ 완료 재계산 |
 
 이 이벤트들은 canonical 입력일 뿐이며, `board-state.json` 자체를 직접 수정하지 않습니다. authoritative writer 는 항상 `skills/task-board/scripts/board-builder.js` 입니다. Control 관련 상태 역시 `control.ndjson`/`events.ndjson` 에서 projector 가 만드는 `control-state.json` 을 읽어야 하며 renderer 가 직접 수정하면 안 됩니다.
+
+REQ/response/handoff 호환 경로가 필요하면 `node project-team/services/messaging.js export-compat` 로 regenerate 해야 하며, renderer/hook 이 `management/*` 를 authoritative write target 으로 사용하면 안 됩니다.
 
 ## Ratatui MVP keybindings
 

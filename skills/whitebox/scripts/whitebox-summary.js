@@ -16,6 +16,11 @@ const WHITEBOX_SUMMARY_SCHEMA_VERSION = '1.0';
 const WHITEBOX_SUMMARY_REL_PATH = '.claude/collab/whitebox-summary.json';
 const BOARD_STATE_REL_PATH = '.claude/collab/board-state.json';
 const TASKS_STATUS_REL_PATH = '.claude/cache/tasks-status.json';
+const RUNS_REL_PATH = '.claude/collab/runs';
+const ORCHESTRATE_STATE_REL_PATHS = [
+  '.claude/orchestrate/orchestrate-state.json',
+  '.claude/orchestrate-state.json',
+];
 
 function parseArgs(argv = process.argv.slice(2)) {
   const options = {
@@ -54,9 +59,26 @@ function writeJsonAtomic(filePath, payload) {
 }
 
 function loadTasksStats(projectDir) {
+  for (const relativePath of ORCHESTRATE_STATE_REL_PATHS) {
+    const orchestratePath = path.join(projectDir, relativePath);
+    if (!fs.existsSync(orchestratePath)) continue;
+    const orchestrateStats = loadTasksStatsFromOrchestrate(orchestratePath);
+    if (orchestrateStats) {
+      return {
+        ...orchestrateStats,
+        source: 'orchestrate-state',
+        source_path: relativePath,
+      };
+    }
+  }
+
   const tasksPath = path.join(projectDir, 'TASKS.md');
   if (fs.existsSync(tasksPath)) {
-    return readTasksStats(tasksPath);
+    return {
+      ...readTasksStats(tasksPath),
+      source: 'tasks-md',
+      source_path: 'TASKS.md',
+    };
   }
 
   return readJsonIfExists(path.join(projectDir, TASKS_STATUS_REL_PATH), {
@@ -65,7 +87,59 @@ function loadTasksStats(projectDir) {
     current_phase: null,
     next_task: null,
     updated_at: new Date().toISOString(),
+    source: 'tasks-cache',
+    source_path: TASKS_STATUS_REL_PATH,
   });
+}
+
+function loadTasksStatsFromOrchestrate(filePath) {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    if (!parsed || !Array.isArray(parsed.tasks)) return null;
+    const tasks = parsed.tasks;
+    const done = tasks.filter((task) => task && task.status === 'completed').length;
+    const inProgressTask = tasks.find((task) => task && task.status === 'in_progress');
+    const pendingTask = tasks.find((task) => task && task.status === 'pending');
+    const failedTask = tasks.find((task) => task && (task.status === 'failed' || task.status === 'timeout'));
+    const nextTask = inProgressTask || pendingTask || failedTask || null;
+    return {
+      done,
+      total: tasks.length,
+      current_phase: parsed.current_layer != null ? parsed.current_layer : null,
+      next_task: nextTask ? nextTask.id || null : null,
+      updated_at: fs.statSync(filePath).mtime.toISOString(),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function normalizeRunId(value) {
+  return String(value || '').trim().replace(/[\\/]+/g, '_');
+}
+
+function runReportRelativePath(runId) {
+  const normalizedRunId = normalizeRunId(runId);
+  if (!normalizedRunId) return null;
+  return `${RUNS_REL_PATH}/${normalizedRunId}/report.json`;
+}
+
+function runReportAbsolutePath(projectDir, runId) {
+  const relativePath = runReportRelativePath(runId);
+  if (!relativePath) return null;
+  const absolutePath = path.join(projectDir, relativePath);
+  if (!fs.existsSync(absolutePath)) return null;
+  return absolutePath;
+}
+
+function withRunReportEvidence(projectDir, runId, evidencePaths) {
+  const base = Array.isArray(evidencePaths) ? evidencePaths.slice() : [];
+  const reportPath = runReportAbsolutePath(projectDir, runId);
+  if (reportPath && !base.includes(reportPath)) base.push(reportPath);
+  return {
+    report_path: reportPath,
+    evidence_paths: base,
+  };
 }
 
 function flattenColumns(columns = {}) {
@@ -98,7 +172,7 @@ function latestRunCard(cards) {
   })[0] || null;
 }
 
-function nextRemediation(staleMarkers, pendingApprovals, pendingDecisions, blockedCards, tasksStats) {
+function nextRemediation(projectDir, staleMarkers, pendingApprovals, pendingDecisions, blockedCards, tasksStats) {
   if (staleMarkers.length > 0) {
     const marker = staleMarkers[0];
     return {
@@ -111,6 +185,7 @@ function nextRemediation(staleMarkers, pendingApprovals, pendingDecisions, block
 
   if (pendingApprovals.length > 0) {
     const gate = pendingApprovals[0];
+    const reportEvidence = withRunReportEvidence(projectDir, gate.run_id, gate.evidence_paths);
     return {
       type: 'approval',
       id: gate.gate_id,
@@ -118,6 +193,8 @@ function nextRemediation(staleMarkers, pendingApprovals, pendingDecisions, block
       remediation: 'Review the approval details and run approve or reject through /whitebox approvals.',
       trigger_type: gate.trigger_type || 'user_confirmation',
       recommendation: gate.recommendation || null,
+      report_path: reportEvidence.report_path,
+      evidence_paths: reportEvidence.evidence_paths,
     };
   }
 
@@ -135,11 +212,14 @@ function nextRemediation(staleMarkers, pendingApprovals, pendingDecisions, block
 
   if (blockedCards.length > 0) {
     const card = blockedCards[0];
+    const reportEvidence = withRunReportEvidence(projectDir, card.run_id, card.evidence_paths);
     return {
       type: 'card',
       id: card.id,
       reason: card.blocker_reason || 'Task is blocked',
       remediation: card.remediation || 'Resolve the blocker and rerun the affected workflow.',
+      report_path: reportEvidence.report_path,
+      evidence_paths: reportEvidence.evidence_paths,
     };
   }
 
@@ -191,7 +271,7 @@ function buildWhiteboxSummary(projectDir) {
   const allCards = flattenColumns(board.columns);
   const runCard = latestRunCard(allCards);
   const pendingApprovals = Array.isArray(controlState.pending_approvals) ? controlState.pending_approvals : [];
-  const next = nextRemediation(staleMarkers, pendingApprovals, pendingDecisions, blockedCards, tasksStats);
+  const next = nextRemediation(projectDir, staleMarkers, pendingApprovals, pendingDecisions, blockedCards, tasksStats);
 
   return {
     schema_version: WHITEBOX_SUMMARY_SCHEMA_VERSION,
@@ -205,17 +285,22 @@ function buildWhiteboxSummary(projectDir) {
     pending_decision_count: pendingDecisions.length,
     pending_conflict_count: pendingConflictDecisions.length,
     pending_validation_count: pendingValidationSignals.length,
-    pending_approvals: pendingApprovals.slice(0, 10).map((gate) => ({
-      gate_id: gate.gate_id,
-      gate_name: gate.gate_name || null,
-      task_id: gate.task_id || null,
-      correlation_id: gate.correlation_id || null,
-      created_at: gate.created_at || gate.required_at || null,
-      trigger_type: gate.trigger_type || 'user_confirmation',
-      trigger_reason: gate.trigger_reason || null,
-      recommendation: gate.recommendation || null,
-      evidence_paths: Array.isArray(gate.evidence_paths) ? gate.evidence_paths : [],
-    })),
+    pending_approvals: pendingApprovals.slice(0, 10).map((gate) => {
+      const reportEvidence = withRunReportEvidence(projectDir, gate.run_id, gate.evidence_paths);
+      return {
+        gate_id: gate.gate_id,
+        gate_name: gate.gate_name || null,
+        task_id: gate.task_id || null,
+        run_id: gate.run_id || null,
+        correlation_id: gate.correlation_id || null,
+        created_at: gate.created_at || gate.required_at || null,
+        trigger_type: gate.trigger_type || 'user_confirmation',
+        trigger_reason: gate.trigger_reason || null,
+        recommendation: gate.recommendation || null,
+        report_path: reportEvidence.report_path,
+        evidence_paths: reportEvidence.evidence_paths,
+      };
+    }),
     stale_artifact_count: staleMarkers.length,
     stale_artifacts: staleMarkers.map((entry) => ({
       artifact: entry.artifact,
@@ -231,14 +316,19 @@ function buildWhiteboxSummary(projectDir) {
       blocked_count: blockedCards.length,
       done_count: Array.isArray(board.columns?.Done) ? board.columns.Done.length : 0,
     },
-    blocked_cards: blockedCards.slice(0, 5).map((card) => ({
-      id: card.id,
-      title: card.title,
-      blocker_reason: card.blocker_reason || null,
-      blocker_source: card.blocker_source || null,
-      remediation: card.remediation || null,
-      run_id: card.run_id || null,
-    })),
+    blocked_cards: blockedCards.slice(0, 5).map((card) => {
+      const reportEvidence = withRunReportEvidence(projectDir, card.run_id, card.evidence_paths);
+      return {
+        id: card.id,
+        title: card.title,
+        blocker_reason: card.blocker_reason || null,
+        blocker_source: card.blocker_source || null,
+        remediation: card.remediation || null,
+        run_id: card.run_id || null,
+        report_path: reportEvidence.report_path,
+        evidence_paths: reportEvidence.evidence_paths,
+      };
+    }),
     pending_decisions: pendingDecisions.slice(0, 10).map((decision) => ({
       id: decision.id,
       task_id: decision.task_id || null,
@@ -255,6 +345,8 @@ function buildWhiteboxSummary(projectDir) {
       tasks_cache: TASKS_STATUS_REL_PATH,
       board_schema_version: board.schema_version || null,
       board_fingerprint: board.derived_from && board.derived_from.fingerprint ? board.derived_from.fingerprint : null,
+      tasks_source: tasksStats.source || null,
+      tasks_source_path: tasksStats.source_path || null,
       authoritative_writer: 'skills/whitebox/scripts/whitebox-summary.js',
     },
   };

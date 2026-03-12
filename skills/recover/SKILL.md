@@ -7,10 +7,10 @@ updated: 2026-02-21
 
 # 🔄 Recover Skill
 
-> CLI 다운, 네트워크 끊김, 또는 에이전트 오류로 인해 중단된 작업을 **자동으로 탐지하고 복구**하는 스킬입니다.
+> CLI 다운, 네트워크 끊김, 또는 에이전트 오류로 인해 중단된 작업을 **탐지하고, inspect-first 방식으로 복구 경로를 제시**하는 스킬입니다.
 >
 > **고유 기능:**
-> - 모든 유형의 중단된 작업을 탐지하고 적절한 복구 경로를 안내
+> - 모든 유형의 중단된 작업을 탐지하고 authoritative source 기반 복구 경로를 안내
 > - TASKS.md, 진행 로그, 상태 파일 등을 종합적으로 분석
 >
 > **v2.4.0 업데이트**: TASKS.md 우선 복구 + project-team Hook 연동
@@ -32,18 +32,20 @@ updated: 2026-02-21
 
 이 스킬이 발동되면 다음 순서로 작업을 수행합니다:
 
-### 1️⃣ 상태 파일 및 Artifact 점검 (Standalone v2.4)
+### 1️⃣ 상태 파일 및 Artifact 점검 (Standalone v2.5)
 
-이전 작업의 흔적을 **TASKS.md 우선**으로 탐색합니다:
+이전 작업의 흔적을 **canonical runtime state 우선**으로 탐색합니다:
 
 | 우선순위 | 소스 | 파일 경로 | 설명 |
 |----------|------|-----------|------|
-| **1 (최우선)** | Task Tracker | `TASKS.md` | `[ ]`, `[/]`, `[x]` 상태의 태스크 목록 |
-| 2 | Task Tracker (레거시) | `docs/planning/06-tasks.md`, `task.md` | 레거시 태스크 파일 |
-| 3 | Progress Log | `.claude/progress.txt` | 의사결정 및 이슈 기록 |
-| 4 (선택적) | Orchestrate State | `.claude/orchestrate-state.json` | 자동화 상태 (있을 경우) |
+| **1 (최우선)** | Auto Runtime State | `.claude/orchestrate/auto-state.json` | canonical auto-mode state + pending gate |
+| 2 | Orchestrate State | `.claude/orchestrate-state.json` | canonical orchestrate progress/state |
+| 3 | Recovery Snapshot | `.claude/orchestrate/recovery-snapshot.json` | blocked remediation snapshot |
+| 4 | Control / Whitebox | `.claude/collab/control-state.json`, `.claude/collab/whitebox-summary.json` | pending gate / blocker context |
+| 5 | Task Tracker | `TASKS.md` | heuristic fallback only |
+| 6 | Progress Log | `.claude/progress.txt` | supplemental notes |
 
-- **Standalone 우선순위**: `TASKS.md`의 미완료 태스크(`[ ]`, `[/]`)를 최우선으로 확인합니다.
+- **Standalone 우선순위**: canonical runtime state를 최우선으로 확인하고, `TASKS.md`는 canonical state가 없을 때만 heuristic fallback으로 사용합니다.
 - 발견 시, 해당 항목 목록을 사용자에게 보고합니다.
 
 ```bash
@@ -110,6 +112,7 @@ git branch --no-merged main
 
 #### 복구 옵션
 
+- **Inspect-first 원칙**: canonical runtime state가 있으면 먼저 현재 blocker / authoritative source / resume option을 보여준 뒤, 사용자 또는 상위 workflow가 선택합니다.
 - **A. 자동 복구 (권장)**: 탐지된 미완료 항목을 즉시 이어서 완료합니다.
 - **B. 수동 선택**: 복구할 항목 목록을 보여주고 사용자가 선택하도록 합니다.
 - **C. 새로 시작**: `/workflow`를 실행하여 처음부터 워크플로우를 다시 안내받습니다.

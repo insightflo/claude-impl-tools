@@ -13,6 +13,8 @@ const fs = require('fs');
 const path = require('path');
 const { writeEvent } = require('../../../../project-team/scripts/lib/whitebox-events');
 
+const INSTALL_STATE_REL_PATH = path.join('.claude', 'project-team-install-state.json');
+
 function toTaskMeta(task) {
   if (!task || typeof task !== 'object') return null;
   return {
@@ -45,20 +47,135 @@ function buildGateEventPayload(hookName, context, extras = {}) {
 
   const taskList = toTaskListMeta(context.tasks);
   if (taskList.length > 0) {
-    payload.scope = 'barrier';
-    payload.task_ids = taskList.map((task) => task.id).filter(Boolean);
-    payload.tasks = taskList;
+    return {
+      ...payload,
+      scope: 'barrier',
+      task_ids: taskList.map((task) => task.id).filter(Boolean),
+      tasks: taskList,
+    };
   }
 
   return payload;
 }
 
-function getEventCorrelationId(context, payload) {
+function getEventCorrelationId(payload) {
   if (payload.task && payload.task.id) return payload.task.id;
   if (payload.scope === 'barrier' && Number.isInteger(payload.layer)) {
     return `layer:${payload.layer}`;
   }
   return null;
+}
+
+function readJsonIfExists(filePath, fallback = null) {
+  try {
+    if (!fs.existsSync(filePath)) return fallback;
+    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch {
+    return fallback;
+  }
+}
+
+function getInstallState(projectDir = process.cwd()) {
+  return readJsonIfExists(path.join(projectDir, INSTALL_STATE_REL_PATH), null);
+}
+
+function getInstalledHookSet(projectDir = process.cwd()) {
+  const installState = getInstallState(projectDir);
+  if (!installState || !Array.isArray(installState.ownedArtifacts)) return null;
+
+  return new Set(
+    installState.ownedArtifacts
+      .filter((artifact) => typeof artifact === 'string' && artifact.startsWith('hooks/') && artifact.endsWith('.js'))
+      .map((artifact) => path.basename(artifact, '.js'))
+  );
+}
+
+function isInstalledHookRequired(hookName, projectDir = process.cwd()) {
+  const installedHooks = getInstalledHookSet(projectDir);
+  if (!installedHooks) return false;
+  return installedHooks.has(hookName);
+}
+
+function parseHookOutput(output) {
+  const trimmed = typeof output === 'string' ? output.trim() : '';
+  if (!trimmed) return null;
+
+  const candidates = [trimmed, ...trimmed.split('\n').map((line) => line.trim()).filter(Boolean).reverse()];
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed;
+      }
+    } catch {
+    }
+  }
+
+  return null;
+}
+
+function normalizeDecision(decision) {
+  if (typeof decision !== 'string') return null;
+  const normalized = decision.trim().toLowerCase();
+  return normalized || null;
+}
+
+function summarizeHookFailure(parsedOutput, fallbackError) {
+  if (!parsedOutput || typeof parsedOutput !== 'object') {
+    return {
+      summary: fallbackError || 'Gate returned a failing result.',
+      recommendation: 'Inspect the hook output and remediate the failing gate before retrying.',
+    };
+  }
+
+  const summary = typeof parsedOutput.reason === 'string' && parsedOutput.reason.trim()
+    ? parsedOutput.reason.trim()
+    : typeof parsedOutput.summary === 'string' && parsedOutput.summary.trim()
+      ? parsedOutput.summary.trim()
+      : fallbackError || 'Gate returned a failing result.';
+
+  const recommendation = typeof parsedOutput.remediation === 'string' && parsedOutput.remediation.trim()
+    ? parsedOutput.remediation.trim()
+    : 'Inspect the hook output and remediate the failing gate before retrying.';
+
+  return { summary, recommendation };
+}
+
+function buildApprovalGate(hookName, context, failure = {}) {
+  const payload = buildGateEventPayload(hookName, context);
+  const scopeId = getEventCorrelationId(payload)
+    || `${context.phase || 'gate'}:${hookName}`;
+  const sanitizedScopeId = String(scopeId).replace(/[^a-zA-Z0-9:_-]/g, '-');
+  const gateId = `gate:${hookName}:${sanitizedScopeId}`;
+  const taskIds = Array.isArray(payload.task_ids) ? payload.task_ids : [];
+
+  return {
+    actor: 'system',
+    gate_id: gateId,
+    correlation_id: gateId,
+    gate_name: hookName,
+    stage: context.phase || null,
+    layer: Number.isInteger(payload.layer) ? payload.layer : null,
+    task_id: payload.task && payload.task.id ? payload.task.id : null,
+    task_ids: taskIds,
+    run_id: context.run_id || null,
+    choices: ['approve', 'reject'],
+    default_behavior: 'wait_for_operator',
+    timeout_policy: 'manual_remediation',
+    created_at: new Date().toISOString(),
+    preview: failure.summary || `${hookName} requires approval before orchestration can continue.`,
+    trigger_type: failure.triggerType || 'hook_gate_denied',
+    trigger_reason: failure.summary || `${hookName} blocked orchestration.`,
+    recommendation: failure.recommendation || 'Remediate the failing gate before retrying.',
+  };
+}
+
+async function emitApprovalLifecycleForFailure(hookName, context, failure = {}) {
+  const gate = buildApprovalGate(hookName, context, failure);
+  const approvalRequired = await emitCanonicalEvent('approval_required', gate, gate.correlation_id || gate.gate_id, 'approval_required');
+  if (!approvalRequired.ok) return approvalRequired;
+
+  return emitCanonicalEvent('execution_paused', gate, gate.correlation_id || gate.gate_id, 'execution_paused');
 }
 
 async function emitCanonicalEvent(type, data, correlationId = null, stage = type) {
@@ -95,7 +212,7 @@ async function runHook(hookName, context = {}) {
   const hooksDir = path.join(process.cwd(), '.claude', 'hooks');
   const hookPath = path.join(hooksDir, `${hookName}.js`);
   const startPayload = buildGateEventPayload(hookName, context);
-  const correlationId = getEventCorrelationId(context, startPayload);
+  const correlationId = getEventCorrelationId(startPayload);
 
   const startEvent = await emitCanonicalEvent('orchestrate.gate.start', startPayload, correlationId, 'gate_start');
   if (!startEvent.ok) {
@@ -110,7 +227,54 @@ async function runHook(hookName, context = {}) {
   }
 
   if (!fs.existsSync(hookPath)) {
-    // Hook not installed, skip
+    const requiredHook = isInstalledHookRequired(hookName, process.cwd());
+    if (requiredHook) {
+      const failure = {
+        triggerType: 'missing_required_hook',
+        summary: `Required installed hook "${hookName}" is missing from .claude/hooks.`,
+        recommendation: 'Reinstall project-team hooks or restore the missing gate before retrying.',
+      };
+      const approvalEvent = await emitApprovalLifecycleForFailure(hookName, context, failure);
+      if (!approvalEvent.ok) {
+        return {
+          hook: hookName,
+          passed: false,
+          code: null,
+          output: '',
+          error: `canonical event write failed: ${approvalEvent.failure.message}`,
+          write_error: approvalEvent.failure,
+        };
+      }
+
+      const missingHookPayload = buildGateEventPayload(hookName, context, {
+        outcome: 'deny',
+        reason: 'missing_required_hook',
+        required: true,
+      });
+      const missingHookEvent = await emitCanonicalEvent('orchestrate.gate.outcome', missingHookPayload, correlationId, 'gate_outcome');
+      if (!missingHookEvent.ok) {
+        return {
+          hook: hookName,
+          passed: false,
+          code: null,
+          output: '',
+          error: `canonical event write failed: ${missingHookEvent.failure.message}`,
+          write_error: missingHookEvent.failure,
+        };
+      }
+
+      return {
+        hook: hookName,
+        passed: false,
+        code: null,
+        output: '',
+        error: failure.summary,
+        remediation: failure.recommendation,
+        missing: true,
+        required: true,
+      };
+    }
+
     const missingHookPayload = buildGateEventPayload(hookName, context, {
       outcome: 'skip',
       reason: 'missing_hook',
@@ -136,19 +300,51 @@ async function runHook(hookName, context = {}) {
       if (settled) return;
       settled = true;
 
-      const outcome = payload.skipped
+      const parsedOutput = parseHookOutput(payload.output);
+      const decision = normalizeDecision(parsedOutput && parsedOutput.decision);
+      const deniedByDecision = decision === 'deny' || decision === 'block';
+      const failureSummary = summarizeHookFailure(parsedOutput, payload.error);
+      const finalPayload = {
+        ...payload,
+        passed: payload.passed && !deniedByDecision,
+        decision,
+        error: deniedByDecision && !payload.error ? failureSummary.summary : payload.error,
+        remediation: failureSummary.recommendation,
+      };
+
+      if (!finalPayload.passed && !finalPayload.skipped) {
+        const approvalEvent = await emitApprovalLifecycleForFailure(hookName, context, {
+          triggerType: deniedByDecision ? 'hook_gate_denied' : 'hook_gate_failed',
+          summary: failureSummary.summary,
+          recommendation: failureSummary.recommendation,
+        });
+        if (!approvalEvent.ok) {
+          resolve({
+            hook: hookName,
+            passed: false,
+            code: null,
+            output: finalPayload.output,
+            error: `canonical event write failed: ${approvalEvent.failure.message}`,
+            write_error: approvalEvent.failure,
+          });
+          return;
+        }
+      }
+
+      const outcome = finalPayload.skipped
         ? 'skip'
-        : payload.passed
+        : finalPayload.passed
           ? 'pass'
-          : payload.code === null
+          : finalPayload.code === null
             ? 'error'
             : 'deny';
 
       const outcomePayload = buildGateEventPayload(hookName, context, {
         outcome,
-        code: Number.isInteger(payload.code) ? payload.code : null,
-        skipped: Boolean(payload.skipped),
-        has_error_output: Boolean(payload.error),
+        code: Number.isInteger(finalPayload.code) ? finalPayload.code : null,
+        skipped: Boolean(finalPayload.skipped),
+        has_error_output: Boolean(finalPayload.error),
+        decision,
       });
       const outcomeEvent = await emitCanonicalEvent('orchestrate.gate.outcome', outcomePayload, correlationId, 'gate_outcome');
 
@@ -157,14 +353,14 @@ async function runHook(hookName, context = {}) {
           hook: hookName,
           passed: false,
           code: null,
-          output: payload.output,
+          output: finalPayload.output,
           error: `canonical event write failed: ${outcomeEvent.failure.message}`,
           write_error: outcomeEvent.failure,
         });
         return;
       }
 
-      resolve(payload);
+      resolve(finalPayload);
     };
 
     const hook = spawn('node', [hookPath], {

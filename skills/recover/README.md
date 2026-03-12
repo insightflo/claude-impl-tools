@@ -6,7 +6,7 @@
 
 작업 도중 Claude Code CLI가 갑자기 종료되면, 진행 중이던 작업이 불완전하게 남을 수 있습니다. 이 스킬은 다음을 자동으로 수행합니다:
 
-1. **Artifact 점검**: `task.md`, `implementation_plan.md` 등에서 미완료 체크박스(`[ ]`, `[/]`) 탐지
+1. **Canonical state 점검**: `.claude/orchestrate/auto-state.json`, `.claude/orchestrate-state.json`, recovery snapshot, control/whitebox state 우선 확인
 2. **대화 히스토리 검색**: 관련 이전 대화가 있는지 확인
 3. **코드 파일 점검**: 열린 괄호, 빈 함수, TODO 마커 등 불완전한 코드 탐지
 4. **복구 제안**: 자동 복구 또는 수동 선택 옵션 제공
@@ -33,5 +33,5 @@
 
 ## 💡 팁
 
-- **`task.md` 선제 생성**: 복잡한 작업 시작 전에 `task.md`를 먼저 생성해두면 복구가 훨씬 쉬워집니다.
+- **Canonical state 우선**: 복구는 `TASKS.md`보다 runtime state가 우선입니다. `TASKS.md`는 fallback heuristic으로만 사용합니다.
 - **자주 커밋**: Git으로 작은 단위라도 자주 커밋하면 코드 유실을 최소화할 수 있습니다.

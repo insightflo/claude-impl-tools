@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const { writeEvent } = require('./whitebox-events');
 
 const APPROVED_EXECUTORS = new Set(['claude', 'codex', 'gemini']);
+const RUNS_REL_PATH = '.claude/collab/runs';
 
 function slugify(value) {
   return String(value || '')
@@ -34,6 +35,22 @@ function normalizeExecutorName(value) {
     return 'claude';
   }
   return raw;
+}
+
+function normalizeRunId(value) {
+  return String(value || '').trim().replace(/[\\/]+/g, '_');
+}
+
+function runReportRelativePath(runId) {
+  const normalizedRunId = normalizeRunId(runId);
+  if (!normalizedRunId) return null;
+  return `${RUNS_REL_PATH}/${normalizedRunId}/report.json`;
+}
+
+function runReportFilePath(projectDir, runId) {
+  const relativePath = runReportRelativePath(runId);
+  if (!relativePath) return null;
+  return `${projectDir}/${relativePath}`;
 }
 
 function toEventWriteFailure(stage, type, error) {
@@ -130,12 +147,16 @@ function withExecutorMetadata(executor, extra = {}) {
 
 module.exports = {
   APPROVED_EXECUTORS,
+  RUNS_REL_PATH,
   createRunId,
   emitRunEvent,
   emitRunEventDetailed,
   emitRunEventStrict,
   hashText,
   normalizeExecutorName,
+  normalizeRunId,
+  runReportFilePath,
+  runReportRelativePath,
   toEventWriteFailure,
   withExecutorMetadata,
 };

@@ -9,7 +9,9 @@ const { writeControlCommand } = require('../../../project-team/scripts/lib/white
 const { scanForbiddenIntegrationMetadata } = require('../../../project-team/scripts/subscription-policy-check');
 const { buildWhiteboxSummary } = require('../../../skills/whitebox/scripts/whitebox-summary');
 const { buildExplain } = require('../../../skills/whitebox/scripts/whitebox-explain');
+const { buildRecoverStatus } = require('../../../skills/recover/scripts/recover-status');
 const { dashboardStatePath, startServer } = require('../../../skills/whitebox/scripts/whitebox-dashboard');
+const AgentMessagingService = require('../../../project-team/services/messaging');
 
 const boardBuilderScript = path.resolve(__dirname, '../../../skills/task-board/scripts/board-builder.js');
 const whiteboxControlScript = path.resolve(__dirname, '../../../skills/whitebox/scripts/whitebox-control.js');
@@ -28,6 +30,10 @@ function makeTempProject(prefix) {
 function writeJson(filePath, payload) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), 'utf8');
+}
+
+function readJson(filePath) {
+  return JSON.parse(fs.readFileSync(filePath, 'utf8'));
 }
 
 function readControlLog(projectDir) {
@@ -52,6 +58,24 @@ function createMockCli() {
   };
   cli.kill = jest.fn();
   return cli;
+}
+
+function createCompletedCli({ stdout = '', stderr = '', code = 0, error = null } = {}) {
+  const cli = createMockCli();
+  process.nextTick(() => {
+    if (stdout) cli.stdout.emit('data', Buffer.from(stdout));
+    if (stderr) cli.stderr.emit('data', Buffer.from(stderr));
+    if (error) {
+      cli.emit('error', error);
+      return;
+    }
+    cli.emit('close', code);
+  });
+  return cli;
+}
+
+function initGateHookDir(projectDir) {
+  fs.mkdirSync(path.join(projectDir, '.claude', 'hooks'), { recursive: true });
 }
 
 describe('whitebox control plane', () => {
@@ -143,6 +167,10 @@ describe('whitebox control plane', () => {
   test('buildWhiteboxSummary reflects blocked cards and stale markers', () => {
     const projectDir = makeTempProject('whitebox-summary-');
     fs.writeFileSync(path.join(projectDir, 'TASKS.md'), '## Phase 1\n### [ ] T1.1: Fix blocker\n', 'utf8');
+    writeJson(path.join(projectDir, '.claude', 'collab', 'runs', 'run-summary-1', 'report.json'), {
+      run_id: 'run-summary-1',
+      lifecycle: { approval_required: { present: true } },
+    });
     writeJson(path.join(projectDir, '.claude', 'collab', 'board-state.json'), {
       schema_version: '1.1',
       columns: {
@@ -178,6 +206,37 @@ describe('whitebox control plane', () => {
     expect(summary.next_remediation_target).toMatchObject({
       type: 'artifact',
       id: '.claude/collab/board-state.json',
+    });
+    expect(summary.blocked_cards[0].report_path).toBe(path.join(projectDir, '.claude', 'collab', 'runs', 'run-summary-1', 'report.json'));
+  });
+
+  test('buildWhiteboxSummary prefers orchestrate-state progress over TASKS heuristics', () => {
+    const projectDir = makeTempProject('whitebox-summary-orchestrate-progress-');
+    fs.writeFileSync(path.join(projectDir, 'TASKS.md'), '## Phase 1\n### [ ] T9.1: stale task\n### [ ] T9.2: stale task\n### [ ] T9.3: stale task\n', 'utf8');
+    writeJson(path.join(projectDir, '.claude', 'orchestrate-state.json'), {
+      tasks: [
+        { id: 'T9.1', status: 'completed' },
+        { id: 'T9.2', status: 'pending' },
+      ],
+      current_layer: 3,
+    });
+    writeJson(path.join(projectDir, '.claude', 'collab', 'board-state.json'), {
+      schema_version: '1.1',
+      columns: { Backlog: [], 'In Progress': [], Blocked: [], Done: [] },
+      derived_from: { fingerprint: 'fixture-orchestrate-progress' },
+    });
+
+    const summary = buildWhiteboxSummary(projectDir);
+    expect(summary.tasks).toMatchObject({
+      done: 1,
+      total: 2,
+      next_task: 'T9.2',
+      source: 'orchestrate-state',
+      source_path: '.claude/orchestrate-state.json',
+    });
+    expect(summary.derived_from).toMatchObject({
+      tasks_source: 'orchestrate-state',
+      tasks_source_path: '.claude/orchestrate-state.json',
     });
   });
 
@@ -668,6 +727,124 @@ Negotiation stalled after incompatible schema proposals.
     expect(rejectedFlow[2].data.actor).toBe('user');
   });
 
+  test('writeEvent creates run report for approval grant lifecycle', async () => {
+    const projectDir = makeTempProject('whitebox-run-report-approve-');
+
+    await writeEvent({
+      type: 'approval_required',
+      producer: 'orchestrate',
+      correlation_id: 'gate:run-report-approve-1',
+      data: {
+        run_id: 'run-report-approve-1',
+        gate_id: 'gate-run-report-approve-1',
+        task_id: 'T7.1',
+        trigger_type: 'agent_conflict',
+        trigger_reason: 'Builder and reviewer disagree.',
+        recommendation: 'Review the evidence and choose a direction.',
+      },
+    }, { projectDir });
+    await writeEvent({
+      type: 'execution_paused',
+      producer: 'orchestrate',
+      correlation_id: 'gate:run-report-approve-1',
+      data: {
+        run_id: 'run-report-approve-1',
+        gate_id: 'gate-run-report-approve-1',
+        task_id: 'T7.1',
+      },
+    }, { projectDir });
+    await writeEvent({
+      type: 'approval_granted',
+      producer: 'whitebox',
+      correlation_id: 'gate:run-report-approve-1',
+      data: {
+        run_id: 'run-report-approve-1',
+        gate_id: 'gate-run-report-approve-1',
+        task_id: 'T7.1',
+      },
+    }, { projectDir });
+    await writeEvent({
+      type: 'execution_resumed',
+      producer: 'orchestrate',
+      correlation_id: 'gate:run-report-approve-1',
+      data: {
+        run_id: 'run-report-approve-1',
+        gate_id: 'gate-run-report-approve-1',
+        task_id: 'T7.1',
+      },
+    }, { projectDir });
+
+    const reportPath = path.join(projectDir, '.claude', 'collab', 'runs', 'run-report-approve-1', 'report.json');
+    expect(fs.existsSync(reportPath)).toBe(true);
+    const report = readJson(reportPath);
+    expect(report.run_id).toBe('run-report-approve-1');
+    expect(report.lifecycle).toMatchObject({
+      approval_required: { present: true, count: 1 },
+      execution_paused: { present: true, count: 1 },
+      approval_granted: { present: true, count: 1 },
+      execution_resumed: { present: true, count: 1 },
+    });
+    expect(report.correlation).toMatchObject({
+      ids: ['gate:run-report-approve-1'],
+      gate_ids: ['gate-run-report-approve-1'],
+      task_ids: ['T7.1'],
+      trigger_types: ['agent_conflict'],
+    });
+  });
+
+  test('run report keeps append-only rejection flow and remediation metadata', async () => {
+    const projectDir = makeTempProject('whitebox-run-report-reject-');
+
+    await writeEvent({
+      type: 'approval_required',
+      producer: 'orchestrate',
+      correlation_id: 'gate:run-report-reject-1',
+      data: {
+        run_id: 'run-report-reject-1',
+        gate_id: 'gate-run-report-reject-1',
+        task_id: 'T7.2',
+        recommendation: 'Review the risk before continuing.',
+      },
+    }, { projectDir });
+    await writeEvent({
+      type: 'execution_paused',
+      producer: 'orchestrate',
+      correlation_id: 'gate:run-report-reject-1',
+      data: {
+        run_id: 'run-report-reject-1',
+        gate_id: 'gate-run-report-reject-1',
+        task_id: 'T7.2',
+      },
+    }, { projectDir });
+    await writeEvent({
+      type: 'approval_rejected',
+      producer: 'whitebox',
+      correlation_id: 'gate:run-report-reject-1',
+      data: {
+        gate_id: 'gate-run-report-reject-1',
+        task_id: 'T7.2',
+        recommendation: 'Reject now and produce a safer remediation plan.',
+      },
+    }, { projectDir });
+
+    const parsed = readEvents({ projectDir, tolerateTrailingPartialLine: false });
+    expect(parsed.events.map((event) => event.type)).toEqual([
+      'approval_required',
+      'execution_paused',
+      'approval_rejected',
+    ]);
+
+    const reportPath = path.join(projectDir, '.claude', 'collab', 'runs', 'run-report-reject-1', 'report.json');
+    expect(fs.existsSync(reportPath)).toBe(true);
+    const report = readJson(reportPath);
+    expect(report.lifecycle.approval_rejected).toMatchObject({ present: true, count: 1 });
+    expect(report.remediation.current).toMatchObject({
+      type: 'approval_rejected',
+      remediation: 'Reject now and produce a safer remediation plan.',
+    });
+    expect(report.correlation.ids).toContain('gate:run-report-reject-1');
+  });
+
   test('emitRunEvent remains best-effort for checkpoint-style telemetry writes', async () => {
     let whiteboxRun;
 
@@ -1118,6 +1295,139 @@ ${JSON.stringify({
     });
   });
 
+  test('barrier gate treats stdout deny as failure and projects canonical pending approval state', async () => {
+    const projectDir = makeTempProject('whitebox-gate-chain-deny-');
+    const previousCwd = process.cwd();
+    initGateHookDir(projectDir);
+    fs.writeFileSync(path.join(projectDir, '.claude', 'hooks', 'quality-gate.js'), '', 'utf8');
+    fs.writeFileSync(path.join(projectDir, '.claude', 'hooks', 'security-scan.js'), '', 'utf8');
+
+    try {
+      process.chdir(projectDir);
+
+      let gateChain;
+      jest.isolateModules(() => {
+        jest.doMock('child_process', () => ({
+          spawn: jest.fn()
+            .mockImplementationOnce(() => createCompletedCli({
+              stdout: JSON.stringify({
+                decision: 'deny',
+                reason: 'Quality gate failed for layer 6.',
+                remediation: 'Fix the failing quality checks before rerunning.',
+              }),
+              code: 0,
+            }))
+            .mockImplementationOnce(() => createCompletedCli({
+              stdout: JSON.stringify({ decision: 'allow' }),
+              code: 0,
+            })),
+        }));
+        gateChain = require('../../../skills/orchestrate-standalone/scripts/engine/gate-chain');
+      });
+
+      const result = await gateChain.barrierGate(6, [{ id: 'T6.1', title: 'Barrier fixture' }]);
+      const controlState = require('../../../skills/whitebox/scripts/whitebox-control-state');
+      const state = controlState.buildControlState(projectDir);
+      const parsed = readEvents({ projectDir, tolerateTrailingPartialLine: false });
+      const approvalFlow = parsed.events.filter((event) => event.correlation_id === 'gate:quality-gate:layer:6');
+
+      expect(result.passed).toBe(false);
+      expect(result.failed).toContain('quality-gate');
+      expect(result.results[0]).toMatchObject({
+        hook: 'quality-gate',
+        passed: false,
+        code: 0,
+        decision: 'deny',
+        remediation: 'Fix the failing quality checks before rerunning.',
+      });
+      expect(approvalFlow.map((event) => event.type)).toEqual([
+        'approval_required',
+        'execution_paused',
+      ]);
+      expect(approvalFlow[0].data).toMatchObject({
+        gate_id: 'gate:quality-gate:layer:6',
+        gate_name: 'quality-gate',
+        stage: 'barrier',
+        layer: 6,
+        trigger_type: 'hook_gate_denied',
+        trigger_reason: 'Quality gate failed for layer 6.',
+        recommendation: 'Fix the failing quality checks before rerunning.',
+      });
+      expect(state.pending_approval_count).toBe(1);
+      expect(state.pending_approvals[0]).toMatchObject({
+        gate_id: 'gate:quality-gate:layer:6',
+        gate_name: 'quality-gate',
+        correlation_id: 'gate:quality-gate:layer:6',
+        trigger_type: 'hook_gate_denied',
+        trigger_reason: 'Quality gate failed for layer 6.',
+        recommendation: 'Fix the failing quality checks before rerunning.',
+      });
+    } finally {
+      process.chdir(previousCwd);
+      jest.dontMock('child_process');
+    }
+  });
+
+  test('missing installed required hooks fail closed while non-installed hooks still skip', async () => {
+    const projectDir = makeTempProject('whitebox-gate-chain-missing-required-');
+    const previousCwd = process.cwd();
+    initGateHookDir(projectDir);
+    writeJson(path.join(projectDir, '.claude', 'project-team-install-state.json'), {
+      mode: 'standard',
+      ownedArtifacts: [
+        'hooks/contract-gate.js',
+        'hooks/security-scan.js',
+      ],
+    });
+
+    try {
+      process.chdir(projectDir);
+      const gateChain = require('../../../skills/orchestrate-standalone/scripts/engine/gate-chain');
+
+      const requiredResult = await gateChain.runHook('contract-gate', {
+        phase: 'post-task',
+        task: { id: 'T6.2', title: 'Required hook fixture' },
+      });
+      const skippedResult = await gateChain.runHook('docs-gate', {
+        phase: 'post-task',
+        task: { id: 'T6.2', title: 'Required hook fixture' },
+      });
+      const controlState = require('../../../skills/whitebox/scripts/whitebox-control-state');
+      const state = controlState.buildControlState(projectDir);
+      const parsed = readEvents({ projectDir, tolerateTrailingPartialLine: false });
+      const approvalFlow = parsed.events.filter((event) => event.correlation_id === 'gate:contract-gate:T6-2');
+
+      expect(requiredResult).toMatchObject({
+        hook: 'contract-gate',
+        passed: false,
+        missing: true,
+        required: true,
+        remediation: 'Reinstall project-team hooks or restore the missing gate before retrying.',
+      });
+      expect(skippedResult).toMatchObject({
+        hook: 'docs-gate',
+        passed: true,
+        skipped: true,
+      });
+      expect(approvalFlow.map((event) => event.type)).toEqual([
+        'approval_required',
+        'execution_paused',
+      ]);
+      expect(state.pending_approval_count).toBe(1);
+      expect(state.pending_approvals[0]).toMatchObject({
+        gate_id: 'gate:contract-gate:T6-2',
+        gate_name: 'contract-gate',
+        task_id: 'T6.2',
+        correlation_id: 'gate:contract-gate:T6-2',
+        trigger_type: 'missing_required_hook',
+        trigger_reason: 'Required installed hook "contract-gate" is missing from .claude/hooks.',
+        recommendation: 'Reinstall project-team hooks or restore the missing gate before retrying.',
+      });
+    } finally {
+      process.chdir(previousCwd);
+    }
+  });
+
   test('whitebox control list and show expose pending approvals from derived state', () => {
     const projectDir = makeTempProject('whitebox-control-cli-');
     writeJson(path.join(projectDir, '.claude', 'collab', 'control-state.json'), {
@@ -1333,6 +1643,87 @@ ${JSON.stringify({
       pending_approval_count: 1,
       gate_status: 'approval_required',
       pending_approvals: [expect.objectContaining({ gate_id: 'gate-status-1', task_id: 'T4.3' })],
+    });
+  });
+
+  test('recover status prefers canonical auto-state over TASKS heuristics', () => {
+    const projectDir = makeTempProject('recover-canonical-priority-');
+    writeJson(path.join(projectDir, '.claude', 'orchestrate', 'auto-state.json'), {
+      session_id: 'run-recover-priority-1',
+      pending_gate: {
+        gate_id: 'gate-recover-priority-1',
+        gate_name: 'Review Gate',
+        stage: 'final_gate',
+        task_id: 'T8.1',
+        run_id: 'run-recover-priority-1',
+        correlation_id: 'gate:run-recover-priority-1:final_gate',
+        choices: ['approve', 'reject'],
+        default_behavior: 'wait_for_operator',
+        timeout_policy: 'wait_60000ms',
+        created_at: '2026-03-11T00:00:00.000Z',
+        preview: 'recover priority fixture',
+        trigger_reason: 'Need operator confirmation.',
+        recommendation: 'Approve or reject before resume.',
+      },
+    });
+    fs.writeFileSync(path.join(projectDir, 'TASKS.md'), '## Phase 1\n- [ ] T1.1: Stale heuristic task\n', 'utf8');
+
+    const status = buildRecoverStatus(projectDir);
+    expect(status.authoritative_source).toMatchObject({
+      kind: 'auto-state',
+      path: '.claude/orchestrate/auto-state.json',
+      authoritative: true,
+    });
+    expect(status.non_authoritative_heuristics[0]).toMatchObject({
+      kind: 'tasks-md',
+      reason: 'Canonical runtime state is available and takes precedence.',
+    });
+    expect(status.resume_options[0]).toMatchObject({
+      id: 'inspect-pending-gate',
+      available: true,
+      gate_id: 'gate-recover-priority-1',
+    });
+  });
+
+  test('auto-state pending gate persists recovery snapshot surfaced by recover status', () => {
+    const projectDir = makeTempProject('recover-snapshot-');
+    let engineAdapter;
+
+    jest.isolateModules(() => {
+      engineAdapter = require('../../../skills/orchestrate-standalone/scripts/auto/engine-adapter');
+    });
+
+    const autoState = engineAdapter.initAutoState('Recovery snapshot fixture', projectDir);
+    autoState.pending_gate = {
+      gate_id: 'gate-recover-snapshot-1',
+      gate_name: 'Blocked Gate',
+      stage: 'define_contract',
+      task_id: 'T8.2',
+      run_id: autoState.session_id,
+      correlation_id: `gate:${autoState.session_id}:define_contract`,
+      choices: ['approve', 'reject'],
+      default_behavior: 'wait_for_operator',
+      timeout_policy: 'wait_500ms',
+      created_at: '2026-03-11T00:00:00.000Z',
+      preview: 'snapshot fixture',
+      trigger_reason: 'Blocked pending operator review.',
+      recommendation: 'Review the blocker and decide whether to continue.',
+    };
+    engineAdapter.saveAutoState(autoState, projectDir);
+
+    const snapshot = readJson(path.join(projectDir, '.claude', 'orchestrate', 'recovery-snapshot.json'));
+    expect(snapshot).toMatchObject({
+      source: 'auto-state',
+      type: 'pending_gate',
+      gate_id: 'gate-recover-snapshot-1',
+      task_id: 'T8.2',
+      remediation: 'Review the blocker and decide whether to continue.',
+    });
+
+    const status = buildRecoverStatus(projectDir);
+    expect(status.blockers[0]).toMatchObject({
+      gate_id: 'gate-recover-snapshot-1',
+      remediation: 'Review the blocker and decide whether to continue.',
     });
   });
 
@@ -2753,6 +3144,66 @@ Use the backend contract and adapt the frontend mapper.
     expect(parsed.events.filter((event) => event.type === 'task_started')).toHaveLength(0);
     const markerDir = path.join(projectDir, '.claude', 'collab', 'archive', 'task-started');
     expect(fs.existsSync(markerDir)).toBe(false);
+  });
+
+  test('compatibility exports regenerate from canonical collab artifacts', async () => {
+    const projectDir = makeTempProject('whitebox-compat-exports-');
+    initCollabArtifacts(projectDir);
+    const messaging = new AgentMessagingService({ projectRoot: projectDir });
+    const requestPath = path.join(projectDir, '.claude', 'collab', 'requests', 'REQ-42.md');
+    fs.writeFileSync(requestPath, `---
+id: REQ-42
+from: backend-specialist
+to: frontend-specialist
+status: PENDING
+---
+## Change Summary
+Need the frontend to adopt the canonical contract.
+
+## Response
+Accepted. Updating the client.
+`, 'utf8');
+    const handoffPath = path.join(projectDir, 'docs', 'handoff.md');
+    fs.mkdirSync(path.dirname(handoffPath), { recursive: true });
+    fs.writeFileSync(handoffPath, '# Handoff: contract update\n\n**인계자**: backend-specialist\n\nPass the canonical contract forward.\n', 'utf8');
+
+    const handoffResult = await messaging.notifyHandoff('docs/handoff.md', 'frontend-specialist');
+    expect(handoffResult.success).toBe(true);
+
+    await messaging.exportCompatibilityViews();
+
+    const requestExport = path.join(projectDir, 'management', 'requests', 'REQ-42.md');
+    const responseExport = path.join(projectDir, 'management', 'responses', 'REQ-42.md');
+    const handoffExportDir = path.join(projectDir, 'management', 'handoffs');
+    expect(fs.readFileSync(requestExport, 'utf8')).toContain('Canonical source: `.claude/collab/requests/REQ-42.md`');
+    expect(fs.readFileSync(responseExport, 'utf8')).toContain('Accepted. Updating the client.');
+    const firstHandoffExport = fs.readdirSync(handoffExportDir).filter((name) => name.endsWith('.md') && name !== 'README.md');
+    expect(firstHandoffExport).toHaveLength(1);
+
+    fs.unlinkSync(requestExport);
+    fs.unlinkSync(responseExport);
+    fs.unlinkSync(path.join(handoffExportDir, firstHandoffExport[0]));
+
+    await messaging.exportCompatibilityViews();
+
+    expect(fs.existsSync(requestExport)).toBe(true);
+    expect(fs.existsSync(responseExport)).toBe(true);
+    const regeneratedHandoffs = fs.readdirSync(handoffExportDir).filter((name) => name.endsWith('.md') && name !== 'README.md');
+    expect(regeneratedHandoffs).toHaveLength(1);
+  });
+
+  test('compatibility export paths reject dual-write attempts', async () => {
+    const projectDir = makeTempProject('whitebox-compat-dual-write-');
+    const compatRequestDir = path.join(projectDir, 'management', 'requests');
+    fs.mkdirSync(compatRequestDir, { recursive: true });
+    fs.writeFileSync(path.join(compatRequestDir, 'REQ-42.md'), '# generated compatibility view\n', 'utf8');
+    const messaging = new AgentMessagingService({ projectRoot: projectDir });
+
+    const result = await messaging.requestResponse('management/requests/REQ-42.md', 'frontend-specialist');
+
+    expect(result.success).toBe(false);
+    expect(result.code).toBe('COLLAB_SINGLE_SOURCE_OF_TRUTH');
+    expect(result.error).toMatch(/Single source of truth violation/);
   });
 
   test('legacy auto event log remains readable for compatibility', () => {

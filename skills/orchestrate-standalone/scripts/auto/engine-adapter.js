@@ -27,6 +27,9 @@ const {
 const {
   loadState,
   saveState,
+  loadRecoverySnapshot,
+  saveRecoverySnapshot,
+  clearRecoverySnapshot,
   updateTask,
   getProgress
 } = require('../engine/state');
@@ -386,6 +389,36 @@ function saveAutoState(state, projectDir = process.cwd()) {
     fs.writeFileSync(autoStatePath, JSON.stringify(normalized, null, 2));
   } catch (error) {
     throw new Error(`Failed to save auto state: ${error.message}`);
+  }
+
+  if (normalized.pending_gate) {
+    saveRecoverySnapshot({
+      schema_version: 1,
+      source: 'auto-state',
+      type: 'pending_gate',
+      status: 'blocked',
+      created_at: normalized.pending_gate.created_at || new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      gate_id: normalized.pending_gate.gate_id,
+      gate_name: normalized.pending_gate.gate_name,
+      task_id: normalized.pending_gate.task_id,
+      run_id: normalized.pending_gate.run_id,
+      correlation_id: normalized.pending_gate.correlation_id,
+      trigger_type: normalized.pending_gate.trigger_type || null,
+      trigger_reason: normalized.pending_gate.trigger_reason || null,
+      recommendation: normalized.pending_gate.recommendation || null,
+      remediation: normalized.pending_gate.recommendation || normalized.pending_gate.trigger_reason || 'Resolve the pending gate before resuming.',
+      evidence_paths: [
+        path.join(projectDir, AUTO_STATE_FILE),
+        path.join(projectDir, '.claude/collab/events.ndjson'),
+        path.join(projectDir, '.claude/collab/control-state.json'),
+      ].filter((filePath) => fs.existsSync(filePath)),
+    }, projectDir);
+  } else {
+    const existingSnapshot = loadRecoverySnapshot(projectDir);
+    if (existingSnapshot && existingSnapshot.source === 'auto-state') {
+      clearRecoverySnapshot(projectDir);
+    }
   }
 
   writeBridge(normalized, projectDir);

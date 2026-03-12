@@ -26,6 +26,8 @@ const fs = require('fs');
 const path = require('path');
 const childProcess = require('child_process');
 
+const AgentMessagingService = require('../services/messaging');
+
 // Status messages go to stderr; stdout is reserved for JSON output
 function log(msg) {
   process.stderr.write(msg + '\n');
@@ -72,6 +74,13 @@ File-based communication bus for the hierarchical agent collaboration system.
 - **events.ndjson**: Append-only board event log.
   One JSON event per line: task_claimed, task_started, task_done, task_blocked,
   req_escalated, req_resolved.
+
+## Compatibility Exports
+
+- \`management/requests/\`, \`management/responses/\`, and \`management/handoffs/\` are generated compatibility views only.
+- They exist for downstream human-readable exports and legacy path consumers.
+- Never write semantic events there directly. Rebuild with \`node project-team/services/messaging.js export-compat\`.
+- The only writable artifact plane is \`.claude/collab/\`.
 
 ## Whitebox Surface Contract
 
@@ -129,7 +138,7 @@ function isInitialized(collabDir) {
   return hasDirs && hasFiles;
 }
 
-function init(projectDir) {
+async function init(projectDir) {
   const collabDir = path.join(projectDir, '.claude', 'collab');
 
   if (isInitialized(collabDir)) {
@@ -190,6 +199,9 @@ function init(projectDir) {
     stdio: 'ignore',
   });
 
+  const messaging = new AgentMessagingService({ projectRoot: projectDir });
+  await messaging.exportCompatibilityViews();
+
   log(`collab initialized: ${collabDir}`);
   for (const sub of SUBDIRS) {
     log(`  ${sub}/`);
@@ -198,7 +210,7 @@ function init(projectDir) {
   return { skipped: false, path: collabDir };
 }
 
-function main() {
+async function main() {
   const { projectDir, check } = parseArgs();
 
   if (check) {
@@ -208,12 +220,15 @@ function main() {
     process.exit(initialized ? 0 : 1);
   }
 
-  init(projectDir);
+  await init(projectDir);
   process.exit(0);
 }
 
 if (require.main === module) {
-  main();
+  main().catch((error) => {
+    process.stderr.write(`${error.message}\n`);
+    process.exit(1);
+  });
 }
 
 module.exports = { init, isInitialized, SUBDIRS };

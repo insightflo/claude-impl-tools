@@ -63,6 +63,19 @@ const RISK_PATTERNS = Object.freeze([
   { match: /(^|\/)migrations?(\/|$)/i, riskLevel: 'HIGH', severity: 3 },
   { match: /(^|\/)contracts\/interfaces(\/|$)/i, riskLevel: 'HIGH', severity: 3 }
 ]);
+const STANDARD_SCAFFOLD_COLLAB_DIRS = Object.freeze([
+  'contracts',
+  'requests',
+  'handoffs',
+  'decisions',
+  'locks',
+  'archive'
+]);
+const STANDARD_SCAFFOLD_COMPAT_DIRS = Object.freeze([
+  path.join('management', 'requests'),
+  path.join('management', 'responses'),
+  path.join('management', 'handoffs')
+]);
 
 function stableArray(values) {
   return [...new Set((Array.isArray(values) ? values : []).filter(Boolean))].sort();
@@ -99,6 +112,49 @@ function withFixedNow(nowMs, callback) {
   } finally {
     Date.now = originalNow;
   }
+}
+
+function ensureStandardModeCollabScaffolding(options = {}) {
+  const mode = String(options.mode || options.installMode || process.env.PROJECT_TEAM_MODE || 'standard').trim().toLowerCase();
+  if (mode !== 'standard') {
+    return { mode, initialized: false, reason: 'mode_not_standard' };
+  }
+
+  const projectRoot = options.projectRoot || process.cwd();
+  const collabRoot = path.join(projectRoot, '.claude', 'collab');
+  const initializedPaths = [];
+
+  for (const dir of STANDARD_SCAFFOLD_COLLAB_DIRS) {
+    const target = path.join(collabRoot, dir);
+    fs.mkdirSync(target, { recursive: true });
+    initializedPaths.push(target);
+  }
+
+  for (const dir of STANDARD_SCAFFOLD_COMPAT_DIRS) {
+    const target = path.join(projectRoot, dir);
+    fs.mkdirSync(target, { recursive: true });
+    initializedPaths.push(target);
+  }
+
+  const fileSeeds = [
+    path.join(collabRoot, 'events.ndjson'),
+    path.join(collabRoot, 'control.ndjson')
+  ];
+  for (const filePath of fileSeeds) {
+    if (!fs.existsSync(filePath)) {
+      fs.writeFileSync(filePath, '', 'utf8');
+      initializedPaths.push(filePath);
+    }
+  }
+
+  return {
+    mode,
+    initialized: true,
+    collabRoot,
+    initializedPaths: initializedPaths
+      .map((entry) => path.relative(projectRoot, entry).replace(/\\/g, '/'))
+      .sort((a, b) => a.localeCompare(b))
+  };
 }
 
 function inferScopeProfile(task = {}) {
@@ -345,6 +401,7 @@ function writeRuntimePayload(payload, options = {}) {
 }
 
 function buildRuntimeHandoff(task, options = {}) {
+  const collabScaffolding = ensureStandardModeCollabScaffolding(options);
   const payload = buildRuntimePayload(task, options);
   const scopedToken = issueScopedToken(payload, options);
   const payloadPath = writeRuntimePayload(payload, options);
@@ -365,7 +422,8 @@ function buildRuntimeHandoff(task, options = {}) {
       mechanism: 'file_env',
       runtime_dir: path.dirname(payloadPath),
       payload_path: payloadPath,
-      env
+      env,
+      collab_scaffolding: collabScaffolding
     }
   };
 }
@@ -382,6 +440,7 @@ module.exports = {
   deriveContracts,
   inferRiskLevel,
   inferScopeProfile,
+  ensureStandardModeCollabScaffolding,
   issueScopedToken,
   writeRuntimePayload
 };
