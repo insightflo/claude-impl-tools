@@ -7,7 +7,7 @@
  * with fix guidance.
  *
  * @TASK P2-T2 - Standards Validator Hook
- * @SPEC project-team/agents/ChiefArchitect.md#enforcement-hook
+ * @SPEC .claude/agents/architecture-lead.md (Agent Teams) | project-team/agents/ChiefArchitect.md (legacy)
  *
  * Claude Code Hook Protocol (PostToolUse):
  *   - stdin: JSON { tool_name, tool_input: { file_path, content, ... }, tool_result: ... }

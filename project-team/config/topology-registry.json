@@ -225,6 +225,16 @@
         "matcher": "Edit|Write",
         "installType": "helper",
         "matcherListKey": "risk-area-warning"
+      },
+      "teammate-idle-gate": {
+        "artifact": "hooks/teammate-idle-gate.js",
+        "event": "TeammateIdle",
+        "installType": "active"
+      },
+      "task-completed-gate": {
+        "artifact": "hooks/task-completed-gate.js",
+        "event": "TaskCompleted",
+        "installType": "active"
       }
     },
     "matcherLists": {
@@ -307,6 +317,31 @@
         "domain-designer",
         "domain-developer"
       ]
+    },
+    "team": {
+      "description": "Native Agent Teams mode — team-lead + domain teammates with Plan Approval",
+      "note": "Uses .claude/agents/team-lead.md, architecture-lead.md, qa-lead.md, design-lead.md",
+      "canonicalRoles": [
+        "lead",
+        "builder",
+        "reviewer",
+        "designer"
+      ],
+      "hookNames": [
+        "permission-checker",
+        "policy-gate",
+        "security-scan",
+        "quality-gate",
+        "contract-gate",
+        "teammate-idle-gate",
+        "task-completed-gate"
+      ],
+      "compatibilityProfiles": [],
+      "agentTeams": {
+        "leader": "team-lead",
+        "teammates": ["architecture-lead", "qa-lead", "design-lead"],
+        "env": { "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1" }
+      }
     }
   },
   "installerOwnership": {
