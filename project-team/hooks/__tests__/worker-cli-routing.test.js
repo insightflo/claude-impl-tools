@@ -16,7 +16,7 @@ describe('worker CLI routing', () => {
     jest.dontMock('child_process');
   });
 
-  test('uses agent frontmatter cli_command before fallback defaults', () => {
+  test('uses heuristic routing for frontend-specialist (agent frontmatter without cli_command)', () => {
     jest.doMock('child_process', () => ({
       ...jest.requireActual('child_process'),
       execSync: jest.fn(),
@@ -29,7 +29,7 @@ describe('worker CLI routing', () => {
     expect(result).toMatchObject({
       command: 'gemini',
       model: 'gemini',
-      routeSource: 'agent.cli_command',
+      routeSource: 'heuristic.frontend',
     });
   });
 
@@ -77,7 +77,7 @@ describe('worker CLI routing', () => {
     });
   });
 
-  test('parsed tasks without explicit model still route from owner metadata', () => {
+  test('parsed tasks without explicit model route via heuristics for frontend owner', () => {
     jest.doMock('child_process', () => ({
       ...jest.requireActual('child_process'),
       execSync: jest.fn(),
@@ -95,7 +95,7 @@ describe('worker CLI routing', () => {
     expect(result).toMatchObject({
       command: 'gemini',
       model: 'gemini',
-      routeSource: 'agent.cli_command',
+      routeSource: 'heuristic.frontend',
     });
   });
 

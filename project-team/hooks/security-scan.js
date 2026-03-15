@@ -11,7 +11,7 @@
  * Acts as Security Specialist's enforcement hook.
  *
  * @TASK P1-SECURITY - Security Scan Hook
- * @SPEC .claude/agents/qa-lead.md (Agent Teams) | project-team/agents/SecuritySpecialist.md (legacy)
+ * @SPEC .claude/agents/qa-lead.md#enforcement-hook
  *
  * Claude Code Hook Protocol (Manual):
  *   - Triggered: After Edit/Write, before Phase completion

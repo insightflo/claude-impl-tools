@@ -118,9 +118,10 @@ codex auth
 │   ├── orchestrate-standalone/
 │   └── ...
 ├── agents/                   # Project Team 에이전트
-│   ├── FrontendSpecialist.md
-│   ├── BackendSpecialist.md
-│   └── ...
+│   ├── Builder.md
+│   ├── Reviewer.md
+│   ├── Designer.md
+│   └── MaintenanceAnalyst.md
 ├── hooks/                    # 자동 검증 훅
 │   ├── permission-checker.js
 │   └── ...

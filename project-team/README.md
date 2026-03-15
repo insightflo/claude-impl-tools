@@ -121,17 +121,18 @@ claude mcp list
 
 ```
 project-team/
-├── agents/                      # 9 AI agent definitions
-│   ├── ProjectManager.md        # Project coordination
-│   ├── ChiefArchitect.md        # Architecture & standards
-│   ├── ChiefDesigner.md         # Design system
-│   ├── QAManager.md             # Quality management
-│   ├── DBA.md                   # Database management
+├── agents/                      # Core agent definitions
+│   ├── Builder.md               # Implementation execution
+│   ├── Reviewer.md              # Code review & QA
+│   ├── Designer.md              # Design specialist
 │   ├── MaintenanceAnalyst.md    # System maintenance
 │   └── templates/               # Domain agent templates
 │       ├── PartLeader.md
 │       ├── DomainDesigner.md
 │       └── DomainDeveloper.md
+│
+│   # Agent Teams leads → .claude/agents/
+│   #   team-lead.md, architecture-lead.md, qa-lead.md, design-lead.md
 │
 ├── hooks/                       # 10 JavaScript hooks
 │   ├── permission-checker.js

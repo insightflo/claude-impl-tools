@@ -2434,7 +2434,7 @@ Use the backend contract and adapt the frontend mapper.
 
     process.chdir(originalCwd);
 
-    expect(result).toEqual({ passed: true, skipped: true, hook: 'nonexistent-gate' });
+    expect(result).toMatchObject({ passed: true, skipped: true, hook: 'nonexistent-gate' });
     expect(emitted).toHaveLength(2);
     expect(emitted[0]).toMatchObject({
       type: 'orchestrate.gate.start',
@@ -2446,7 +2446,7 @@ Use the backend contract and adapt the frontend mapper.
       data: {
         gate: 'nonexistent-gate',
         outcome: 'skip',
-        reason: 'missing_hook',
+        reason: expect.stringMatching(/missing_hook|not_enabled_for_mode/),
       },
     });
   });

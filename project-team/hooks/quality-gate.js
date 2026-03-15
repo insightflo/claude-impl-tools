@@ -12,7 +12,7 @@
  * if quality standards are not met.
  *
  * @TASK P2-T4 - Quality Gate Hook
- * @SPEC .claude/agents/qa-lead.md (Agent Teams) | project-team/agents/QAManager.md (legacy)
+ * @SPEC .claude/agents/qa-lead.md#enforcement-hook
  *
  * Claude Code Hook Protocol (Manual):
  *   - Triggered: When Phase is ready for completion
