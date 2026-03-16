@@ -11,9 +11,9 @@
  *
  * Directories created:
  *   .claude/collab/
- *   ├── contracts/        ChiefArchitect-only write (Wave 0 outputs)
+ *   ├── contracts/        architecture-lead-only write (Wave 0 outputs)
  *   ├── requests/         REQ-*.md files (cross-domain change requests)
- *   ├── decisions/        DEC-*.md files (ChiefArchitect rulings)
+ *   ├── decisions/        DEC-*.md files (architecture-lead rulings)
  *   ├── locks/            JSON lock files (TTL: 10 min)
  *   ├── archive/          Wave-end archival of completed REQ/DEC files
  *   ├── control.ndjson    Canonical operator-intent log (append-only)
@@ -37,7 +37,7 @@ File-based communication bus for the hierarchical agent collaboration system.
 
 ## Directories
 
-- **contracts/**: ChiefArchitect-only write, all agents read-only.
+- **contracts/**: architecture-lead-only write, all agents read-only.
   Created during Wave 0 before Domain Workers begin.
   Contains: api-schema.yaml, types.ts, error-codes.md
 
@@ -45,7 +45,7 @@ File-based communication bus for the hierarchical agent collaboration system.
   Any agent can create REQ files here.
   Status flow: OPEN → PENDING → RESOLVED/REJECTED/ESCALATED
 
-- **decisions/**: DEC-*.md files issued by ChiefArchitect.
+- **decisions/**: DEC-*.md files issued by architecture-lead.
   Created when a REQ is ESCALATED (max_negotiation exceeded).
   Final rulings that all agents must follow.
 
@@ -86,8 +86,8 @@ File-based communication bus for the hierarchical agent collaboration system.
 ---
 id: REQ-YYYYMMDD-NNN
 thread_id: thread-{domain}-{topic}
-from: BackendSpecialist
-to: FrontendSpecialist
+from: architecture-lead
+to: design-lead
 task_ref: T2.3
 status: OPEN
 max_negotiation: 2
