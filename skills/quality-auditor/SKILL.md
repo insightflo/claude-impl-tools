@@ -17,7 +17,7 @@ updated: 2026-03-12
 
 1. ❌ **직접 코드를 수정하지 마세요** - 수정은 `implementation agent`의 역할
 2. ❌ **근거 없는 비판을 하지 마세요** - 반드시 `docs/planning/` 내의 문서를 근거로 제시
-3. ❌ **기획 문서 없이 감사하지 마세요** - 없으면 `/governance-setup` 실행 안내
+3. ❌ **기획 문서 없이 감사하지 마세요** - `management/mini-prd.md`와 `docs/planning/*.md`가 모두 없으면 `/governance-setup`을 먼저 실행하세요.
 
 ---
 
@@ -33,6 +33,15 @@ updated: 2026-03-12
 7. UI/UX 브라우저 검증 (agent-browser CLI + Lighthouse CLI)
 8. 품질 리포트 작성 + 수정 지침 제공
 ```
+
+---
+
+## 선행 조건 확인 (스킬 시작 시 자동 실행)
+
+스킬이 트리거되면 감사를 시작하기 전에 아래를 확인한다.
+
+1. **기획 문서 존재**: `management/mini-prd.md` 또는 `docs/planning/*.md` 중 하나 이상 있어야 한다.
+   - 둘 다 없으면: "기획 문서가 없습니다. `/governance-setup`을 먼저 실행하세요."
 
 ---
 

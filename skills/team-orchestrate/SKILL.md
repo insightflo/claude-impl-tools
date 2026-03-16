@@ -35,6 +35,25 @@ Level 0 — Agent Team (네이티브)
 
 ---
 
+## 선행 조건 확인 (스킬 시작 시 자동 실행)
+
+스킬이 트리거되면 구현을 시작하기 전에 아래를 순서대로 확인한다.
+하나라도 실패하면 해당 안내를 출력하고 중단한다.
+
+1. **TASKS.md 존재**: 프로젝트 루트에 `TASKS.md`가 있어야 한다.
+   - 없으면: "TASKS.md가 없습니다. `/tasks-init`으로 먼저 생성하세요."
+
+2. **TASKS.md 포맷**: `deps:` 및 `domain:` 필드가 포함된 표준 포맷이어야 한다.
+   - 없으면: "`/tasks-migrate`로 TASKS.md 포맷을 변환하세요."
+
+3. **Agent Teams 설치**: 아래 세 가지를 모두 확인한다.
+   - `.claude/agents/team-lead.md` 존재
+   - `.claude/settings.json`에 `AGENT_TEAMS` 환경 변수 등록
+   - `project-team` hooks (`TeammateIdle`, `TaskCompleted`) 등록
+   - 하나라도 없으면: "Agent Teams 리더가 설치되지 않았습니다. `project-team/install.sh --local --mode=team`을 실행하세요."
+
+---
+
 ## 실행 흐름
 
 ### Step 1: 도메인 분석

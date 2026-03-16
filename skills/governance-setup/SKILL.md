@@ -48,7 +48,10 @@ ls management/mini-prd.md 2>/dev/null
 
 **TASKS.md가 없으면**:
 - 레거시 파일(`docs/planning/06-tasks.md`)만 있으면 → `/tasks-migrate` 먼저 안내 (TASKS.md로 통합)
-- 태스크 파일 자체가 없으면 → `/tasks-init` 먼저 안내 (스캐폴딩 생성)
+- 태스크 파일 자체가 없으면 → 거버넌스를 계속 진행하되, 완료 후 `/tasks-init`을 다음 단계로 안내한다.
+
+**TASKS.md가 있으면**: 태스크 수를 확인한다.
+- 태스크 30개 이상이면 → 거버넌스 완료 후 `/team-orchestrate`를 권장 단계로 안내한다.
 
 **Mini-PRD vs Full Governance 선택**:
 - 소규모 프로젝트 (1~5인) → **Mini-PRD** (`references/mini-prd/`)
@@ -169,6 +172,10 @@ database/
   }]
 }
 ```
+
+> **조건부 안내 (자동 삽입)**:
+> - TASKS.md가 없었으면 → "TASKS.md가 없습니다. 다음 단계에서 `/tasks-init`으로 먼저 생성하세요."를 선택지 상단에 추가한다.
+> - TASKS.md 태스크가 30개 이상이면 → "태스크가 30개 이상입니다. 병렬 실행을 위해 `/team-orchestrate`를 권장합니다."를 선택지 상단에 추가한다.
 
 ### 선택에 따른 자동 실행
 

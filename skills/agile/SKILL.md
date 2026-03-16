@@ -40,6 +40,23 @@ updated: 2026-03-03
 
 ---
 
+## 선행 조건 확인 (스킬 시작 시 자동 실행)
+
+스킬이 트리거되면 구현을 시작하기 전에 아래를 순서대로 확인한다.
+하나라도 실패하면 해당 안내를 출력하고 중단한다.
+
+1. **TASKS.md 존재**: 프로젝트 루트에 `TASKS.md`가 있어야 한다.
+   - 없으면: "TASKS.md가 없습니다. `/tasks-init`으로 먼저 생성하세요."
+
+2. **TASKS.md 포맷**: `- [ ] T1.1:` 형식의 태스크 ID가 있어야 한다.
+   - 없으면: "TASKS.md 포맷이 맞지 않습니다. `/tasks-migrate`로 변환하세요."
+
+3. **`/agile auto` + Agent Teams**: `.claude/agents/team-lead.md`가 있는지 확인한다.
+   - 없고 TASKS.md 태스크가 30개 이상이면: "30개 이상 태스크는 `/team-orchestrate`를 권장합니다. Agent Teams 설치: `project-team/install.sh --local --mode=team`"
+   - 없고 태스크가 30개 미만이면: standalone 모드로 계속 진행한다 (에이전트 위임 스킵).
+
+---
+
 ## 🎯 핵심 원칙 (INVEST)
 
 - **I**ndependent: 각 태스크는 독립적 완료/검토 가능
