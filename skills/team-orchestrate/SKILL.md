@@ -187,7 +187,23 @@ Agent(
     STATUS REPORTS (mandatory after each phase):
     After completing each phase, write a summary to:
       .claude/collab/reports/{date}-{domain}-status.md
-    Include: tasks completed, decisions made, issues encountered, next steps.",
+    Include: tasks completed, decisions made, issues encountered, next steps.
+
+    EXTERNAL AI ROUTING (optional — when cli field is set in team-topology.json):
+    For code-heavy tasks, you can delegate implementation to Codex or Gemini CLI
+    instead of waiting for a worker agent. Use this when:
+    - Task is pure code generation (new file, boilerplate, CRUD endpoints)
+    - Task is UI/styling work and you want Gemini's visual reasoning
+
+    How to route:
+      Bash('bash ~/.claude/claude-impl-tools/skills/team-orchestrate/scripts/cli-route.sh codex \"Implement user authentication middleware in backend/app/middleware/auth.py. Use JWT with python-jose. Include token validation and role extraction.\"')
+      Bash('bash ~/.claude/claude-impl-tools/skills/team-orchestrate/scripts/cli-route.sh gemini \"Create a responsive login page component at frontend/src/pages/LoginPage.tsx using React 19 and Tailwind CSS.\"')
+
+    Rules for CLI routing:
+    - ALWAYS review CLI output before accepting — external AI may produce incorrect code
+    - Run tests after CLI generates code, same as with worker output
+    - If CLI fails or output is poor, fall back to worker agent
+    - Log CLI usage in status report: 'Task #N delegated to codex/gemini'",
   run_in_background = true
 )
 ```

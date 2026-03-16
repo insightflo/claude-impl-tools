@@ -19,7 +19,7 @@
       "executors": ["builder", "reviewer"],
       "domains": ["backend", "api", "architecture", "database", "shared"],
       "model": "opus",
-      "cli": null
+      "cli": "codex"
     },
     "qa-lead": {
       "executors": ["reviewer", "test-specialist"],
@@ -31,7 +31,7 @@
       "executors": ["designer", "builder"],
       "domains": ["frontend", "design", "ui", "ux"],
       "model": "sonnet",
-      "cli": null
+      "cli": "gemini"
     }
   },
   "cliRouting": {
