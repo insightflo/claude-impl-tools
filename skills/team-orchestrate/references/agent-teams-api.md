@@ -183,6 +183,22 @@ Level 2: Subagent internals (Bash for external CLI)
 to be spawned as flat teammates by the lead. Domain leads serve as coordinators
 via SendMessage, not as sub-team managers.
 
+## Anthropic Official Pattern (feature-dev plugin)
+
+Anthropic's own `feature-dev` plugin (github.com/anthropics/claude-code/plugins/feature-dev)
+does NOT use TeamCreate. Instead it uses Agent() parallel spawn pattern:
+- Launch 2-3 read-only subagents in parallel (code-explorer, code-architect, code-reviewer)
+- Lead collects results and makes decisions
+- Implementation is done by the lead, not subagents
+
+Two valid patterns:
+| Pattern | Tools | Use case |
+|---------|-------|----------|
+| **Structured** (feature-dev) | Agent() parallel spawn | Phase-based workflow, lead controls |
+| **Autonomous** (TeamCreate) | TeamCreate + SendMessage | Long-running parallel, self-organizing |
+
+Our team-orchestrate v3.0 uses the Autonomous pattern with logical hierarchy.
+
 ---
 
 ## File Locations
