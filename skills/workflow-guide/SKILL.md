@@ -61,7 +61,8 @@ echo "agents=$AGENT_COUNT tasks=$TASK_COUNT incomplete=$INCOMPLETE_COUNT governa
 ```
 ① 복구: state file 미완료 OR merge conflicts → /recover
 ② 태스크 없음: TASKS.md 없음 → /tasks-init (레거시 있으면 /tasks-migrate)
-③ 유지보수: source_code 있고 incomplete>0 → /agile iterate
+③ 유지보수: source_code 있고 버그/수정 요청 → /maintenance
+③-b 유지보수(반복): source_code 있고 incomplete>0 → /agile iterate
 ④ 신규 구현: incomplete>0 + TASK<30 → /agile auto
 ⑤ 대규모 구현: incomplete>0 + TASK>=30 → /team-orchestrate
 ⑥ 완료: all_tasks_completed → /audit
@@ -91,7 +92,7 @@ echo "agents=$AGENT_COUNT tasks=$TASK_COUNT incomplete=$INCOMPLETE_COUNT governa
 
 ---
 
-## 📊 Standalone 스킬 카탈로그 (20개)
+## 📊 Standalone 스킬 카탈로그 (21개)
 
 | 스킬 | 트리거 | 역할 |
 |------|--------|------|
@@ -111,6 +112,7 @@ echo "agents=$AGENT_COUNT tasks=$TASK_COUNT incomplete=$INCOMPLETE_COUNT governa
 | **`/deps`** | `/deps` | 의존성 그래프 |
 | **`/coverage`** | `/coverage` | 테스트 커버리지 |
 | **`/architecture`** | `/architecture` | 아키텍처 맵 |
+| **`/maintenance`** | "버그 고쳐줘" | ITIL 5단계 프로덕션 유지보수 오케스트레이터 |
 | **`/compress`** | "컨텍스트 압축" | Long Context 최적화 |
 | **`/statusline`** | 자동 활성화 | 진행률 상태바 표시 |
 | **`/changelog`** | `/changelog` | 변경 이력 조회 |
@@ -139,6 +141,8 @@ echo "agents=$AGENT_COUNT tasks=$TASK_COUNT incomplete=$INCOMPLETE_COUNT governa
 "품질 검사해줘"                 → /audit
 "작업이 중단됐어"               → /recover
 "대규모 프로젝트야"             → /governance-setup
+"이 버그 고쳐줘"                → /maintenance
+"프로덕션 수정해줘"             → /maintenance
 "에이전트 팀으로 실행해줘"      → /team-orchestrate
 "실행 상태 보여줘"              → /whitebox status
 "컨텍스트 압축해줘"             → /compress

@@ -44,7 +44,7 @@ curl -fsSL https://raw.githubusercontent.com/insightflo/claude-impl-tools/main/s
 
 | Component | Count | Purpose |
 |-----------|-------|---------|
-| **Skills** | 20 | Task execution, analysis, automation |
+| **Skills** | 21 | Task execution, analysis, automation |
 | **Agent Teams Leads** | 4 | team-lead, architecture-lead, qa-lead, design-lead |
 | **Core Worker Agents** | 4 | builder, reviewer, designer, maintenance-analyst |
 | **Hooks** | 19 | Auto-validation, gates, sync, governance |
@@ -91,6 +91,7 @@ curl -fsSL https://raw.githubusercontent.com/insightflo/claude-impl-tools/main/s
 
 | Skill | What it does |
 |-------|--------------|
+| `/maintenance` | ITIL 5-stage production maintenance orchestrator (ASSESS → ANALYZE → IMPLEMENT → VERIFY → RECORD) |
 | `/impact` | Analyze change impact before editing |
 | `/deps` | Visualize dependencies + detect cycles |
 | `/changelog` | Query change history by domain |
@@ -232,7 +233,7 @@ Start
 
 ```
 claude-impl-tools/
-├── skills/                    # 20 skills
+├── skills/                    # 21 skills
 │   ├── workflow-guide/        # Meta hub
 │   ├── governance-setup/      # Phase 0 setup
 │   ├── agile/                 # Layered sprints
@@ -250,6 +251,7 @@ claude-impl-tools/
 │   ├── changelog/             # Change history
 │   ├── coverage/              # Test coverage
 │   ├── architecture/          # Architecture map
+│   ├── maintenance/           # ITIL production maintenance orchestrator
 │   ├── whitebox/              # Execution state inspection
 │   └── statusline/            # TASKS.md progress in status bar
 │

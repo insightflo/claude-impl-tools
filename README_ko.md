@@ -46,7 +46,7 @@ cd claude-impl-tools/project-team
 
 | 구성요소 | 개수 | 용도 |
 |----------|------|------|
-| **스킬** | 20개 | 작업 실행, 분석, 자동화 |
+| **스킬** | 21개 | 작업 실행, 분석, 자동화 |
 | **Agent Teams 리더** | 4개 | team-lead, architecture-lead, qa-lead, design-lead |
 | **코어 워커 에이전트** | 4개 | builder, reviewer, designer, maintenance-analyst |
 | **훅** | 19개 | 자동 검증, 게이트, 동기화, 거버넌스 |
@@ -93,6 +93,7 @@ cd claude-impl-tools/project-team
 
 | 스킬 | 기능 |
 |------|------|
+| `/maintenance` | ITIL 5단계 프로덕션 유지보수 오케스트레이터 (수용 판단 → 영향도 → 수정 → 검증 → 이력) |
 | `/impact` | 수정 전 영향도 분석 |
 | `/deps` | 의존성 시각화 + 순환 참조 감지 |
 | `/changelog` | 도메인별 변경 이력 조회 |
@@ -234,7 +235,7 @@ cd project-team
 
 ```
 claude-impl-tools/
-├── skills/                    # 20개 스킬
+├── skills/                    # 21개 스킬
 │   ├── workflow-guide/        # 메타 허브
 │   ├── governance-setup/      # Phase 0 설정
 │   ├── agile/                 # 레이어별 스프린트
@@ -252,6 +253,7 @@ claude-impl-tools/
 │   ├── changelog/             # 변경 이력
 │   ├── coverage/              # 테스트 커버리지
 │   ├── architecture/          # 아키텍처 맵
+│   ├── maintenance/           # ITIL 프로덕션 유지보수 오케스트레이터
 │   ├── whitebox/              # 실행 상태 점검
 │   └── statusline/            # 상태바 진행 표시
 │
