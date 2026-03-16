@@ -72,6 +72,21 @@ Analyze TASKS.md, classify tasks by domain, and assign to teammates:
 | Quality, testing, security | QA Lead | reviewer, test-specialist |
 | UI, design, frontend | Design Lead | designer, builder |
 
+### 2b) Multi-AI CLI Hints (Optional)
+
+When the teammate's `cli` field in `team-topology.json` is set (e.g., `"gemini"` or `"codex"`), include a CLI hint in the delegation prompt so the subagent can invoke the external AI for specific subtasks:
+
+```
+Task(builder, prompt="...
+  CLI hint: For UI/design subtasks, use `gemini` CLI via Bash if available.
+  Check: command -v gemini
+  Usage: echo '<subtask prompt>' | gemini
+  Always validate CLI output before applying.
+")
+```
+
+This way the subagent (Claude) stays in control — it decides when to call the external CLI, validates the output, and hooks still apply at the subagent level.
+
 ### 3) Conflict Mediation
 
 <!--

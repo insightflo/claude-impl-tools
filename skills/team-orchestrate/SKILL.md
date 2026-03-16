@@ -155,6 +155,62 @@ Uses the standard TASKS.md format:
 
 Customize the domain-to-teammate mapping in `skills/team-orchestrate/config/team-topology.json`.
 
+### Multi-AI CLI Routing (Optional)
+
+By default, all teammates execute via Claude Task tool. To route a teammate's work to an external AI CLI (Gemini or Codex), set the `cli` field in `team-topology.json`:
+
+```json
+{
+  "teammates": {
+    "design-lead": {
+      "cli": "gemini",
+      "executors": ["designer", "builder"],
+      "domains": ["frontend", "design", "ui", "ux"]
+    }
+  }
+}
+```
+
+When `cli` is set, team-lead includes a **CLI hint** in the delegation prompt. The subagent (Claude) stays in control and decides when to invoke the external CLI for specific subtasks:
+
+| `cli` value | Behavior | Best for |
+|-------------|----------|----------|
+| `null` (default) | Claude Task tool only | Most tasks |
+| `"gemini"` | Subagent may call `gemini` CLI via Bash for subtasks | UI/design, visual reasoning |
+| `"codex"` | Subagent may call `codex exec` CLI via Bash for subtasks | Code generation, refactoring |
+
+**How it works**:
+```
+team-lead receives task
+  └── Task(builder, prompt="...
+        CLI hint: Use gemini CLI for design subtasks if available.
+        Check: command -v gemini
+        Usage: echo '<prompt>' | gemini
+        Always validate CLI output before applying.
+      ")
+      ↓
+  builder (Claude subagent) decides:
+    ├── Simple task → handle directly
+    └── Design-heavy subtask → Bash("echo '...' | gemini") → validate → apply
+```
+
+**Advantages over direct CLI routing**:
+- Claude subagent validates and integrates external CLI output
+- Hooks still apply at the subagent level (full governance)
+- Subagent retains context and can retry/correct CLI results
+- No "blind delegation" — Claude is always in the loop
+
+**Prerequisites**: The target CLI must be installed and authenticated:
+```bash
+# Gemini
+command -v gemini && gemini auth status
+
+# Codex
+command -v codex && codex auth status
+```
+
+If the CLI is not found, team-lead falls back to Claude Task tool with a warning.
+
 ### Governance Hooks
 
 Automatically registered in `.claude/settings.local.json`:
@@ -165,8 +221,15 @@ Automatically registered in `.claude/settings.local.json`:
 
 ## Usage Examples
 
-### Basic run
+### Basic run (all Claude)
 
+```bash
+/team-orchestrate
+```
+
+### With Gemini for design tasks
+
+Edit `team-topology.json` to set `design-lead.cli = "gemini"`, then:
 ```bash
 /team-orchestrate
 ```
