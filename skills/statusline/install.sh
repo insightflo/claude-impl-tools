@@ -11,9 +11,13 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SEGMENT_SCRIPT="$SCRIPT_DIR/statusline-segment.sh"
 HOOK_SCRIPT="$SCRIPT_DIR/hooks/tasks-status-writer.js"
+# Statusline segment goes global (runs from any project, reads local TASKS.md)
 STATUSLINE_FILE="$HOME/.claude/awesome-statusline.sh"
-HOOKS_DIR="$HOME/.claude/hooks"
-SETTINGS_FILE="$HOME/.claude/settings.json"
+
+# Hook goes to project-local .claude/ (only runs in projects with TASKS.md)
+PROJECT_CLAUDE_DIR=".claude"
+HOOKS_DIR="$PROJECT_CLAUDE_DIR/hooks"
+SETTINGS_FILE="$PROJECT_CLAUDE_DIR/settings.json"
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'

@@ -31,8 +31,8 @@ Or installed automatically at Step 5 of the root `install.sh`.
 
 ## How It Works
 
-1. `statusline-segment.sh` — Parses TASKS.md on each status bar refresh (30-second cache)
-2. `hooks/tasks-status-writer.js` — Immediately invalidates the cache whenever TASKS.md is edited
+1. `statusline-segment.sh` — Parses TASKS.md on each status bar refresh (30-second cache). Installed **globally** (`~/.claude/`) since it auto-detects the current project's TASKS.md.
+2. `hooks/tasks-status-writer.js` — Immediately invalidates the cache whenever TASKS.md is edited. Installed **per-project** (`.claude/hooks/`) since it should only activate in projects that have TASKS.md.
 
 ## File Structure
 
