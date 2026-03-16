@@ -228,7 +228,27 @@ function maskSecret(secret) {
 // ---------------------------------------------------------------------------
 
 /**
+ * CLI 명령어 존재 여부 확인 (Agent Teams 환경에서 외부 도구 미설치 대비)
+ * @param {string} command
+ * @returns {boolean}
+ */
+function isCommandAvailable(command) {
+  try {
+    const result = spawnSync('which', [command], {
+      encoding: 'utf-8',
+      shell: false,
+      stdio: 'pipe',
+      timeout: 3000
+    });
+    return result.status === 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Run dependency vulnerability scan
+ * 외부 도구(npm, pip-audit)가 없으면 해당 스캔을 건너뜀 (graceful degradation)
  * @returns {{ vulnerabilities: Array, summary: object }}
  */
 function scanDependencies() {
@@ -237,13 +257,14 @@ function scanDependencies() {
     summary: { critical: 0, high: 0, medium: 0, low: 0 }
   };
 
-  // Check npm audit
-  if (fs.existsSync('package.json')) {
+  // Check npm audit (npm 존재 확인 후 실행)
+  if (fs.existsSync('package.json') && isCommandAvailable('npm')) {
     try {
       const npmResult = spawnSync('npm', ['audit', '--json'], {
         encoding: 'utf-8',
         shell: false,
-        stdio: 'pipe'
+        stdio: 'pipe',
+        timeout: 30000
       });
 
       if (npmResult.stdout) {
@@ -265,13 +286,14 @@ function scanDependencies() {
     }
   }
 
-  // Check pip-audit (Python)
-  if (fs.existsSync('requirements.txt') || fs.existsSync('pyproject.toml')) {
+  // Check pip-audit (pip-audit 존재 확인 후 실행)
+  if ((fs.existsSync('requirements.txt') || fs.existsSync('pyproject.toml')) && isCommandAvailable('pip-audit')) {
     try {
       const pipResult = spawnSync('pip-audit', ['--format=json'], {
         encoding: 'utf-8',
         shell: false,
-        stdio: 'pipe'
+        stdio: 'pipe',
+        timeout: 30000
       });
 
       if (pipResult.stdout) {
