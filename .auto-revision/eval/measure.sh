@@ -9,7 +9,7 @@ cd "$PROJECT_DIR"
 # ─────────────────────────────────────────────
 # 1. Stale Reference Count
 # ─────────────────────────────────────────────
-STALE_PATTERNS='ProjectManager\.md|ChiefArchitect\.md|ChiefDesigner\.md|QAManager\.md|BackendSpecialist\.md|FrontendSpecialist\.md|SecuritySpecialist\.md|DBA\.md|orchestrate-standalone|hook-shims'
+STALE_PATTERNS='ProjectManager\.md|ChiefArchitect\.md|ChiefDesigner\.md|QAManager\.md|BackendSpecialist\.md|FrontendSpecialist\.md|SecuritySpecialist\.md|DBA\.md|orchestrate-standalone|hook-shims|task-board'
 
 stale_ref_count=0
 stale_files=$(grep -rl -E "$STALE_PATTERNS" \
@@ -19,9 +19,6 @@ stale_files=$(grep -rl -E "$STALE_PATTERNS" \
   | grep -v ".git/" \
   | grep -v ".auto-revision/" \
   | grep -v "package-lock.json" \
-  | grep -v ".sisyphus/" \
-  | grep -v "tests/orchestrate-standalone/" \
-  | grep -v "docs/plan/" \
   | grep -v ".claude/" \
   || true)
 
@@ -29,7 +26,7 @@ if [ -n "$stale_files" ]; then
   while IFS= read -r file; do
     [ -n "$file" ] || continue
     real_stale=$(grep -c -E "$STALE_PATTERNS" "$file" 2>/dev/null) || real_stale=0
-    history_lines=$(grep -E "$STALE_PATTERNS" "$file" 2>/dev/null | grep -c -E "(removed|제거|삭제|v4\.0|Version|버전|히스토리)" 2>/dev/null) || history_lines=0
+    history_lines=$(grep -E "$STALE_PATTERNS" "$file" 2>/dev/null | grep -c -E "(removed|제거|삭제|v[34]\.[0-9]|Version History|버전 히스토리|^\|.*날짜.*변경|^\|.*Date.*Changes)" 2>/dev/null) || history_lines=0
     net=$((real_stale - history_lines))
     if [ "$net" -gt 0 ]; then
       stale_ref_count=$((stale_ref_count + 1))
@@ -38,7 +35,7 @@ if [ -n "$stale_files" ]; then
 fi
 
 # ─────────────────────────────────────────────
-# 2. Test Pass Rate (60s timeout)
+# 2. Test Pass Rate
 # ─────────────────────────────────────────────
 test_output=$(cd "$PROJECT_DIR/project-team" && npx --yes jest --runInBand --no-coverage 2>&1 || true)
 test_line=$(echo "$test_output" | grep "^Tests:" | tail -1 || echo "")
