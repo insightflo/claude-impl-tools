@@ -5,7 +5,7 @@ triggers:
   - /team-orchestrate
   - 에이전트 팀 실행
   - 팀 오케스트레이트
-version: 3.0.0
+version: 3.1.0
 updated: 2026-03-16
 ---
 
@@ -13,8 +13,17 @@ updated: 2026-03-16
 
 > **Goal**: Parallel agent execution with hierarchical coordination using native Agent Teams API.
 >
-> **v3.0**: Flat TeamCreate + logical 3-level hierarchy via SendMessage protocol.
-> All agents are teammates (can communicate freely). Hierarchy is enforced by prompt convention.
+> **CRITICAL**: You MUST use `TeamCreate` tool to create the team, then `Agent` tool with `team_name` parameter to spawn teammates. Do NOT use plain `Task()` or `Agent()` without `team_name` — that creates regular subagents, not Agent Teams teammates.
+
+---
+
+## Absolute Requirements
+
+1. **MUST call `TeamCreate` tool** before spawning any agent — this creates the shared task list and mailbox infrastructure
+2. **MUST use `Agent` tool with `team_name` and `name` parameters** to spawn each teammate — without `team_name`, agents are plain subagents with no communication ability
+3. **MUST use `TaskCreate` tool** to register tasks in the shared list — teammates discover work through `TaskList`
+4. **MUST use `SendMessage` tool** for all inter-agent communication — teammates cannot hear you unless you use SendMessage
+5. **NEVER use plain `Task()` calls** — those bypass Agent Teams entirely
 
 ---
 
@@ -64,40 +73,7 @@ Logical hierarchy (enforced by prompts + SendMessage):
 
 ---
 
-## Communication Protocol
-
-### Reporting Chain (bottom-up)
-
-```
-Worker → SendMessage(to=domain-lead) → "Task T1.1 complete, ready for review"
-Domain-lead → SendMessage(to=team-lead) → "Backend phase 1 complete, 3/5 tasks done"
-```
-
-### Delegation Chain (top-down)
-
-```
-Team-lead → SendMessage(to=domain-lead) → "Priority shift: focus on auth module first"
-Domain-lead → SendMessage(to=worker) → "Start T1.3, auth endpoints"
-```
-
-### Cross-domain (lateral)
-
-```
-architecture-lead → SendMessage(to=design-lead) → "API contract changed, update frontend"
-qa-lead → SendMessage(to=backend-builder) → "T1.1 test failed, fix needed"
-```
-
-### Protocol Rules
-
-1. Workers report to their domain-lead, not directly to team-lead
-2. Domain-leads aggregate status and report to team-lead
-3. Cross-domain issues go through domain-leads or qa-lead
-4. Anyone can message anyone in urgent situations (flat team allows it)
-5. Team-lead is the final arbiter for conflicts
-
----
-
-## Execution Flow
+## Execution Steps (MUST follow exactly)
 
 ### Step 1: Analyze TASKS.md
 
@@ -105,42 +81,47 @@ qa-lead → SendMessage(to=backend-builder) → "T1.1 test failed, fix needed"
 node skills/team-orchestrate/scripts/domain-analyzer.js --tasks-file TASKS.md --json
 ```
 
-Output determines which domain-leads and workers to activate.
+### Step 2: Call TeamCreate (MANDATORY — do this FIRST)
 
-### Step 2: Create Team
+You MUST call the `TeamCreate` tool. This is a tool call, not a description:
 
 ```
 TeamCreate(
   team_name = "{project-name}",
-  description = "3-level team: {n} domain-leads, {m} workers, {t} tasks"
+  description = "3-level team for {project-name}"
 )
 ```
 
-### Step 3: Create Tasks in Shared TaskList
+If you skip this step, nothing else works. Verify you see `team_file_path` in the response.
 
-For each incomplete task from TASKS.md:
+### Step 3: Call TaskCreate for each task (MANDATORY)
+
+For every incomplete task from TASKS.md, call the `TaskCreate` tool:
 
 ```
-TaskCreate(subject = "T1.1: User API design", description = "...")
+TaskCreate(
+  subject = "T1.1: User API design",
+  description = "Design REST endpoints for user domain. deps: []. domain: backend."
+)
 ```
 
-Set dependencies:
+Then set dependencies with `TaskUpdate`:
 
 ```
 TaskUpdate(task_id = "2", addBlockedBy = ["1"])
 ```
 
-### Step 4: Spawn All Agents (Flat)
+### Step 4: Spawn teammates with Agent tool (MANDATORY — use team_name)
 
-Spawn domain-leads and workers as flat teammates. Hierarchy is in the prompt.
+For each teammate, call `Agent` with BOTH `team_name` AND `name`:
 
-**Domain Lead prompt template:**
+**Domain Lead example:**
 
 ```
 Agent(
   subagent_type = "general-purpose",
-  team_name = "{project-name}",
-  name = "architecture-lead",
+  team_name = "{project-name}",          ← REQUIRED for Agent Teams
+  name = "architecture-lead",            ← REQUIRED for messaging
   prompt = "You are architecture-lead on team {project-name}.
 
     ROLE: Domain coordinator for backend/api/database.
@@ -148,135 +129,95 @@ Agent(
     SUPERVISES: backend-builder, reviewer (via SendMessage)
 
     Workflow:
-    1. Check TaskList for tasks in your domain
-    2. Assign tasks to your workers via SendMessage:
-       SendMessage(to='backend-builder', message='Work on task #N: ...')
+    1. Call TaskList to see tasks in your domain
+    2. Assign tasks to your workers via SendMessage
     3. Review worker output when they report back
-    4. Aggregate progress and report to team-lead:
-       SendMessage(to='team-lead', message='Domain status: ...')
-    5. Resolve issues within your domain before escalating
+    4. Report progress to team-lead via SendMessage
+    5. Update TASKS.md with [x] when verified complete
 
-    You do NOT implement code directly — delegate to workers.
-    Update TASKS.md with [x] when tasks in your domain are verified complete."
+    You coordinate — do NOT implement code directly.",
+  run_in_background = true
 )
 ```
 
-**Worker prompt template:**
+**Worker example:**
 
 ```
 Agent(
   subagent_type = "builder",
-  team_name = "{project-name}",
-  name = "backend-builder",
+  team_name = "{project-name}",          ← REQUIRED
+  name = "backend-builder",              ← REQUIRED
   prompt = "You are backend-builder on team {project-name}.
 
     ROLE: Implementation worker for backend domain.
     REPORTS TO: architecture-lead (via SendMessage)
-    PEERS: reviewer
 
     Workflow:
-    1. Wait for task assignment from architecture-lead
-    2. Check TaskList and claim assigned tasks: TaskUpdate(task_id, owner='backend-builder')
+    1. Check TaskList for tasks assigned to you
+    2. Claim task: TaskUpdate(task_id, owner='backend-builder', status='in_progress')
     3. Implement the task
     4. Mark complete: TaskUpdate(task_id, status='completed')
-    5. Report to architecture-lead:
-       SendMessage(to='architecture-lead', message='Task #N complete, ready for review')
-    6. Check TaskList for next available task
-
-    {cli_hint}"
+    5. Report to architecture-lead: SendMessage(to='architecture-lead', message='Task #N done')
+    6. Check TaskList for next task",
+  run_in_background = true
 )
 ```
 
-**QA Lead prompt (cross-cutting):**
+**VERIFY**: Each Agent call must return `team_name` in the response. If it doesn't, you spawned a plain subagent.
 
-```
-Agent(
-  subagent_type = "general-purpose",
-  team_name = "{project-name}",
-  name = "qa-lead",
-  prompt = "You are qa-lead on team {project-name}.
-
-    ROLE: Cross-cutting quality assurance.
-    REPORTS TO: team-lead (via SendMessage)
-    REVIEWS: All workers' output
-
-    Workflow:
-    1. Monitor TaskList for completed tasks
-    2. Review completed work (run tests, check quality)
-    3. If issues found → SendMessage(to=worker, message='Fix needed: ...')
-    4. If approved → SendMessage(to=domain-lead, message='Task #N verified')
-    5. Report overall quality status to team-lead"
-)
-```
-
-### Step 5: Assign Initial Tasks
+### Step 5: Assign initial tasks
 
 ```
 TaskUpdate(task_id = "1", owner = "backend-builder")
 TaskUpdate(task_id = "5", owner = "frontend-builder")
-TaskUpdate(task_id = "8", owner = "designer")
 ```
 
 Then notify domain-leads:
 
 ```
-SendMessage(to = "architecture-lead", message = "Tasks #1,#2,#3 assigned to your domain. Coordinate backend-builder and reviewer.")
-SendMessage(to = "design-lead", message = "Tasks #5,#6 assigned to your domain. Coordinate frontend-builder and designer.")
+SendMessage(to = "architecture-lead", message = "Tasks assigned. Coordinate backend-builder and reviewer.", summary = "Task assignments ready")
+SendMessage(to = "design-lead", message = "Tasks assigned. Coordinate frontend-builder and designer.", summary = "Task assignments ready")
 ```
 
-### Step 6: Monitor and Coordinate
+### Step 6: Monitor
 
-While team works:
-- Receive status reports from domain-leads automatically
-- Resolve cross-domain conflicts (architecture-lead ↔ design-lead)
-- Handle plan approvals if configured
-- Check TaskList periodically for overall progress
-- Reassign tasks if a worker is stuck
+- Receive messages from domain-leads automatically (no polling)
+- Resolve cross-domain issues
+- Check TaskList periodically
+- Reassign stuck tasks via TaskUpdate
 
-### Step 7: Completion and Shutdown
+### Step 7: Shutdown
 
-When TaskList shows all tasks completed:
+When all tasks complete:
 
-1. Verify TASKS.md is fully updated
-2. Ask qa-lead for final quality report:
-   ```
-   SendMessage(to = "qa-lead", message = "All tasks marked complete. Run final quality check.")
-   ```
-3. Shutdown all teammates (workers first, then leads):
-   ```
-   SendMessage(to = "backend-builder", message = { "type": "shutdown_request" })
-   SendMessage(to = "frontend-builder", message = { "type": "shutdown_request" })
-   SendMessage(to = "designer", message = { "type": "shutdown_request" })
-   SendMessage(to = "reviewer", message = { "type": "shutdown_request" })
-   SendMessage(to = "architecture-lead", message = { "type": "shutdown_request" })
-   SendMessage(to = "design-lead", message = { "type": "shutdown_request" })
-   SendMessage(to = "qa-lead", message = { "type": "shutdown_request" })
-   ```
-4. Report final status to user
+```
+SendMessage(to = "backend-builder", message = { "type": "shutdown_request", "reason": "All tasks complete" })
+SendMessage(to = "frontend-builder", message = { "type": "shutdown_request", "reason": "All tasks complete" })
+... (all teammates)
+```
 
 ---
 
 ## Team Sizing
 
-Not all projects need all agents. Spawn only what domain-analyzer recommends:
+Spawn only what the project needs:
 
 | Project type | Domain leads | Workers | Total |
 |-------------|-------------|---------|-------|
 | Backend only | architecture-lead | backend-builder, reviewer | 3 |
 | Full-stack | architecture-lead, design-lead | backend-builder, frontend-builder, reviewer, designer | 6 |
-| Full + QA | architecture-lead, design-lead, qa-lead | backend-builder, frontend-builder, reviewer, designer | 7 |
+| Full + QA | + qa-lead | | 7 |
 
 ---
 
-## Optional Multi-AI CLI Routing
+## Communication Protocol
 
-Workers can invoke external AI CLI for subtasks. Set `cli` in `team-topology.json`:
-
-```json
-{ "design-lead": { "cli": "gemini" } }
 ```
-
-The CLI hint is included in the worker's spawn prompt. The worker (Claude) decides when to invoke, validates results, and hooks still apply.
+Worker → SendMessage(to=domain-lead)     "Task #1 done, ready for review"
+Domain-lead → SendMessage(to=team-lead)  "Backend phase 1: 3/5 tasks done"
+Domain-lead → SendMessage(to=worker)     "Fix auth logic in T1.3"
+Cross-domain: architecture-lead → SendMessage(to=design-lead)  "API changed"
+```
 
 ---
 
@@ -291,10 +232,10 @@ The CLI hint is included in the worker's spawn prompt. The worker (Claude) decid
 
 | Hook | When | Effect |
 |------|------|--------|
-| TeammateIdle | Any teammate finishes a turn | Check for incomplete work |
-| TaskCompleted | Any task marked complete | Lightweight quality gate |
+| TeammateIdle | Teammate finishes a turn | Check for incomplete work |
+| TaskCompleted | Task marked complete | Lightweight quality gate |
 | task-progress-gate (Stop) | Lead session ending | Warn if TASKS.md not updated |
 
 ---
 
-**Last Updated**: 2026-03-16 (v3.0.0 — 3-Level logical hierarchy on flat TeamCreate)
+**Last Updated**: 2026-03-16 (v3.1.0 — Mandatory tool call enforcement)
