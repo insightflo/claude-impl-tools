@@ -83,7 +83,7 @@ curl -fsSL https://raw.githubusercontent.com/insightflo/claude-impl-tools/main/s
 
 | Skill | What it does |
 |-------|--------------|
-| `/team-orchestrate` | Native Agent Teams orchestration with Plan Approval, mailbox communication, and full hook coverage |
+| `/team-orchestrate` | Native Agent Teams orchestration with Plan Approval, mailbox communication, full hook coverage, and optional multi-AI CLI routing (Gemini/Codex) |
 | `/multi-ai-run` | Parallel AI execution management with automatic CLI routing defaults (Claude/Gemini/Codex) |
 | `/whitebox` | Open the visible execution dashboard, inspect health/state, and handle intervention-aware control-plane decisions |
 
@@ -309,6 +309,16 @@ Choose a mode:
 ```
 
 `--mode=team` installs Agent Teams leads globally (`~/.claude/agents/`) since they're templates activated dynamically based on TASKS.md — not bound to a specific project.
+
+### Optional Multi-AI CLI Routing
+
+Subagents can optionally invoke Gemini or Codex CLI for specific subtasks while Claude stays in control. Set the `cli` field per teammate in `skills/team-orchestrate/config/team-topology.json`:
+
+```json
+{ "design-lead": { "cli": "gemini" } }
+```
+
+The subagent (Claude) decides when to call the external CLI, validates the output, and hooks still apply. Default is `null` (Claude only).
 
 ---
 

@@ -85,7 +85,7 @@ cd claude-impl-tools/project-team
 
 | 스킬 | 기능 |
 |------|------|
-| `/team-orchestrate` | 네이티브 Agent Teams 오케스트레이션 — Plan Approval, 메일박스 통신, 전체 hook 적용 |
+| `/team-orchestrate` | 네이티브 Agent Teams 오케스트레이션 — Plan Approval, 메일박스 통신, 전체 hook 적용, 선택적 multi-AI CLI 라우팅 (Gemini/Codex) |
 | `/multi-ai-run` | Claude/Gemini/Codex 자동 CLI 라우팅 기반 병렬 AI 실행 관리 |
 | `/whitebox` | 실행 대시보드, health/state 확인, 개입형 control-plane 결정 처리 |
 
@@ -311,6 +311,16 @@ cd project-team
 ```
 
 `--mode=team`은 Agent Teams 리더를 전역(`~/.claude/agents/`)에 설치합니다 — TASKS.md 분석으로 동적 활성화되는 템플릿이므로 프로젝트별 복사가 불필요합니다.
+
+### 선택적 Multi-AI CLI 라우팅
+
+서브에이전트가 특정 서브태스크에서 Gemini 또는 Codex CLI를 선택적으로 호출할 수 있습니다. Claude가 컨트롤을 유지하면서 외부 AI의 장점을 활용합니다. `skills/team-orchestrate/config/team-topology.json`에서 팀원별 `cli` 필드를 설정합니다:
+
+```json
+{ "design-lead": { "cli": "gemini" } }
+```
+
+기본값은 `null` (Claude only).
 
 ---
 

@@ -31,6 +31,7 @@ team-lead (PM 리더)
 - Communication: mailbox (bidirectional between lead and teammates)
 - Delegation: Task tool (teammates → subagents)
 - Governance: `TeammateIdle` + `TaskCompleted` hooks in `.claude/settings.local.json`
+- Multi-AI: Optional CLI routing — subagents can invoke `gemini`/`codex` CLI for subtasks (configured via `team-topology.json`)
 
 ### Core Worker Agents (Task Targets)
 
