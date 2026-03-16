@@ -333,7 +333,8 @@ cd project-team
 
 | 버전 | 날짜 | 변경사항 |
 |------|------|----------|
-| **v4.0.0** | 2026-03-16 | Agent Teams 계층 (team-lead + 3 도메인 리더), 네이티브 Agent Teams 오케스트레이션, TeammateIdle/TaskCompleted 훅, orchestrate-standalone 제거 |
+| **v4.1.0** | 2026-03-16 | 통합 install.sh (스킬+리더+프로젝트 한번에), 핵심 스킬 선행 조건 가드, workflow-guide 단순 라우터화, playwright MCP → agent-browser + Lighthouse CLI, task-board 제거 |
+| v4.0.0 | 2026-03-16 | Agent Teams 계층 (team-lead + 3 도메인 리더), 네이티브 Agent Teams 오케스트레이션, TeammateIdle/TaskCompleted 훅, orchestrate-standalone 제거 |
 | v3.8.0 | 2026-03-05 | Task Board 스킬, 칸반 시각화, task-board-sync 훅 |
 | v3.7.0 | 2026-03-05 | Agile Sprint Mode, REQ/DEC 프로토콜 |
 | v3.6.0 | 2026-03-03 | Hybrid Wave Architecture |

@@ -331,7 +331,8 @@ Choose a mode:
 
 | Version | Date | Changes |
 |---------|------|---------|
-| **v4.0.0** | 2026-03-16 | Agent Teams hierarchy (team-lead + 3 domain leads), native Agent Teams orchestration, TeammateIdle/TaskCompleted hooks, orchestrate-standalone removed |
+| **v4.1.0** | 2026-03-16 | Unified install.sh (skills + leads + project in one flow), prerequisite guards on core skills, workflow-guide simplified to pure router, playwright MCP → agent-browser + Lighthouse CLI, task-board removed |
+| v4.0.0 | 2026-03-16 | Agent Teams hierarchy (team-lead + 3 domain leads), native Agent Teams orchestration, TeammateIdle/TaskCompleted hooks, orchestrate-standalone removed |
 | v3.8.0 | 2026-03-05 | Task Board skill (`/task-board`), Kanban visualization, task-board-sync hook |
 | v3.7.0 | 2026-03-05 | Agile Sprint Mode, multi-ai-review zombie fix, REQ/DEC protocol |
 | v3.6.0 | 2026-03-03 | Hybrid Wave Architecture for 80-200 tasks |
