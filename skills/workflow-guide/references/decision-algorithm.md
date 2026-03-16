@@ -19,21 +19,20 @@
 
 ---
 
-## 결정 알고리즘 (의무 실행)
+## 결정 알고리즘 (단순 라우터)
 
-> **IF-THEN 순서대로 실행. 첫 번째 조건이 참이면 즉시 해당 스킬을 RETURN하고 나머지 조건은 평가하지 않습니다.**
+> workflow-guide는 **현재 상태 → 1개 스킬 추천**만 한다.
+> 선후 관계(거버넌스, 인프라 설치 등)는 추천된 스킬이 자체 "선행 조건 확인"으로 처리한다.
+> **IF-THEN 순서대로 실행. 첫 번째 조건이 참이면 즉시 RETURN.**
 
 ```python
 ALGORITHM get_recommendation():
 
-  # ① 복구 체크 (최우선)
-  IF (state file EXISTS) AND (INCOMPLETE_IN_STATE > 0):
+  # ① 복구 (최우선)
+  IF (state file EXISTS AND INCOMPLETE_IN_STATE > 0) OR git merge conflicts:
     RETURN "/recover"
 
-  IF git merge conflicts exist:
-    RETURN "/recover"
-
-  # ② 태스크 파일 체크
+  # ② 태스크 없음
   IF TASKS.md NOT EXISTS:
     IF docs/planning/06-tasks.md EXISTS:
       RETURN "/tasks-migrate"
@@ -42,56 +41,43 @@ ALGORITHM get_recommendation():
   IF TASK_COUNT == 0:
     RETURN "/tasks-init"
 
-  # ③ 유지보수 체크 (단독·소규모)
-  IF source_code EXISTS AND AGENT_COUNT == 0 AND GOVERNANCE_DONE == "no":
-    IF incomplete_tasks > 0:
-      RETURN "/agile iterate"
-    IF all_tasks_completed:
-      RETURN "/audit"
+  # ③ 유지보수 (기존 코드 + 미완료 태스크)
+  IF source_code EXISTS AND incomplete_tasks > 0:
+    RETURN "/agile iterate"
 
-  # ④ 거버넌스 체크 (신규 프로젝트)
-  IF TASK_COUNT >= 10 AND (DOMAIN_COUNT >= 2 OR TASK_COUNT >= 30) AND GOVERNANCE_DONE == "no" AND incomplete_tasks > 0:
-    RETURN "/governance-setup"
-
-  # ⑤ 인프라 체크 (거버넌스 완료 후)
-  IF GOVERNANCE_DONE == "yes" AND TASK_COUNT >= 30 AND AGENT_COUNT == 0 AND incomplete_tasks > 0:
-    RETURN "project-team/install.sh --local --mode=team"
-
-  # ⑥ 구현/배포 판단 (거버넌스 완료 + 인프라 준비)
-  IF GOVERNANCE_DONE == "yes" AND AGENT_COUNT > 0:
-    IF all_tasks_completed: RETURN "/audit"
-    IF incomplete_tasks >= 30: RETURN "/team-orchestrate"
-    ELSE: RETURN "/agile auto"
-
-  # ⑦ 소규모 신규 구현
-  IF TASK_COUNT > 0 AND TASK_COUNT < 30 AND incomplete_tasks > 0:
+  # ④ 소규모 구현
+  IF TASK_COUNT < 30 AND incomplete_tasks > 0:
     RETURN "/agile auto"
 
-  # ⑧ 완료
+  # ⑤ 대규모 구현
+  IF incomplete_tasks >= 30:
+    RETURN "/team-orchestrate"
+    # team-orchestrate가 자체적으로 확인:
+    #   - Agent Teams 미설치 → install.sh --mode=team 안내
+    #   - TASKS.md 포맷 미달 → /tasks-migrate 안내
+    #   - 거버넌스 미완료 → /governance-setup 안내
+
+  # ⑥ 완료
   IF all_tasks_completed:
     RETURN "/audit"
+    # audit가 자체적으로 확인:
+    #   - 기획 문서 없으면 → /governance-setup 안내
 ```
 
 ---
 
 ## 시나리오별 추적 검증
 
-| 시나리오 | 초기 상태 | 알고리즘 경로 | 예상 추천 |
-|---------|-----------|--------------|----------|
-| S1 (새 프로젝트) | TASKS.md 없음 | ② → /tasks-init | ✅ `/tasks-init` |
-| S1 (tasks-init 후) | 20 tasks, domain<2, 코드 없음 | ③ skip, ④ skip(20<30), ⑦ → /agile auto | ✅ `/agile auto` |
-| S2 (100 tasks, 12 domains) | 코드 없음, GOVERNANCE_DONE=no | ③ skip, ④ 100>=30 → /governance-setup | ✅ `/governance-setup` |
-| S2 (거버넌스 후, agents=0) | GOVERNANCE_DONE=yes, AGENT_COUNT=0 | ⑤ → install.sh --mode=team | ✅ `install.sh --mode=team` |
-| S2 (설치 후, incomplete=100) | GOVERNANCE_DONE=yes, AGENT_COUNT>0, incomplete=100 | ⑥ incomplete>=30 → /team-orchestrate | ✅ `/team-orchestrate` |
-| S2 (실행중, incomplete=50) | GOVERNANCE_DONE=yes, AGENT_COUNT>0, incomplete=50 | ⑥ 30<=incomplete → /team-orchestrate | ✅ `/team-orchestrate` |
-| S3 (유지보수) | source_code EXISTS, AGENT_COUNT=0, GOVERNANCE_DONE=no, incomplete>0 | ③ → /agile iterate | ✅ `/agile iterate` |
-| S5 (배포 직전) | GOVERNANCE_DONE=yes, AGENT_COUNT>0, all_completed | ⑥ → /audit | ✅ `/audit` |
-| S6 (복구-state) | orchestrate-state.json + 미완료 태스크 | ①a → /recover | ✅ `/recover` |
-| S6 (복구-merge) | git merge conflicts 존재 | ①b → /recover | ✅ `/recover` |
-| S1-레거시 | TASKS.md 없음, 06-tasks.md 있음 | ② → /tasks-migrate | ✅ `/tasks-migrate` |
-| S1-빈TASKS | TASKS.md 있으나 task 0개 | ② TASK_COUNT=0 → /tasks-init | ✅ `/tasks-init` |
-| S1-완료 | TASK_COUNT=20, all done, 코드 없음 | ⑧ → /audit | ✅ `/audit` |
-| 비정상 (AGENT>0+GOV=no) | AGENT_COUNT>0, GOVERNANCE_DONE=no, T=20 | ⑦ → /agile auto | ✅ `/agile auto` |
+| 시나리오 | 초기 상태 | 알고리즘 경로 | 추천 | 스킬이 자체 처리 |
+|---------|-----------|--------------|------|-----------------|
+| 새 프로젝트 | TASKS.md 없음 | ② | `/tasks-init` | — |
+| 레거시 태스크 | 06-tasks.md만 있음 | ② | `/tasks-migrate` | — |
+| 소규모 구현 | 20 tasks, incomplete>0 | ④ | `/agile auto` | TASKS 포맷 확인 |
+| 대규모 구현 | 100 tasks, incomplete>0 | ⑤ | `/team-orchestrate` | Agent Teams 설치, 거버넌스 안내 |
+| 유지보수 | source_code + incomplete>0 | ③ | `/agile iterate` | — |
+| 배포 직전 | all_completed | ⑥ | `/audit` | 기획문서 확인 |
+| 복구 | state file 미완료 | ① | `/recover` | — |
+| merge conflict | git conflicts | ① | `/recover` | — |
 
 ---
 

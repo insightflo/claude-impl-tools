@@ -53,20 +53,25 @@ GOVERNANCE_DONE=$(ls management/project-plan.md 2>/dev/null && echo "yes" || ech
 echo "agents=$AGENT_COUNT tasks=$TASK_COUNT incomplete=$INCOMPLETE_COUNT governance=$GOVERNANCE_DONE"
 ```
 
-### 2단계: 결정 알고리즘 (IF-THEN 순서대로, 첫 RETURN에서 중단)
+### 2단계: 결정 알고리즘 (단순 라우터 — 선후 관계는 각 스킬이 자체 판단)
 
-> **상세 알고리즘 및 시나리오 검증**: `references/decision-algorithm.md` 참조
+> workflow-guide는 **현재 상태 → 1개 스킬 추천**만 한다.
+> 추천된 스킬이 실행되면, 해당 스킬의 "선행 조건 확인" 섹션이 누락된 의존 관계를 자체 감지하고 안내한다.
 
 ```
-① 복구 체크: state file + 미완료 OR merge conflicts → /recover
-② 태스크 체크: TASKS.md 없음 → /tasks-init (또는 /tasks-migrate)
-③ 유지보수: source_code + AGENT_COUNT=0 + GOV=no → /agile iterate
-④ 거버넌스: TASK>=10 + (DOMAIN>=2 OR TASK>=30) + GOV=no → /governance-setup
-⑤ 인프라: GOV=yes + TASK>=30 + AGENT=0 → project-team/install.sh --mode=team
-⑥ 구현: GOV=yes + AGENT>0 + TASK>=30 → /team-orchestrate (Agent Teams 동적 팀 형성)
-⑦ 소규모: TASK<30 + incomplete>0 → /agile auto
-⑧ 완료: all_tasks_completed → /audit
+① 복구: state file 미완료 OR merge conflicts → /recover
+② 태스크 없음: TASKS.md 없음 → /tasks-init (레거시 있으면 /tasks-migrate)
+③ 유지보수: source_code 있고 incomplete>0 → /agile iterate
+④ 신규 구현: incomplete>0 + TASK<30 → /agile auto
+⑤ 대규모 구현: incomplete>0 + TASK>=30 → /team-orchestrate
+⑥ 완료: all_tasks_completed → /audit
 ```
+
+각 스킬이 자체 수행하는 선행 조건 체크:
+- `/team-orchestrate` → TASKS.md 포맷, Agent Teams 설치 여부 확인
+- `/agile` → TASKS.md 존재/포맷, ≥30 태스크 시 team-orchestrate 권장
+- `/audit` → 기획 문서 존재 확인, 없으면 /governance-setup 안내
+- `/governance-setup` → TASKS.md 상태에 따라 /tasks-init 또는 /tasks-migrate 안내
 
 ### 3단계: 맞춤 추천 (AskUserQuestion)
 
