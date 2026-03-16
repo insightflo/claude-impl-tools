@@ -157,13 +157,31 @@ Level 2: Subagent internals (Bash for external CLI)
 
 ## Key Constraints
 
-1. No nested teams — teammates cannot create teams
-2. No teammate modification after spawn — cannot change tools/model
-3. Teammates go idle between turns — this is normal, not an error
-4. Send shutdown_request for graceful termination
-5. Task ownership via TaskUpdate(owner=name), not via SendMessage
-6. All teammates share the same permission mode as the lead
-7. Teammates have their own context window (independent from lead)
+1. **No nested teams** — teammates cannot create teams (no TeamCreate tool)
+2. **No subagent spawn from teammate** — teammates have no Agent tool
+3. **Flat hierarchy only** — team-lead is the sole orchestrator, all teammates are peers
+4. No teammate modification after spawn — cannot change tools/model
+5. Teammates go idle between turns — this is normal, not an error
+6. Send shutdown_request for graceful termination
+7. Task ownership via TaskUpdate(owner=name), not via SendMessage
+8. All teammates share the same permission mode as the lead
+9. Teammates have their own context window (independent from lead)
+
+## Tested and Verified (2026-03-16)
+
+| Test | Result |
+|------|--------|
+| TeamCreate from lead | ✅ Works |
+| TaskCreate/TaskUpdate from lead | ✅ Works |
+| Agent(team_name) spawn teammate | ✅ Works |
+| TaskList/TaskUpdate from teammate | ✅ Works |
+| TeamCreate from teammate | ❌ Tool not available |
+| Agent tool from teammate | ❌ Tool not available |
+| Nested Team A → subagent → Team B | ❌ Impossible (teammate has no Agent/TeamCreate) |
+
+**Conclusion**: 3-level hierarchy (lead → domain-lead → worker) requires ALL agents
+to be spawned as flat teammates by the lead. Domain leads serve as coordinators
+via SendMessage, not as sub-team managers.
 
 ---
 
