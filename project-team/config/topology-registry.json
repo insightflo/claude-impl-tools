@@ -184,6 +184,11 @@
         "artifact": "hooks/task-completed-gate.js",
         "event": "TaskCompleted",
         "installType": "active"
+      },
+      "task-progress-gate": {
+        "artifact": "hooks/task-progress-gate.js",
+        "event": "Stop",
+        "installType": "active"
       }
     },
     "matcherLists": {

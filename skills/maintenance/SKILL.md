@@ -181,9 +181,10 @@ Validate the quality of modified code.
 Systematically record the change history.
 
 ```
-1. Create Change Record    → based on references/change-record-template.md
-2. Write structured commit message
-3. Present rollback plan
+1. Update TASKS.md           → mark fixed tasks as [x], add new tasks if created
+2. Create Change Record      → based on references/change-record-template.md
+3. Write structured commit message
+4. Present rollback plan
 ```
 
 **Commit message format**:

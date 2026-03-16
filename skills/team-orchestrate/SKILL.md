@@ -95,6 +95,7 @@ Approval criteria:
 Teammates execute in parallel according to approved plans:
 - Each teammate delegates their domain tasks to subagents via the Task tool
 - Subagents (builder, reviewer, designer, test-specialist) do the actual implementation
+- **After each task completes, immediately update TASKS.md** — mark `[x]` for completed, `[/]` for in-progress
 - team-lead mediates when conflicts arise between teammates
 
 ### Step 5: Governance Verification
