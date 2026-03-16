@@ -5,8 +5,8 @@ triggers:
   - /team-orchestrate
   - 에이전트 팀 실행
   - 팀 오케스트레이트
-version: 3.1.0
-updated: 2026-03-16
+version: 3.2.0
+updated: 2026-03-17
 ---
 
 # Agent Teams Orchestration (3-Level)
@@ -94,6 +94,14 @@ TeamCreate(
 
 If you skip this step, nothing else works. Verify you see `team_file_path` in the response.
 
+### Step 2.5: Initialize collaboration directories
+
+Ensure document directories exist for ADR, REQ, and reports:
+
+```bash
+Bash('mkdir -p .claude/collab/decisions .claude/collab/requests .claude/collab/reports')
+```
+
 ### Step 3: Call TaskCreate for each task (MANDATORY)
 
 For every incomplete task from TASKS.md, call the `TaskCreate` tool:
@@ -149,26 +157,37 @@ Agent(
     If a file is over 500 lines, compress before reading:
       Bash('node ~/.claude/claude-impl-tools/project-team/services/contextOptimizer.js optimize <file> --heavy-count=15')
 
-    DECISION RECORDS (mandatory):
-    When you make a technical decision (API design, architecture choice,
-    technology selection, trade-off resolution), write it to:
-      management/decisions/ADR-NNN-short-title.md
-    Use this format:
-      ## ADR-NNN: Title
+    DECISION RECORDS (mandatory — skip this and your decision has no authority):
+    When you make ANY technical decision (API design, architecture choice,
+    technology selection, trade-off resolution), you MUST write it to:
+      .claude/collab/decisions/ADR-{NNN}-{short-title}.md
+    Use this exact format:
+      ## ADR-{NNN}: {Title}
       - Status: Accepted
+      - Date: {YYYY-MM-DD}
+      - Author: {your-agent-name}
       - Context: why this decision was needed
       - Decision: what was decided
       - Consequences: impact
+    Example: Write('.claude/collab/decisions/ADR-001-use-jwt-auth.md', content)
 
-    CROSS-DOMAIN ISSUES:
+    CROSS-DOMAIN ISSUES (mandatory — no direct cross-domain changes allowed):
     When your domain needs something from another domain (e.g., API
     contract change, shared type update), create a request file:
-      .claude/collab/requests/REQ-YYYYMMDD-NNN.md
-    Notify the other domain-lead via SendMessage.
+      .claude/collab/requests/REQ-{YYYYMMDD}-{NNN}.md
+    Format:
+      ## Request: {Title}
+      - From: {your-agent-name}
+      - To: {target-domain-lead}
+      - Type: api-change | type-update | dependency | other
+      - Status: OPEN
+      - Description: {what you need}
+    Then notify the other domain-lead via SendMessage.
 
-    STATUS REPORTS:
-    After each phase or milestone, write a summary to:
-      management/reports/{date}-{domain}-status.md",
+    STATUS REPORTS (mandatory after each phase):
+    After completing each phase, write a summary to:
+      .claude/collab/reports/{date}-{domain}-status.md
+    Include: tasks completed, decisions made, issues encountered, next steps.",
   run_in_background = true
 )
 ```
@@ -237,9 +256,18 @@ Agent(
     4. If all tests PASS → write report and notify team-lead
     5. Report to team-lead: SendMessage(to='team-lead', message='Phase N QA: PASS/FAIL')
 
-    QUALITY REPORTS (mandatory after each phase):
-    Write findings to: management/reports/{date}-qa-phase-{N}.md
-    Include: tests run, pass/fail counts, integration issues, verdict.
+    QUALITY REPORTS (mandatory after each phase — no phase is approved without this):
+    Write findings to: .claude/collab/reports/{date}-qa-phase-{N}.md
+    Use this exact format:
+      ## QA Report: Phase {N}
+      - Date: {YYYY-MM-DD}
+      - Verdict: PASS | FAIL
+      - Tests Run: {count}
+      - Passed: {count}
+      - Failed: {count}
+      - Integration Issues: {list or 'none'}
+      - Recommendation: {approve phase / block phase with reasons}
+    Example: Write('.claude/collab/reports/2026-03-17-qa-phase-1.md', content)
 
     NEVER approve a phase if integration tests fail.",
   run_in_background = true
