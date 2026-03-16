@@ -123,5 +123,5 @@ Built-in hooks in `project-team/hooks/` automate the workflow:
 
 ```bash
 # Run the project-team installation script
-cd project-team && ./install.sh --mode standard
+project-team/install.sh --local --mode=team
 ```
