@@ -1,152 +1,162 @@
 ---
 name: team-orchestrate
-description: Hierarchical agent orchestration using Claude Code native Agent Teams. Analyzes TASKS.md, automatically forms an agent team (PM Lead + Architecture/QA/Design teammates), and runs them in parallel with Plan Approval and governance hooks for quality assurance.
+description: Hierarchical agent orchestration using Claude Code native Agent Teams. Analyzes TASKS.md, creates a team via TeamCreate, spawns teammates with Agent(team_name), and coordinates via shared TaskList + SendMessage. Use this for 30+ task projects requiring parallel execution with governance.
 triggers:
   - /team-orchestrate
   - 에이전트 팀 실행
   - 팀 오케스트레이트
-version: 1.0.0
+version: 2.0.0
 updated: 2026-03-16
 ---
 
 # Agent Teams Orchestration
 
-> **Goal**: Hierarchical agent team execution using Claude Code native Agent Teams
+> **Goal**: Parallel agent execution using Claude Code native Agent Teams API.
 >
-> **Key differentiator**: Leverages Claude Code native Agent Teams (mailbox communication, shared task list, hooks) to provide hierarchical agent collaboration with Plan Approval-based governance.
+> **v2.0**: Uses TeamCreate + TaskCreate + Agent(team_name) + SendMessage for real
+> Agent Teams with mailbox communication, shared task lists, and governance hooks.
 
 ---
 
-## Architecture
+## Prerequisite Checks (auto-run on activation)
 
-```
-Level 0 — Agent Team (Native)
-  team-lead (PM Leader)
-  ├── architecture-lead (Teammate) → Task(builder) / Task(reviewer)
-  ├── qa-lead (Teammate)           → Task(reviewer) / Task(test-specialist)
-  └── design-lead (Teammate)       → Task(designer) / Task(builder)
+1. **TASKS.md exists**: Must be at project root.
+   - Missing → "Create one first with `/tasks-init`."
 
-Communication: Lead ↔ Teammates = mailbox (bidirectional)
-Delegation:    Teammate → Subagents = Task tool (unidirectional)
-Governance:    TeammateIdle hook + TaskCompleted hook
-Monitoring:    whitebox dashboard + direct user messages
-```
+2. **TASKS.md format**: Must include `deps:` and `domain:` fields.
+   - Invalid → "Convert with `/tasks-migrate`."
+
+3. **Agent Teams enabled**: `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` in settings.
+   - Missing → "Run `project-team/install.sh --local --mode=team`."
 
 ---
 
-## Prerequisite Checks (run automatically on skill activation)
+## Architecture: 2-Level Team
 
-When the skill is triggered, verify the following in order before starting any implementation.
-If any check fails, output the corresponding message and stop.
+```
+Level 0 — Team Lead (this session)
+  │
+  ├── architecture-lead (Teammate)  — backend, api, database tasks
+  ├── qa-lead (Teammate)            — test, security, quality tasks
+  └── design-lead (Teammate)        — frontend, ui, design tasks
 
-1. **TASKS.md exists**: `TASKS.md` must be present at the project root.
-   - If missing: "TASKS.md not found. Create one first with `/tasks-init`."
+Communication: SendMessage (bidirectional)
+Task coordination: Shared TaskList (TeamCreate → TaskCreate → TaskUpdate)
+Governance: TeammateIdle hook + TaskCompleted hook
+```
 
-2. **TASKS.md format**: Must use the standard format including `deps:` and `domain:` fields.
-   - If missing: "Convert TASKS.md format with `/tasks-migrate`."
-
-3. **Agent Teams installed**: All three of the following must be confirmed:
-   - `.claude/agents/team-lead.md` exists
-   - `AGENT_TEAMS` environment variable registered in `.claude/settings.json`
-   - `project-team` hooks (`TeammateIdle`, `TaskCompleted`) registered
-   - If any is missing: "Agent Teams leader is not installed. Run `project-team/install.sh --local --mode=team`."
+Each teammate works autonomously on assigned tasks, communicates via SendMessage,
+and goes idle between turns (this is normal — idle ≠ done).
 
 ---
 
 ## Execution Flow
 
-### Step 1: Domain Analysis
+### Step 1: Analyze TASKS.md
 
-When the skill is invoked, analyze TASKS.md with `domain-analyzer.js`:
+Run domain-analyzer to classify tasks by domain and assign to teammates:
 
 ```bash
-node skills/team-orchestrate/scripts/domain-analyzer.js --tasks-file TASKS.md
+node skills/team-orchestrate/scripts/domain-analyzer.js --tasks-file TASKS.md --json
 ```
 
-Output: JSON with task assignments per domain.
+Output: `{ leader, teammates: [{ agent, taskIds, domains, ... }] }`
 
-### Step 2: Team Formation
-
-Using the domain-analyzer output, assemble the Agent Team:
-
-1. Designate **team-lead** agent as the leader
-2. Activate required teammates based on domain analysis results:
-   - Backend/API/architecture tasks → `architecture-lead`
-   - Testing/quality/security tasks → `qa-lead`
-   - UI/design/frontend tasks → `design-lead`
-3. Deactivate unnecessary teammates (e.g., exclude design-lead if no frontend work)
-
-### Step 3: Plan Approval
-
-All teammates must submit a plan to team-lead before implementing:
+### Step 2: Create Team
 
 ```
-Teammate → Submit Plan → team-lead Reviews → Approved/Rejected
+TeamCreate(
+  team_name = "{project-name}",
+  description = "Agent team for {project-name}: {teammate-count} teammates, {task-count} tasks"
+)
 ```
 
-Approval criteria:
-- Task scope is within the assigned domain
-- No conflicts with other teammates' work
-- Follows technical standards
-- Risk is assessed appropriately
+### Step 3: Create Tasks in Shared TaskList
 
-### Step 4: Parallel Execution
+For each incomplete task from TASKS.md, create a shared task:
 
-Teammates execute in parallel according to approved plans:
-- Each teammate delegates their domain tasks to subagents via the Task tool
-- Subagents (builder, reviewer, designer, test-specialist) do the actual implementation
-- **After each task completes, immediately update TASKS.md** — mark `[x]` for completed, `[/]` for in-progress
-- team-lead mediates when conflicts arise between teammates
-
-### Step 5: Governance Verification
-
-Automated hooks enforce governance:
-- **TeammateIdle hook**: Checks for incomplete tasks/escalations when a teammate goes idle
-- **TaskCompleted hook**: Lightweight quality gate on task completion
-
-### Step 6: Completion
-
-When all tasks are done:
-1. qa-lead runs the final quality gate
-2. team-lead writes the completion report
-3. Report results to the user
-
----
-
-## Required Inputs
-
-### TASKS.md
-
-Uses the standard TASKS.md format:
-
-```yaml
-## T1 - User Resource
-
-- [ ] T1.1: User API design
-  - deps: []
-  - domain: backend
-  - risk: low
-  - owner: architecture-lead
-
-- [ ] T1.2: User API implementation
-  - deps: [T1.1]
-  - domain: backend
-  - risk: medium
-  - files: src/domains/user/*
-  - owner: architecture-lead
+```
+TaskCreate(
+  subject = "T1.1: User API design",
+  description = "Design REST endpoints for user domain. deps: []. domain: backend. risk: low."
+)
 ```
 
-### Domain Mapping
+Set dependencies after creation:
 
-| Domain | Teammate | Subagents |
-|--------|----------|-----------|
-| backend | architecture-lead | builder, reviewer |
-| frontend | design-lead | designer, builder |
-| api | architecture-lead | builder, reviewer |
-| design | design-lead | designer |
-| test | qa-lead | test-specialist |
-| security | qa-lead | reviewer |
-| shared | architecture-lead | builder |
+```
+TaskUpdate(task_id = "2", blockedBy = ["1"])
+```
+
+### Step 4: Spawn Teammates
+
+For each active teammate from domain-analyzer output, spawn with Agent:
+
+```
+Agent(
+  subagent_type = "builder",
+  team_name = "{project-name}",
+  name = "architecture-lead",
+  prompt = "You are architecture-lead on team {project-name}.
+    Your domains: backend, api, database.
+
+    Workflow:
+    1. Check TaskList for tasks assigned to you
+    2. Work on one task at a time
+    3. After completing each task, call TaskUpdate(status='completed')
+    4. Then check TaskList again for the next available task
+    5. Update TASKS.md with [x] for each completed task
+    6. Send a message to team-lead when you hit a blocker
+
+    {cli_hint}"
+)
+```
+
+**CLI hint** (if `cli` is set in team-topology.json):
+```
+CLI hint: For design subtasks, you may invoke `gemini` CLI via Bash if available.
+Check: command -v gemini
+Usage: echo '<subtask prompt>' | gemini
+Always validate CLI output before applying.
+```
+
+### Step 5: Assign Tasks
+
+Assign tasks to teammates based on domain-analyzer output:
+
+```
+TaskUpdate(task_id = "1", owner = "architecture-lead")
+TaskUpdate(task_id = "5", owner = "design-lead")
+TaskUpdate(task_id = "8", owner = "qa-lead")
+```
+
+### Step 6: Monitor and Coordinate
+
+While teammates work:
+- **Receive messages** automatically (no polling needed)
+- **Resolve blockers** when teammates report issues via SendMessage
+- **Handle plan approvals** via SendMessage protocol:
+  ```
+  SendMessage(
+    to = "architecture-lead",
+    message = { "type": "plan_approval_response", "request_id": "...", "approve": true }
+  )
+  ```
+- **Reassign tasks** if a teammate is stuck: `TaskUpdate(task_id, owner="other-lead")`
+- **Check progress** via `TaskList` periodically
+
+### Step 7: Completion and Shutdown
+
+When TaskList shows all tasks completed:
+
+1. Verify TASKS.md is fully updated (`[x]` for all done tasks)
+2. Gracefully shut down each teammate:
+   ```
+   SendMessage(to = "architecture-lead", message = { "type": "shutdown_request", "reason": "All tasks complete" })
+   SendMessage(to = "design-lead", message = { "type": "shutdown_request", "reason": "All tasks complete" })
+   SendMessage(to = "qa-lead", message = { "type": "shutdown_request", "reason": "All tasks complete" })
+   ```
+3. Report final status to user
 
 ---
 
@@ -154,105 +164,56 @@ Uses the standard TASKS.md format:
 
 ### team-topology.json
 
-Customize the domain-to-teammate mapping in `skills/team-orchestrate/config/team-topology.json`.
+`skills/team-orchestrate/config/team-topology.json` controls domain-to-teammate mapping
+and optional CLI routing. See the file for full schema.
 
-### Multi-AI CLI Routing (Optional)
+### Optional Multi-AI CLI Routing
 
-By default, all teammates execute via Claude Task tool. To route a teammate's work to an external AI CLI (Gemini or Codex), set the `cli` field in `team-topology.json`:
+Set `cli` field per teammate to hint external CLI usage:
 
-```json
-{
-  "teammates": {
-    "design-lead": {
-      "cli": "gemini",
-      "executors": ["designer", "builder"],
-      "domains": ["frontend", "design", "ui", "ux"]
-    }
-  }
-}
-```
+| `cli` value | Effect |
+|-------------|--------|
+| `null` | Claude only (default) |
+| `"gemini"` | Teammate may call `gemini` CLI via Bash for subtasks |
+| `"codex"` | Teammate may call `codex exec` via Bash for subtasks |
 
-When `cli` is set, team-lead includes a **CLI hint** in the delegation prompt. The subagent (Claude) stays in control and decides when to invoke the external CLI for specific subtasks:
-
-| `cli` value | Behavior | Best for |
-|-------------|----------|----------|
-| `null` (default) | Claude Task tool only | Most tasks |
-| `"gemini"` | Subagent may call `gemini` CLI via Bash for subtasks | UI/design, visual reasoning |
-| `"codex"` | Subagent may call `codex exec` CLI via Bash for subtasks | Code generation, refactoring |
-
-**How it works**:
-```
-team-lead receives task
-  └── Task(builder, prompt="...
-        CLI hint: Use gemini CLI for design subtasks if available.
-        Check: command -v gemini
-        Usage: echo '<prompt>' | gemini
-        Always validate CLI output before applying.
-      ")
-      ↓
-  builder (Claude subagent) decides:
-    ├── Simple task → handle directly
-    └── Design-heavy subtask → Bash("echo '...' | gemini") → validate → apply
-```
-
-**Advantages over direct CLI routing**:
-- Claude subagent validates and integrates external CLI output
-- Hooks still apply at the subagent level (full governance)
-- Subagent retains context and can retry/correct CLI results
-- No "blind delegation" — Claude is always in the loop
-
-**Prerequisites**: The target CLI must be installed and authenticated:
-```bash
-# Gemini
-command -v gemini && gemini auth status
-
-# Codex
-command -v codex && codex auth status
-```
-
-If the CLI is not found, team-lead falls back to Claude Task tool with a warning.
+The teammate (Claude) decides when to invoke the CLI, validates the result, and hooks still apply.
 
 ### Governance Hooks
 
-Automatically registered in `.claude/settings.local.json`:
-- `TeammateIdle` → `project-team/hooks/teammate-idle-gate.js`
-- `TaskCompleted` → `project-team/hooks/task-completed-gate.js`
+Registered in `.claude/settings.json`:
+- `TeammateIdle` → fires when a teammate finishes a turn
+- `TaskCompleted` → fires when a task is marked complete
+- `task-progress-gate` (Stop) → warns if TASKS.md not updated
 
 ---
 
-## Usage Examples
+## Key Behaviors
 
-### Basic run (all Claude)
+**Teammates go idle between turns** — this is normal. Idle means waiting for input, not done.
+Send a message to wake an idle teammate.
 
-```bash
-/team-orchestrate
-```
+**Task discovery is automatic** — teammates check TaskList after completing each task
+and claim the next available unblocked task.
 
-### With Gemini for design tasks
+**TASKS.md sync is mandatory** — after each task completion, the teammate must update
+TASKS.md with `[x]`. The task-progress-gate Stop hook catches any missed updates.
 
-Edit `team-topology.json` to set `design-lead.cli = "gemini"`, then:
-```bash
-/team-orchestrate
-```
+---
 
-### Specify TASKS.md path
+## Usage
 
 ```bash
-/team-orchestrate --tasks-file path/to/TASKS.md
-```
-
-### Activate specific teammates only
-
-```bash
-/team-orchestrate --teammates architecture-lead,qa-lead
+/team-orchestrate                          # default
+/team-orchestrate --tasks-file path/to    # custom TASKS.md
 ```
 
 ---
 
-## Related Skills
+## Reference Documents
 
-| Skill | Relationship |
-|-------|-------------|
-| `/whitebox` | Execution monitoring + control plane |
-| `/evaluation` | Quality gate after phase completion |
-| `/auto-revision` | Autonomous improvement loop |
+- `references/agent-teams-api.md` — Full Agent Teams API reference (TeamCreate, SendMessage, etc.)
+
+---
+
+**Last Updated**: 2026-03-16 (v2.0.0 — Native Agent Teams API)
