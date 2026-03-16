@@ -11,7 +11,7 @@
 
 set -e
 
-VERSION="3.6.0"
+VERSION="4.0.0"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GLOBAL_CLAUDE_DIR="$HOME/.claude"
 LOCAL_CLAUDE_DIR="./.claude"
@@ -107,11 +107,12 @@ select_project_team() {
     gum style --foreground 39 "Step 3: Project Team 설치"
 
     gum style --foreground 252 --italic \
-        "Project Team은 10명의 전문 에이전트와 15개의" \
-        "자동 검증 훅을 포함합니다." \
+        "Project Team은 4명의 Agent Teams 리더와" \
+        "4명의 코어 워커, 20개의 거버넌스 훅을 포함합니다." \
         "" \
-        "- 에이전트: Frontend, Backend, Test, DBA, QA..." \
-        "- 훅: 권한 체크, 영향도 분석, 표준 검증..."
+        "- 리더: team-lead, architecture-lead, qa-lead, design-lead" \
+        "- 워커: builder, reviewer, designer, maintenance-analyst" \
+        "- 훅: 권한 체크, 품질 게이트, 표준 검증, Agent Teams 거버넌스..."
     echo ""
 
     if gum confirm --default=true "Project Team을 설치하시겠습니까?"; then
@@ -120,14 +121,17 @@ select_project_team() {
 
         # Select mode
         PROJECT_TEAM_MODE=$(gum choose --cursor.foreground 212 \
-            "standard - 권장 훅 + 에이전트" \
-            "lite - 에이전트만 (훅 없음)" \
-            "full - 모든 훅 + 에이전트")
+            "team - Agent Teams 리더 + 거버넌스 훅 (권장)" \
+            "standard - 코어 워커 + 권장 훅" \
+            "lite - 코어 워커만 (훅 없음)" \
+            "full - 모든 에이전트 + 모든 훅")
 
         if [[ "$PROJECT_TEAM_MODE" == *"lite"* ]]; then
             PROJECT_TEAM_MODE_FLAG="lite"
         elif [[ "$PROJECT_TEAM_MODE" == *"full"* ]]; then
             PROJECT_TEAM_MODE_FLAG="full"
+        elif [[ "$PROJECT_TEAM_MODE" == *"team"* ]]; then
+            PROJECT_TEAM_MODE_FLAG="team"
         else
             PROJECT_TEAM_MODE_FLAG="standard"
         fi
@@ -371,7 +375,22 @@ configure_hooks() {
     # Use jq if available
     if command -v jq &> /dev/null; then
         local hook_config
-        if [[ "$PROJECT_TEAM_MODE_FLAG" == "full" ]]; then
+        if [[ "$PROJECT_TEAM_MODE_FLAG" == "team" ]]; then
+            hook_config='{
+                "env": {"CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"},
+                "hooks": {
+                    "PreToolUse": [
+                        {"matcher": "Edit|Write", "hooks": [{"type": "command", "command": "node '"$TARGET_DIR"'/hooks/permission-checker.js"}]}
+                    ],
+                    "TeammateIdle": [
+                        {"hooks": [{"type": "command", "command": "node '"$TARGET_DIR"'/hooks/teammate-idle-gate.js"}]}
+                    ],
+                    "TaskCompleted": [
+                        {"hooks": [{"type": "command", "command": "node '"$TARGET_DIR"'/hooks/task-completed-gate.js"}]}
+                    ]
+                }
+            }'
+        elif [[ "$PROJECT_TEAM_MODE_FLAG" == "full" ]]; then
             hook_config='{
                 "hooks": {
                     "PreToolUse": [

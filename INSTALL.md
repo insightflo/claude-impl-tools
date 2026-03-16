@@ -58,19 +58,25 @@ curl -fsSL https://raw.githubusercontent.com/insightflo/claude-impl-tools/main/s
 
 ## Project Team
 
-Project Team은 10명의 전문 에이전트와 15개의 자동 검증 훅을 포함합니다.
+Project Team은 4명의 Agent Teams 리더와 4명의 코어 워커, 20개의 거버넌스 훅을 포함합니다.
 
-### 에이전트
-- FrontendSpecialist (Gemini CLI)
-- BackendSpecialist (Codex CLI)
-- TestSpecialist, SecuritySpecialist, DevOpsSpecialist
-- APIDesigner, DBA, QAManager
-- ChiefArchitect, ProjectManager
+### Agent Teams 리더 (`.claude/agents/`)
+- **team-lead** — PM 리더, Plan Approval, 충돌 중재
+- **architecture-lead** — 아키텍처, API 설계, VETO
+- **qa-lead** — 품질 게이트, 테스트 전략, VETO
+- **design-lead** — 디자인 시스템, 시각적 일관성, VETO
 
-### 훅 (Hook Modes)
-- **lite**: 에이전트만 (훅 없음)
-- **standard**: 권한 체크 훅
-- **full**: 모든 검증 훅
+### 코어 워커 (`project-team/agents/`)
+- **Builder** — 구현 실행
+- **Reviewer** — 코드 리뷰 & QA
+- **Designer** — 디자인 전문가
+- **MaintenanceAnalyst** — 프로덕션 영향도 분석
+
+### 배포 모드
+- **team**: Agent Teams 리더 + 거버넌스 훅 + `AGENT_TEAMS` env 플래그 (권장)
+- **standard**: 코어 워커 + 권장 훅
+- **lite**: 코어 워커만 (훅 없음)
+- **full**: 모든 에이전트 + 모든 훅
 
 ---
 
