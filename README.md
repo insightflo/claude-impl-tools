@@ -316,7 +316,7 @@ Choose a mode:
 |-------|--------------|
 | All skills | Claude Code CLI |
 | `/multi-ai-review` | `gemini` CLI, `codex` CLI (optional) — 5 domain presets (code-review, market-regime, investment, risk-assessment, default) |
-| `/agile`, `/audit` | `playwright` MCP (optional, for browser tests) |
+| `/agile`, `/audit` | `agent-browser` CLI, `lighthouse` CLI (optional, for browser verification) |
 
 ### For Project Team Hooks
 

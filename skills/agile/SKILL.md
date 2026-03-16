@@ -17,9 +17,8 @@ updated: 2026-03-03
 > **레이어**: Skeleton (뼈대) → Muscles (근육) → Skin (피부)
 > **목적**: 1~3일 단위 스프린트 + 사용자 검토로 만족도 향상
 
+> **v3.0.0**: Agent Teams 연동 (team-lead, qa-lead), agent-browser + Lighthouse CLI
 > **v2.6.0**: Long Context 최적화 - H2O 패턴으로 핵심 정보 상단 배치
-> **v2.5.0**: project-team 에이전트 팀 연동 (Project Manager, QA Manager)
-> **v2.4.0**: project-team Hook 시스템 연동 (task-sync, quality-gate)
 
 ---
 
@@ -72,8 +71,9 @@ updated: 2026-03-03
 
 ### 3. 체크포인트 (Sprint Review)
 
-- **시각적 현황 캡처 (Visual Status)**: `notify_user` 호출 전, `chrome-browser` 스킬(또는 `agent-browser`)을 사용하여 현재 구현된 기능의 화면을 캡처합니다.
-  - `agent-browser open` -> `agent-browser wait` -> `agent-browser screenshot`
+- **시각적 현황 캡처 (Visual Status)**: `notify_user` 호출 전, `agent-browser` CLI를 사용하여 현재 구현된 기능의 화면을 캡처합니다.
+  - `agent-browser open <url>` → `agent-browser wait` → `agent-browser screenshot checkpoint.png`
+  - Lighthouse 감사 (선택): `npx lighthouse <url> --output=json --quiet`
 - **반드시 `notify_user` 호출**: 각 스프린트 목표 달성 시 또는 마일스톤 종료 시, 코드와 함께 **시각적 결과물(캡처 이미지)**을 제공하고 승인을 요청합니다.
 - 사용자의 피드백을 수집하여 즉시 다음 작업에 반영합니다.
 
@@ -358,93 +358,36 @@ TASKS 파일(`TASKS.md` 우선, 없으면 `docs/planning/06-tasks.md`)에서 태
 | **중단 시** | `/recover` | 작업 복구 |
 | **컨텍스트 과부하** | `/compress` | 긴 문서/코드 압축 후 재시도 |
 
-### 🪝 Hook 연동 (v1.9.2)
+### 🤖 Agent Teams 연동
 
-| Hook | 효과 |
-|------|------|
-| `skill-router` | `/agile` 키워드 자동 감지 → 스킬 즉시 로드 |
-| `session-memory-loader` | 이전 스프린트 상태 자동 복원 |
-| `error-recovery-advisor` | 레이어 실패 시 복구 제안 |
-
-### 🤖 Agent Team 연동 (v2.5.0)
-
-project-team 에이전트들과 협업하여 스프린트를 관리합니다.
-
-#### 스프린트 시작 시 에이전트 협업
+Agent Teams가 활성화되어 있으면 team-lead에게 스프린트 조율을 위임합니다.
 
 ```
 /agile start 또는 /agile auto 실행 시:
     ↓
 ┌─────────────────────────────────────────────────────────────┐
-│  1️⃣ Project Manager 에이전트에게 태스크 분배 요청           │
-│  - Agent tool 사용: subagent_type="project-manager"         │
+│  1️⃣ team-lead에게 스프린트 계획 요청                         │
 │  - 스프린트 범위와 일정 전달                                 │
-│  - PM이 태스크를 도메인별로 분배                            │
+│  - team-lead가 태스크를 도메인별 팀원에게 분배               │
 ├─────────────────────────────────────────────────────────────┤
-│  2️⃣ Domain Specialist 에이전트들에게 병렬 할당              │
-│  - backend-specialist: API/데이터 로직                      │
-│  - frontend-specialist: UI/상태 관리                        │
-│  - security-specialist: 보안 검증 (Muscles 완료 시)          │
+│  2️⃣ 팀원별 병렬 실행                                        │
+│  - architecture-lead → Task(builder): API/데이터 로직        │
+│  - design-lead → Task(builder): UI/상태 관리                 │
+│  - qa-lead → Task(reviewer): 보안 검증 (Muscles 완료 시)     │
 ├─────────────────────────────────────────────────────────────┤
-│  3️⃣ 체크포인트 시 QA Manager에게 품질 검증 요청            │
-│  - SendMessage tool로 승인 요청                             │
-│  - 품질 게이트 통과 시 다음 레이어 진행                     │
+│  3️⃣ 체크포인트 시 qa-lead에게 품질 검증 요청                │
+│  - 품질 게이트 통과 시 다음 레이어 진행                      │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-#### 에이전트 호출 패턴
-
-**1) Project Manager에게 스프린트 계획 요청:**
-
-```javascript
-// Agent tool로 PM 호출
-Agent({
-  subagent_type: "project-manager",
-  prompt: `스프린트 계획을 수립해주세요:
-  - 범위: ${레이어} 레이어
-  - 태스크: ${태스크_목록}
-  - 일정: ${예상_기간}`
-})
-```
-
-**2) QA Manager에게 품질 승인 요청:**
-
-```javascript
-// SendMessage tool로 승인 요청
-SendMessage({
-  type: "message",
-  recipient: "qa-manager",
-  content: `품질 검증 요청:
-  - 레이어: ${레이어_명}
-  - 완료 태스크: ${태스크_ID_목록}
-  - 테스트 결과: ${결과_요약}`,
-  summary: "Quality gate approval request"
-})
-```
-
-#### 에이전트별 역할 분담
-
 | 에이전트 | 호출 시점 | 역할 |
 |---------|-----------|------|
-| **project-manager** | 스프린트 시작 | 태스크 분배, 일정 관리 |
-| **backend-specialist** | Muscles 레이어 | API/DB 로직 구현 가이드 |
-| **frontend-specialist** | Skin 레이어 | UI/UX 구현 가이드 |
-| **security-specialist** | Muscles 완료 시 | 보안 취약점 검증 |
-| **qa-manager** | 각 레이어 완료 시 | 품질 게이트 승인 |
+| **team-lead** | 스프린트 시작 | 태스크 분배, Plan Approval |
+| **architecture-lead** | Muscles 레이어 | API/DB 로직 위임 |
+| **design-lead** | Skin 레이어 | UI/UX 구현 위임 |
+| **qa-lead** | 각 레이어 완료 시 | 품질 게이트 승인 |
 
-#### project-team 연동 전제 조건
-
-```bash
-# project-team이 설치되어 있어야 합니다
-ls project-team/agents/*.md
-
-# governance-setup이 실행된 프로젝트여야 합니다
-ls management/mini-prd.md
-```
-
-**project-team 미설치 시 동작:**
-- 에이전트 호출을 스킵하고 standalone 모드로 동작
-- 사용자에게 "project-team 설치 권장" 메시지 표시
+**Agent Teams 미활성 시:** standalone 모드로 동작 (에이전트 위임 스킵)
 
 ---
 
@@ -459,4 +402,4 @@ ls management/mini-prd.md
 
 ---
 
-**Last Updated**: 2026-03-03 (v2.5.0 - project-team 에이전트 팀 연동)
+**Last Updated**: 2026-03-16 (v3.0.0 - Agent Teams 연동, agent-browser + Lighthouse CLI)

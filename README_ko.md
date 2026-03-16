@@ -318,7 +318,7 @@ cd project-team
 |------|----------|
 | 모든 스킬 | Claude Code CLI |
 | `/multi-ai-review` | `gemini` CLI, `codex` CLI (선택) — 5개 도메인 프리셋 |
-| `/agile`, `/audit` | `playwright` MCP (선택, 브라우저 테스트용) |
+| `/agile`, `/audit` | `agent-browser` CLI, `lighthouse` CLI (선택, 브라우저 검증용) |
 
 ### Project Team 훅용
 

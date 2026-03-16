@@ -30,7 +30,7 @@ updated: 2026-03-12
 4. DDD (Demo-Driven Development) 검증
 5. 🔒 보안 검증 (/security-review 호출)
 6. 동적 검증 (테스트 실행)
-7. UI/UX 브라우저 검증 (playwright MCP 있을 때)
+7. UI/UX 브라우저 검증 (agent-browser CLI + Lighthouse CLI)
 8. 품질 리포트 작성 + 수정 지침 제공
 ```
 
@@ -89,11 +89,19 @@ ls docs/planning/*.md 2>/dev/null             # 옵션 B: Socrates
 
 ### 6단계: UI/UX 브라우저 검증 (선택적)
 
-> **playwright MCP 설정 시에만 실행**
+> **agent-browser CLI 또는 Lighthouse CLI 사용**
 
-```
-mcp__playwright__browser_navigate → http://localhost:3000
-mcp__playwright__browser_screenshot → audit_screenshot.png
+```bash
+# 1. 페이지 접근 + 스냅샷
+agent-browser open http://localhost:3000
+agent-browser snapshot                    # 접근성 트리 (@ref 기반)
+agent-browser screenshot audit.png        # 시각적 캡처
+
+# 2. Lighthouse 감사 (접근성 + 성능 + SEO)
+npx lighthouse http://localhost:3000 --output=json --quiet
+
+# 3. 콘솔 에러 확인
+agent-browser console                     # 에러/경고 카운트
 ```
 
 ---
