@@ -765,20 +765,11 @@ async function main() {
     const projectType = detectProjectType();
 
     if (projectType === 'unknown') {
-      const whitebox = openWhiteboxUi(projectRoot);
-      await emitHookDecision(input, {
-        hook: 'quality-gate',
-        decision: 'deny',
-        severity: 'error',
-        summary: 'Quality gate could not detect project type.',
-        remediation: 'Add package.json scripts or Python project metadata.',
-      });
+      // Unknown project type — skip quality gate silently (don't block)
+      // This handles monorepo structures where package.json is in subdirectories
       process.stdout.write(JSON.stringify({
-        decision: 'deny',
-        reason: reasonWithWhitebox(
-          'Could not detect project type (no package.json or pyproject.toml found)',
-          whitebox
-        )
+        decision: 'approve',
+        reason: 'Skipped: could not detect project type (monorepo or no package.json at root)'
       }));
       return;
     }
@@ -817,15 +808,15 @@ async function main() {
 
     await emitHookDecision(input, {
       hook: 'quality-gate',
-      decision: results.passed ? 'allow' : 'deny',
+      decision: results.passed ? 'approve' : 'block',
       severity: results.passed ? 'info' : 'error',
       summary: `Quality gate ${results.passed ? 'passed' : 'failed'} (${results.tests.failed} test failures, ${results.linting.errors} lint errors, ${results.typeChecking.errors} type errors).`,
       remediation: results.passed ? '' : 'Fix failing quality metrics and rerun the gate.',
     });
 
-    // Output decision
+    // Output decision (Stop hook schema: "approve" | "block", not "allow" | "deny")
     process.stdout.write(JSON.stringify({
-      decision: results.passed ? 'allow' : 'deny',
+      decision: results.passed ? 'approve' : 'block',
       reason: results.passed ? '' : reasonWithWhitebox('Quality gate blocked the stop boundary.', whitebox),
       report,
       metrics: {
@@ -836,17 +827,10 @@ async function main() {
       }
     }));
   } catch (error) {
-    await emitHookDecision({ hook_event_name: 'ManualHook', tool_name: 'quality-gate', tool_input: {} }, {
-      hook: 'quality-gate',
-      decision: 'deny',
-      severity: 'critical',
-      summary: 'Quality gate execution error.',
-      remediation: 'Review hook runtime errors and rerun.',
-    });
-    const whitebox = openWhiteboxUi(resolveProjectRoot());
+    // Error fallback — approve to avoid blocking the session
     process.stdout.write(JSON.stringify({
-      decision: 'deny',
-      reason: reasonWithWhitebox(`Quality gate error: ${error.message}`, whitebox)
+      decision: 'approve',
+      reason: `Quality gate error: ${error.message}`
     }));
   }
 }

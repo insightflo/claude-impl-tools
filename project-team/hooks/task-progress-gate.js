@@ -109,7 +109,7 @@ function main() {
 
   // No TASKS.md → nothing to check
   if (!tasks.found) {
-    process.stdout.write(JSON.stringify({ decision: 'allow', reason: '' }));
+    process.stdout.write(JSON.stringify({ decision: 'approve', reason: '' }));
     return;
   }
 
@@ -123,8 +123,9 @@ function main() {
       + `Please update TASKS.md to reflect completed work before finishing.`;
 
     process.stdout.write(JSON.stringify({
-      decision: 'warn',
+      decision: 'block',
       reason,
+      stopReason: reason,
       hookSpecificOutput: {
         additionalContext: reason,
       },
@@ -134,7 +135,7 @@ function main() {
 
   // Everything OK
   process.stdout.write(JSON.stringify({
-    decision: 'allow',
+    decision: 'approve',
     reason: '',
   }));
 }
