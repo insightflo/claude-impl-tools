@@ -1,6 +1,30 @@
 'use strict';
 
-const { writeEvent } = require('../../scripts/lib/whitebox-events');
+const path = require('path');
+
+/**
+ * Resolve whitebox-events module from multiple candidate paths.
+ * Supports both source repo layout and installed project layout.
+ */
+function resolveWhiteboxEvents() {
+  const candidates = [
+    // Source repo: project-team/hooks/lib/ → project-team/scripts/lib/
+    path.resolve(__dirname, '..', '..', 'scripts', 'lib', 'whitebox-events'),
+    // Installed project: .claude/hooks/lib/ → .claude/project-team/scripts/lib/
+    path.resolve(__dirname, '..', '..', 'project-team', 'scripts', 'lib', 'whitebox-events'),
+    // Installed project: .claude/hooks/lib/ → .claude/scripts/lib/
+    path.resolve(__dirname, '..', '..', 'scripts', 'lib', 'whitebox-events'),
+  ];
+
+  for (const candidate of candidates) {
+    try { return require(candidate); } catch {}
+  }
+
+  // Fallback: no-op writeEvent (hooks should not crash the session)
+  return { writeEvent: async () => ({}) };
+}
+
+const { writeEvent } = resolveWhiteboxEvents();
 
 function sanitizeSummary(summary) {
   if (typeof summary !== 'string') return '';
