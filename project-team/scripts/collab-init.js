@@ -24,7 +24,6 @@
 
 const fs = require('fs');
 const path = require('path');
-const childProcess = require('child_process');
 
 // Status messages go to stderr; stdout is reserved for JSON output
 function log(msg) {
