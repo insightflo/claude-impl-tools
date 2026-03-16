@@ -349,10 +349,6 @@ install_project_team() {
         if [[ -d "$SCRIPT_DIR/project-team/hooks" ]]; then
             gum spin --spinner dot --title "훅 설치 중..." -- \
                 bash -c "rsync -a \"$SCRIPT_DIR/project-team/hooks/\" \"$TARGET_DIR/hooks/\" 2>/dev/null || cp -r \"$SCRIPT_DIR/project-team/hooks/.\" \"$TARGET_DIR/hooks/\""
-            if [[ -d "$SCRIPT_DIR/project-team/hook-shims" ]]; then
-                gum spin --spinner dot --title "프로젝트 훅 shim 설치 중..." -- \
-                    bash -c "rsync -a \"$SCRIPT_DIR/project-team/hook-shims/\" \"$TARGET_DIR/hooks/\" 2>/dev/null || cp -r \"$SCRIPT_DIR/project-team/hook-shims/.\" \"$TARGET_DIR/hooks/\""
-            fi
             chmod +x "$TARGET_DIR/hooks/"*.js 2>/dev/null || true
             local hook_count=$(ls -1 "$TARGET_DIR/hooks"/*.js 2>/dev/null | wc -l | tr -d ' ')
             echo -e "${GREEN}✓ $hook_count 훅 설치됨${NC}"
