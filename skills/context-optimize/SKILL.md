@@ -145,6 +145,5 @@ node project-team/services/contextOptimizer.js build "API 엔드포인트" src/*
 
 ## 관련 리소스
 
-- 상세 문서: `docs/plan/long-context-optimization.md`
 - 서비스 README: `project-team/services/README.md`
 - MCP 서버: `project-team/services/mcp-context-server.js`

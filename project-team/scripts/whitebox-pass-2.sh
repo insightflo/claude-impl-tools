@@ -3,11 +3,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
-EVIDENCE_DIR="$ROOT_DIR/.sisyphus/evidence"
+EVIDENCE_DIR="$ROOT_DIR/.tmp/whitebox-evidence"
 
 mkdir -p "$EVIDENCE_DIR"
 
-FIXTURE_DIR="$(mktemp -d "$ROOT_DIR/.sisyphus/pass2-fixture.XXXXXX")"
+FIXTURE_DIR="$(mktemp -d "$ROOT_DIR/.tmp/pass2-fixture.XXXXXX")"
 mkdir -p "$FIXTURE_DIR/bin" "$FIXTURE_DIR/.claude/collab/requests"
 mkdir -p "$FIXTURE_DIR/.claude/collab/contracts" "$FIXTURE_DIR/.claude/collab/decisions" "$FIXTURE_DIR/.claude/collab/locks" "$FIXTURE_DIR/.claude/collab/archive"
 
