@@ -1,7 +1,7 @@
 ---
 name: whitebox
-description: AI 코딩 과정을 관찰/설명/통제하는 화이트박스 컨트롤 플레인 엔트리포인트입니다. /whitebox 는 유일한 제품 경계이며 status|explain|health|approvals 가 현재 상태, intervention trigger, linked DEC 근거, 승인 제어, 실행 환경 건전성을 노출합니다.
-trigger: /whitebox, /whitebox status, /whitebox explain, /whitebox health, /whitebox approvals, "화이트박스", "왜 막혔어", "상태 보여줘", "승인해", "거절해", "health check"
+description: AI 코딩 과정을 관찰/설명/통제하는 화이트박스 컨트롤 플레인 엔트리포인트입니다. /whitebox 는 유일한 제품 경계이며 launch|status|explain|health|approvals 가 실행 시작, 현재 상태, intervention trigger, linked DEC 근거, 승인 제어, 실행 환경 건전성을 노출합니다.
+trigger: /whitebox, /whitebox launch, /whitebox status, /whitebox explain, /whitebox health, /whitebox approvals, "화이트박스", "왜 막혔어", "상태 보여줘", "승인해", "거절해", "health check"
 version: 1.0.0
 updated: 2026-03-07
 ---
@@ -21,8 +21,7 @@ updated: 2026-03-07
 
 ## 비목적 (Non-goals)
 
-- 새 스케줄러/실행 엔진을 만들지 않는다.
-- 웹 UI를 만들지 않는다.
+- Claude Code 내부 hook UX 만으로 통제가 해결된다고 가정하지 않는다.
 - API-key-first 제공자 통합을 지원하지 않는다.
 - raw prompt / raw file contents / secrets 를 로그에 그대로 기록하지 않는다.
 
@@ -54,6 +53,28 @@ updated: 2026-03-07
 - Duplicate command 처리는 `idempotency_key` 와 correlation-aware filtering 으로 고정한다.
 
 ## 명령어
+
+### `/whitebox launch` — UI-first supervisor entrypoint
+
+**의도**: 화이트박스를 먼저 띄우고, 실제 실행 CLI는 그 다음에 child process 로 시작한다.
+
+- Canonical script: `node skills/whitebox/scripts/whitebox-launcher.js`
+- Inputs:
+  - `.claude/collab/*` artifacts (auto-init 가능)
+  - executor command (`claude` 기본)
+- Outputs:
+  - Human: dashboard URL + spawned command + run/session summary
+  - JSON (`--json`): `{ ok, project_dir, dashboard, session, command }`
+- Side effects:
+  - `collab-init` 수행 가능
+  - whitebox dashboard open
+  - `supervisor.session.*` lifecycle event 기록
+  - child CLI spawn / signal forwarding
+
+**원칙**:
+
+- UI가 먼저 보이지 않으면 그 사실을 명시적으로 드러낸다.
+- hook 은 보조 signal 이고, 실행 소유권은 supervisor 가 가진다.
 
 ### `/whitebox status` — 현재 상태/요약
 
@@ -122,7 +143,7 @@ updated: 2026-03-07
 
 ## 신규 사용자 흐름
 
-1. `/orchestrate-standalone` 로 작업을 시작한다.
+1. `/whitebox launch` 또는 launch 를 위임한 `/team-orchestrate` 로 작업을 시작한다.
 2. `/whitebox status` 로 paused gate / blocked 상태와 pending decision 수를 본다.
 3. `/whitebox explain` 로 근거, trigger, linked DEC, approve/reject 선택지 또는 inspect-only 결정을 확인한다.
 4. `/whitebox approvals list|show` 로 mutable pending gate 를 확인한다.

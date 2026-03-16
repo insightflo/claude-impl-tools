@@ -13,8 +13,8 @@ updated: 2026-03-16
 
 > **목표**: Agent Teams 네이티브 기능으로 계층적 에이전트 팀 실행
 >
-> **핵심 차별점**: `orchestrate-standalone`이 `claude -p` 서브프로세스를 사용하는 반면,
-> 이 스킬은 Claude Code 네이티브 Agent Teams (메일박스 통신, 공유 작업 목록, hooks)를 활용합니다.
+> **핵심 차별점**: Claude Code 네이티브 Agent Teams (메일박스 통신, 공유 작업 목록, hooks)를 활용하여
+> 계층적 에이전트 협업과 Plan Approval 기반 거버넌스를 제공합니다.
 
 ---
 
@@ -98,7 +98,7 @@ Teammate → Plan 제출 → team-lead 검토 → Approved/Rejected
 
 ### TASKS.md
 
-`orchestrate-standalone`과 동일한 TASKS.md 포맷을 사용합니다:
+표준 TASKS.md 포맷을 사용합니다:
 
 ```yaml
 ## T1 - User Resource
@@ -145,20 +145,6 @@ Teammate → Plan 제출 → team-lead 검토 → Approved/Rejected
 
 ---
 
-## orchestrate-standalone과의 비교
-
-| 관점 | orchestrate-standalone | team-orchestrate |
-|------|----------------------|-----------------|
-| 실행 방식 | `claude -p` 서브프로세스 | 네이티브 Agent Teams |
-| 팀원 통신 | 없음 (독립 실행) | 메일박스 (양방향) |
-| hooks 적용 | 미적용 (`-p` 모드) | 완전 적용 |
-| 실시간 모니터링 | 제한적 | whitebox + hooks |
-| Plan Approval | 없음 | 필수 |
-| 충돌 중재 | 없음 | team-lead 중재 |
-| 최적 규모 | 30~200 태스크 | 10~80 태스크 |
-
----
-
 ## 사용 예시
 
 ### 기본 실행
@@ -185,7 +171,6 @@ Teammate → Plan 제출 → team-lead 검토 → Approved/Rejected
 
 | 스킬 | 관계 |
 |------|------|
-| `/orchestrate-standalone` | 대규모 병렬 실행 (서브프로세스 방식) |
 | `/whitebox` | 실행 모니터링 + 컨트롤 플레인 |
 | `/evaluation` | Phase 완료 후 품질 게이트 |
 | `/auto-revision` | 자율 개선 루프 |

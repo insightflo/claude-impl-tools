@@ -48,7 +48,7 @@ curl -fsSL https://raw.githubusercontent.com/insightflo/claude-impl-tools/main/s
 
 | Category | Skills | Description |
 |----------|--------|-------------|
-| **Core** | multi-ai-run, multi-ai-review, orchestrate-standalone | 필수 오케스트레이션 |
+| **Core** | multi-ai-run, multi-ai-review, team-orchestrate | 필수 오케스트레이션 |
 | **Orchestration** | agile, governance-setup, workflow-guide | 프로젝트 관리 |
 | **Quality** | checkpoint, quality-auditor, security-review | 품질 검증 |
 | **Analysis** | architecture, deps, impact, changelog, coverage | 코드베이스 분석 |
@@ -115,7 +115,7 @@ codex auth
 ├── skills/                   # 스킬들
 │   ├── multi-ai-run/
 │   ├── multi-ai-review/
-│   ├── orchestrate-standalone/
+│   ├── team-orchestrate/
 │   └── ...
 ├── agents/                   # Project Team 에이전트
 │   ├── Builder.md
@@ -148,7 +148,7 @@ git pull
 
 ```bash
 # 스킬 제거
-rm -rf ~/.claude/skills/{multi-ai-run,multi-ai-review,orchestrate-standalone,...}
+rm -rf ~/.claude/skills/{multi-ai-run,multi-ai-review,team-orchestrate,...}
 
 # Project Team 제거
 rm -rf ~/.claude/agents ~/.claude/hooks ~/.claude/templates
@@ -169,7 +169,7 @@ claude
 > /workflow
 
 # 3. 오케스트레이션 시작
-> /orchestrate-standalone
+> /team-orchestrate
 
 # 4. 멀티 AI 리뷰
 > /multi-ai-review

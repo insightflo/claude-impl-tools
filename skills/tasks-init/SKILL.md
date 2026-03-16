@@ -63,7 +63,7 @@ version: 2.1.0
 ┌─────────────────────────────────────────────────────────────┐
 │ 5단계: 사용자 확인 + 다음 단계 안내                          │
 │   → owner 기반 자동 라우팅 확인 + /agile auto 또는            │
-│     /orchestrate-standalone 실행 권장                        │
+│     /team-orchestrate 실행 권장                              │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -147,7 +147,7 @@ grep -rn "TODO\|FIXME\|XXX" --include="*.ts" --include="*.tsx" --include="*.py" 
       "header": "다음 단계",
       "options": [
         {"label": "구현 시작 (/agile auto)", "description": "30개 이하 태스크용 레이어별 자동 구현"},
-        {"label": "병렬 오케스트레이션 (/orchestrate-standalone)", "description": "30~80개 태스크용 의존성 기반 병렬 실행"},
+        {"label": "병렬 오케스트레이션 (/team-orchestrate)", "description": "30~80개 태스크용 의존성 기반 병렬 실행"},
         {"label": "수동 진행", "description": "직접 태스크 수정 후 진행"}
       ],
       "multiSelect": false
@@ -164,7 +164,7 @@ grep -rn "TODO\|FIXME\|XXX" --include="*.ts" --include="*.tsx" --include="*.py" 
 |------|------|
 | `/tasks-migrate` | 기존 레거시 파일 통합 |
 | `/agile auto` | 생성된 TASKS.md 실행 (≤30 태스크) |
-| `/orchestrate-standalone` | 병렬 오케스트레이션 (30~80 태스크) |
+| `/team-orchestrate` | 병렬 오케스트레이션 (30~80 태스크) |
 | `/governance-setup` | 대규모 프로젝트 기획 |
 
 ---

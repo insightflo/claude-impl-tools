@@ -76,13 +76,13 @@ curl -fsSL https://raw.githubusercontent.com/insightflo/claude-impl-tools/main/s
 |-------|--------------|
 | `/quality-auditor` | Pre-deployment comprehensive audit |
 | `/security-review` | OWASP TOP 10, CVE, secrets detection |
-| `/multi-ai-review` | Consensus review (Claude + Gemini CLI + Codex CLI) |
+| `/multi-ai-review` | Universal consensus engine (Claude + Gemini CLI + Codex CLI) — auto-routes code review, market regime, investment thesis, risk assessment via 3-Stage Pipeline |
 
 ### Automation
 
 | Skill | What it does |
 |-------|--------------|
-| `/orchestrate-standalone` | Execute 50-200 tasks with specialist agents and auto-surface the whitebox dashboard (`--mode=sprint` for Agile PI planning + sprint review gates) |
+| `/team-orchestrate` | Execute 50-200 tasks with specialist agents and auto-surface the whitebox dashboard (`--mode=sprint` for Agile PI planning + sprint review gates) |
 | `/multi-ai-run` | Parallel AI execution management with automatic CLI routing defaults (Claude/Gemini/Codex) |
 | `/whitebox` | Open the visible execution dashboard, inspect health/state, and handle intervention-aware control-plane decisions |
 
@@ -181,8 +181,8 @@ Start
   │
   ├─ Implement (choose by scale)
   │   ├─ Small (≤30 tasks) ───── /agile auto
-  │   ├─ Medium (30-50) ──────── /orchestrate-standalone
-  │   └─ Large (50+) ─────────── /orchestrate-standalone
+  │   ├─ Medium (30-50) ──────── /team-orchestrate
+  │   └─ Large (50+) ─────────── /team-orchestrate
   │
   ├─ Maintain
   │   ├─ Before editing ──────── /impact
@@ -202,8 +202,8 @@ Start
 | Task count | Recommended | Code written by | Agent team |
 |------------|-------------|-----------------|------------|
 | ≤ 30 | `/agile auto` | Claude directly | No |
-| 30-80 | `/orchestrate-standalone` | Specialist agents | Optional |
-| 80-200 | `/orchestrate --mode=wave` | Large-project wave profile | Recommended |
+| 30-80 | `/team-orchestrate` | Specialist agents | Optional |
+| 80-200 | `/team-orchestrate --mode=wave` | Large-project wave profile | Recommended |
 | 200+ | Split into sub-projects | Domain-parallel agents | Required |
 
 **Wave mode (current CLI)**: For 80+ tasks, use `--mode=wave` for the large-project execution profile with whitebox board surfacing, typed intervention triggers, linked DEC detail for agent conflicts, and a 6-worker default.
@@ -215,8 +215,8 @@ These are the flows validated against the current `main` branch:
 | Project size | Recommended flow |
 |--------------|------------------|
 | Small (<=30 tasks) | `/agile auto` |
-| Medium (30-80 tasks) | `/workflow` -> `/governance-setup` -> `project-team/install.sh --mode=standard` -> `/orchestrate-standalone --mode=standard` |
-| Large (80+ tasks) | `/workflow` -> `/governance-setup` -> `project-team/install.sh --mode=standard` -> `/orchestrate-standalone --mode=wave` |
+| Medium (30-80 tasks) | `/workflow` -> `/governance-setup` -> `project-team/install.sh --mode=standard` -> `/team-orchestrate --mode=standard` |
+| Large (80+ tasks) | `/workflow` -> `/governance-setup` -> `project-team/install.sh --mode=standard` -> `/team-orchestrate --mode=wave` |
 | Failure-path verification | Installed `--mode=wave` run with deterministic task failure -> fail-fast + blocked downstream tasks |
 
 ---
@@ -231,10 +231,10 @@ claude-impl-tools/
 │   ├── agile/                 # Layered sprints
 │   ├── recover/               # Resume after interruption
 │   ├── quality-auditor/       # Pre-deploy audit
-│   ├── multi-ai-review/       # Consensus review
+│   ├── multi-ai-review/       # Universal consensus engine (5 domain presets)
 │   ├── security-review/       # Security scanning
 │   ├── multi-ai-run/          # Parallel execution
-│   ├── orchestrate-standalone/# Large-scale orchestration
+│   ├── team-orchestrate/       # Large-scale orchestration
 │   ├── checkpoint/            # Progress management
 │   ├── tasks-init/            # Task generation
 │   ├── tasks-migrate/         # Task migration
@@ -306,7 +306,7 @@ Choose a mode:
 | Skill | Requirements |
 |-------|--------------|
 | All skills | Claude Code CLI |
-| `/multi-ai-review` | `gemini` CLI, `codex` CLI (optional) |
+| `/multi-ai-review` | `gemini` CLI, `codex` CLI (optional) — 5 domain presets (code-review, market-regime, investment, risk-assessment, default) |
 | `/agile`, `/audit` | `playwright` MCP (optional, for browser tests) |
 
 ### For Project Team Hooks

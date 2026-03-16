@@ -80,13 +80,13 @@ cd claude-impl-tools/project-team
 |------|------|
 | `/quality-auditor` | 배포 전 종합 감사 |
 | `/security-review` | OWASP TOP 10, CVE, secrets 감지 |
-| `/multi-ai-review` | 컨센서스 리뷰 (Claude + Gemini CLI + Codex CLI) |
+| `/multi-ai-review` | 범용 멀티-AI 합의 엔진 (Claude + Gemini CLI + Codex CLI) — 코드 리뷰, 시황 레짐, 투자 심사, 리스크 평가 등 5개 도메인 자동 라우팅 |
 
 ### 자동화
 
 | 스킬 | 기능 |
 |------|------|
-| `/orchestrate-standalone` | 50~200개 태스크를 전문가 에이전트로 실행하고 whitebox 대시보드를 자동으로 surfacing (`--mode=sprint`으로 Agile PI 계획 + 스프린트 리뷰 게이트) |
+| `/team-orchestrate` | 50~200개 태스크를 전문가 에이전트로 실행하고 whitebox 대시보드를 자동으로 surfacing (`--mode=sprint`으로 Agile PI 계획 + 스프린트 리뷰 게이트) |
 | `/multi-ai-run` | Claude/Gemini/Codex 기본 정책을 따르는 자동 CLI 라우팅 기반 병렬 AI 실행 관리 |
 | `/whitebox` | 보이는 실행 대시보드를 열고, health/state를 확인하며, 개입형 control-plane 결정을 처리 |
 
@@ -185,8 +185,8 @@ project-team/
   │
   ├─ 구현 (규모에 따라 선택)
   │   ├─ 소규모 (≤30) ─────────── /agile auto
-  │   ├─ 중규모 (30-50) ───────── /orchestrate-standalone
-  │   └─ 대규모 (50+) ─────────── /orchestrate-standalone
+  │   ├─ 중규모 (30-50) ───────── /team-orchestrate
+  │   └─ 대규모 (50+) ─────────── /team-orchestrate
   │
   ├─ 유지보수
   │   ├─ 수정 전 ──────────────── /impact
@@ -206,8 +206,8 @@ project-team/
 | 태스크 수 | 추천 | 코드 작성 | 에이전트 팀 |
 |-----------|------|-----------|------------|
 | ≤ 30 | `/agile auto` | Claude 직접 | 불필요 |
-| 30-80 | `/orchestrate-standalone` | 전문가 에이전트 | 선택 |
-| 80-200 | `/orchestrate --mode=wave` | 대규모 실행용 wave profile | 권장 |
+| 30-80 | `/team-orchestrate` | 전문가 에이전트 | 선택 |
+| 80-200 | `/team-orchestrate --mode=wave` | 대규모 실행용 wave profile | 권장 |
 | 200+ | 하위 프로젝트 분할 | 도메인 병렬 에이전트 | 필수 |
 
 **Wave mode (current CLI)**: 80개 이상 태스크는 `--mode=wave`를 사용하세요. 현재 공개 CLI는 whitebox board surfacing, typed intervention trigger, agent conflict용 linked DEC detail, 6-worker 기본값을 제공합니다.
@@ -219,8 +219,8 @@ project-team/
 | 프로젝트 규모 | 권장 흐름 |
 |--------------|-----------|
 | Small (<=30 tasks) | `/agile auto` |
-| Medium (30-80 tasks) | `/workflow` -> `/governance-setup` -> `project-team/install.sh --mode=standard` -> `/orchestrate-standalone --mode=standard` |
-| Large (80+ tasks) | `/workflow` -> `/governance-setup` -> `project-team/install.sh --mode=standard` -> `/orchestrate-standalone --mode=wave` |
+| Medium (30-80 tasks) | `/workflow` -> `/governance-setup` -> `project-team/install.sh --mode=standard` -> `/team-orchestrate --mode=standard` |
+| Large (80+ tasks) | `/workflow` -> `/governance-setup` -> `project-team/install.sh --mode=standard` -> `/team-orchestrate --mode=wave` |
 | Failure-path verification | installed `--mode=wave` 실행 + deterministic task failure -> fail-fast + downstream block 확인 |
 
 ---
@@ -235,10 +235,10 @@ claude-impl-tools/
 │   ├── agile/                 # 레이어별 스프린트
 │   ├── recover/               # 중단 후 재개
 │   ├── quality-auditor/       # 배포 전 감사
-│   ├── multi-ai-review/       # 컨센서스 리뷰
+│   ├── multi-ai-review/       # 범용 합의 엔진 (5개 도메인 프리셋)
 │   ├── security-review/       # 보안 스캔
 │   ├── multi-ai-run/          # 병렬 실행
-│   ├── orchestrate-standalone/# 대규모 오케스트레이션
+│   ├── team-orchestrate/       # 대규모 오케스트레이션
 │   ├── checkpoint/            # 진행 관리
 │   ├── tasks-init/            # 태스크 생성
 │   ├── tasks-migrate/         # 태스크 마이그레이션
@@ -310,7 +310,7 @@ cd project-team
 | 스킬 | 요구사항 |
 |------|----------|
 | 모든 스킬 | Claude Code CLI |
-| `/multi-ai-review` | `gemini` CLI, `codex` CLI (선택) |
+| `/multi-ai-review` | `gemini` CLI, `codex` CLI (선택) — 5개 도메인 프리셋 (code-review, market-regime, investment, risk-assessment, default) |
 | `/agile`, `/audit` | `playwright` MCP (선택, 브라우저 테스트용) |
 
 ### Project Team 훅용

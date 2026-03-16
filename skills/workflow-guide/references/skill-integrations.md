@@ -16,13 +16,13 @@
 │   └─ /agile auto (Claude 직접 작성)                     │
 │                                                         │
 │ 🏢 중규모 (30~80개)                                      │
-│   └─ /orchestrate-standalone (의존성 기반 병렬 실행)    │
+│   └─ /team-orchestrate (의존성 기반 병렬 실행)          │
 │                                                         │
 │ 🏃 스프린트 (50~200개) - 사용자 리뷰 게이트 필요         │
-│   └─ /orchestrate-standalone --mode=sprint             │
+│   └─ /team-orchestrate --mode=sprint                   │
 │                                                         │
 │ 🌊 대규모 (80~200개) - Wave profile                      │
-│   └─ /orchestrate-standalone --mode=wave               │
+│   └─ /team-orchestrate --mode=wave                     │
 │                                                         │
 │ 🏛️ 거버넌스 (태스크 10+ + 복잡/협업 조건)                │
 │   └─ /governance-setup (Phase 0: PM/Architect/QA/DBA)   │
@@ -86,8 +86,8 @@
 "Gemini로 디자인"               → /multi-ai-run --model=gemini
 "컨텍스트 압축해줘"             → /compress
 "문서가 너무 길어"              → /compress optimize
-"스프린트로 실행해줘"           → /orchestrate-standalone --mode=sprint
-"자율 실행해줘"                 → /orchestrate-standalone --mode=auto
+"스프린트로 실행해줘"           → /team-orchestrate --mode=sprint
+"자율 실행해줘"                 → /team-orchestrate --mode=auto
 "칸반 보드 보여줘"              → /task-board show
 "보드 보여줘"                   → /task-board show
 "blocked 태스크 확인"           → /task-board health

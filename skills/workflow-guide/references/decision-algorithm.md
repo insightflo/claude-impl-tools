@@ -60,8 +60,8 @@ ALGORITHM get_recommendation():
   # ⑥ 구현/배포 판단 (거버넌스 완료 + 인프라 준비)
   IF GOVERNANCE_DONE == "yes" AND AGENT_COUNT > 0:
     IF all_tasks_completed: RETURN "/audit"
-    IF incomplete_tasks >= 80: RETURN "/orchestrate-standalone --mode=wave"
-    IF incomplete_tasks >= 30: RETURN "/orchestrate-standalone"
+    IF incomplete_tasks >= 80: RETURN "/team-orchestrate --mode=wave"
+    IF incomplete_tasks >= 30: RETURN "/team-orchestrate"
     ELSE: RETURN "/agile auto"
 
   # ⑦ 소규모 신규 구현
@@ -83,8 +83,8 @@ ALGORITHM get_recommendation():
 | S1 (tasks-init 후) | 20 tasks, domain<2, 코드 없음 | ③ skip, ④ skip(20<30), ⑦ → /agile auto | ✅ `/agile auto` |
 | S2 (100 tasks, 12 domains) | 코드 없음, GOVERNANCE_DONE=no | ③ skip, ④ 100>=30 → /governance-setup | ✅ `/governance-setup` |
 | S2 (거버넌스 후, agents=0) | GOVERNANCE_DONE=yes, AGENT_COUNT=0 | ⑤ → project-team/install.sh | ✅ `install.sh` |
-| S2 (설치 후) | GOVERNANCE_DONE=yes, AGENT_COUNT>0, incomplete=100 | ⑥ incomplete>=80 → /orchestrate-standalone --mode=wave | ✅ `/orchestrate-standalone --mode=wave` |
-| S2 (실행중, incomplete=50) | GOVERNANCE_DONE=yes, AGENT_COUNT>0, incomplete=50 | ⑥ 30<=incomplete<80 → /orchestrate-standalone | ✅ `/orchestrate-standalone` |
+| S2 (설치 후) | GOVERNANCE_DONE=yes, AGENT_COUNT>0, incomplete=100 | ⑥ incomplete>=80 → /team-orchestrate --mode=wave | ✅ `/team-orchestrate --mode=wave` |
+| S2 (실행중, incomplete=50) | GOVERNANCE_DONE=yes, AGENT_COUNT>0, incomplete=50 | ⑥ 30<=incomplete<80 → /team-orchestrate | ✅ `/team-orchestrate` |
 | S3 (유지보수) | source_code EXISTS, AGENT_COUNT=0, GOVERNANCE_DONE=no, incomplete>0 | ③ → /agile iterate | ✅ `/agile iterate` |
 | S5 (배포 직전) | GOVERNANCE_DONE=yes, AGENT_COUNT>0, all_completed | ⑥ → /audit | ✅ `/audit` |
 | S6 (복구-state) | orchestrate-state.json + 미완료 태스크 | ①a → /recover | ✅ `/recover` |

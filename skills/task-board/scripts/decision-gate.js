@@ -18,7 +18,7 @@ const { findTasksFile, updateTaskCheckboxes } = requireFirst([
   path.join(__dirname, '../../../hooks/task-sync.js'),
 ]);
 const { loadState, resolveDecision } = requireFirst([
-  path.join(__dirname, '../../orchestrate-standalone/scripts/engine/state.js'),
+  path.join(__dirname, '../../team-orchestrate/scripts/engine/state.js'),
 ]);
 
 function parseArgs(argv) {

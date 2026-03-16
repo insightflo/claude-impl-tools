@@ -4,12 +4,12 @@
  *
  * [파일 목적] TASKS.md를 파싱하여 도메인별 작업을 분류하고 팀 형성 프롬프트를 생성
  * [주요 흐름]
- *   1. TASKS.md 파싱 (scheduler.js의 parseTasks 재사용)
+ *   1. TASKS.md 파싱 (내장 파서)
  *   2. 도메인별 작업 분류
  *   3. 팀원 배정 (team-topology.json 매핑)
  *   4. 팀 형성 프롬프트 JSON 출력
- * [외부 연결] scheduler.js (parseTasks), team-topology.json (매핑)
- * [수정시 주의] parseTasks의 TASKS.md 포맷 변경 시 영향 있음
+ * [외부 연결] team-topology.json (매핑)
+ * [수정시 주의] TASKS.md 포맷 변경 시 parseTasks 수정 필요
  */
 
 'use strict';
@@ -17,24 +17,8 @@
 const fs = require('fs');
 const path = require('path');
 
-// scheduler.js의 parseTasks 재사용
-const schedulerPath = path.join(
-  __dirname,
-  '..',
-  '..',
-  'orchestrate-standalone',
-  'scripts',
-  'engine',
-  'scheduler.js'
-);
-
-let parseTasks;
-try {
-  ({ parseTasks } = require(schedulerPath));
-} catch {
-  // scheduler.js를 찾을 수 없으면 내장 파서 사용
-  parseTasks = null;
-}
+// TASKS.md 파서 (내장)
+const parseTasks = null;
 
 // ---------------------------------------------------------------------------
 // Configuration

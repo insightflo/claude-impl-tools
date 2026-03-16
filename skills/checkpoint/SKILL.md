@@ -152,10 +152,10 @@ AI 멀티: /multi-ai-review 선택적 호출
   - Fail → 수정 후 재체크포인트
 ```
 
-### /orchestrate-standalone 연동
+### /team-orchestrate 연동
 
 ```yaml
-/orchestrate-standalone (태스크 완료)
+/team-orchestrate (태스크 완료)
     ↓
 /checkpoint 자동 호출 (post-task 게이트)
     ↓

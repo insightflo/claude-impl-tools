@@ -18,32 +18,9 @@ node "$ROOT_DIR/skills/whitebox/scripts/whitebox-control.js" list --project-dir=
 node "$ROOT_DIR/skills/whitebox/scripts/whitebox-control.js" show --project-dir="$FIXTURE_DIR" --gate-id=gate-pass3-1 --json 2>&1 | tee "$EVIDENCE_DIR/pass-3-approvals-show.json"
 node "$ROOT_DIR/skills/whitebox/scripts/whitebox-explain.js" --task-id=T0.1 --project-dir="$FIXTURE_DIR" --json 2>&1 | tee "$EVIDENCE_DIR/pass-3-explain-pending.json"
 
-node - "$ROOT_DIR" "$FIXTURE_DIR" > "$EVIDENCE_DIR/pass-3-applier.json" 2>&1 <<'EOF' &
-const path = require('path');
-
-const rootDir = process.argv[2];
-const projectDir = process.argv[3];
-const orchestrator = require(path.join(rootDir, 'skills/orchestrate-standalone/scripts/auto/auto-orchestrator.js'));
-const engineAdapter = require(path.join(rootDir, 'skills/orchestrate-standalone/scripts/auto/engine-adapter.js'));
-
-(async () => {
-  const autoState = engineAdapter.loadAutoState(projectDir);
-  const result = await orchestrator.waitForFileGateDecision(autoState, 'Final Gate', 'Pass 3 gate preview', {
-    projectDir,
-    stage: 'final_gate',
-    approvalPollIntervalMs: 10,
-    approvalWaitMs: 1000,
-  });
-  process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-})().catch((error) => {
-  process.stderr.write(`${error.message}\n`);
-  process.exit(1);
-});
-EOF
-APPLIER_PID=$!
-
+# auto-orchestrator/engine-adapter removed with orchestrate-standalone
+# Approval flow now tested via whitebox control directly
 node "$ROOT_DIR/skills/whitebox/scripts/whitebox-control.js" approve --project-dir="$FIXTURE_DIR" --gate-id=gate-pass3-1 --json 2>&1 | tee "$EVIDENCE_DIR/pass-3-approvals-approve.json"
-wait "$APPLIER_PID"
 
 node "$ROOT_DIR/skills/whitebox/scripts/whitebox-control-state.js" --project-dir="$FIXTURE_DIR" --json 2>&1 | tee "$EVIDENCE_DIR/pass-3-control-state-after.json"
 cargo build --manifest-path "$ROOT_DIR/skills/task-board/tui/Cargo.toml" 2>&1 | tee "$EVIDENCE_DIR/pass-3-cargo.txt"
