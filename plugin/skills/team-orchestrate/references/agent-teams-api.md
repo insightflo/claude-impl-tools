@@ -1,221 +1,68 @@
 # Agent Teams API Reference
 
-> Native Claude Code Agent Teams tools for programmatic team control.
-> Discovered 2026-03-16 — these tools replace the "natural language only" assumption.
-
-## Available Tools
-
-### TeamCreate
-
-Creates a team + shared task list.
-
-```json
-{
-  "team_name": "my-project",
-  "description": "Working on feature X",
-  "agent_type": "team-lead"
-}
-```
-
-Creates:
-- `~/.claude/teams/{team-name}.json` (team config)
-- `~/.claude/tasks/{team-name}/` (shared task list)
-
-### TaskCreate
-
-Creates a task in the team's shared task list.
-
-```json
-{
-  "subject": "Implement User API",
-  "description": "Create CRUD endpoints for user domain",
-  "activeForm": "Implementing User API"
-}
-```
-
-- Status starts as `pending`
-- Use TaskUpdate to set `owner`, `status`, `blocks`, `blockedBy`
-
-### TaskUpdate
-
-Updates task status, owner, dependencies.
-
-```json
-{
-  "task_id": "1",
-  "status": "in_progress",
-  "owner": "architecture-lead"
-}
-```
-
-### TaskList
-
-Lists all tasks in the team's task list. Returns id, subject, status, owner, blockedBy.
-
-### TaskGet
-
-Gets full details of a specific task by ID.
-
-### Agent (with team_name)
-
-Spawns a teammate that joins the team.
-
-```json
-{
-  "subagent_type": "builder",
-  "team_name": "my-project",
-  "name": "architecture-lead",
-  "prompt": "You are the architecture lead. Check TaskList for your assigned tasks."
-}
-```
-
-Key parameters for Agent Teams:
-- `team_name`: Associates agent with the team (required for teammate)
-- `name`: Teammate name (used for messaging, task ownership)
-- `subagent_type`: Agent type (determines available tools)
-
-### SendMessage
-
-Sends messages between teammates.
-
-```json
-{
-  "to": "architecture-lead",
-  "message": "Start working on task #1",
-  "summary": "Assign task #1"
-}
-```
-
-Protocol messages:
-- `{ "type": "shutdown_request" }` — graceful shutdown
-- `{ "type": "plan_approval_response", "approve": true }` — plan approval
-
-Broadcast: `"to": "*"` sends to all teammates (use sparingly).
+Claude Code의 네이티브 Agent Teams API 상세 참조.
 
 ---
 
-## Complete Workflow
+## TeamCreate
 
+팀과 공유 작업 리스트를 생성합니다.
+
+```javascript
+TeamCreate(
+  team_name: string,      // 팀 식별자 (필수)
+  description: string,    // 팀 목적 설명 (필수)
+  agent_type?: string     // 팀 리드 에이전트 타입 (선택, 기본값: general-purpose)
+)
 ```
-Step 1: Create team
-  TeamCreate(team_name="customs-flo", description="CustomsFlo3 implementation")
 
-Step 2: Create tasks (from TASKS.md analysis)
-  TaskCreate(subject="T1.1: User API design", description="...")
-  TaskCreate(subject="T1.2: User API impl", description="...")
-  TaskCreate(subject="T2.1: Dashboard UI", description="...")
+**반환값**:
+- `team_file_path`: 팀 설정 파일 경로
+- `team_name`: 생성된 팀 이름
 
-Step 3: Set dependencies
-  TaskUpdate(task_id="2", blockedBy=["1"])
+---
 
-Step 4: Spawn teammates
-  Agent(subagent_type="builder", team_name="customs-flo", name="architecture-lead",
-        prompt="You are architecture-lead. Check TaskList for assigned tasks...")
-  Agent(subagent_type="designer", team_name="customs-flo", name="design-lead",
-        prompt="You are design-lead. Check TaskList for assigned tasks...")
+## Agent (team_name 필수)
 
-Step 5: Assign tasks
-  TaskUpdate(task_id="1", owner="architecture-lead")
-  TaskUpdate(task_id="3", owner="design-lead")
-
-Step 6: Teammates work autonomously
-  - Each teammate checks TaskList, works on owned tasks
-  - Marks tasks complete via TaskUpdate
-  - Communicates via SendMessage
-  - Goes idle between turns (normal behavior)
-
-Step 7: Shutdown
-  SendMessage(to="architecture-lead", message={ "type": "shutdown_request" })
-  SendMessage(to="design-lead", message={ "type": "shutdown_request" })
+```javascript
+Agent(
+  subagent_type: string,   // 에이전트 타입
+  team_name: string,       // 팀 이름 (필수 - 없으면 통신 불가)
+  name: string,            // 팀메이트 식별자 (필수)
+  prompt: string,          // 에이전트 프롬프트
+  run_in_background?: boolean
+)
 ```
 
 ---
 
-## 3-Level Architecture
+## TaskCreate / TaskUpdate / TaskList
 
-```
-Level 0: Agent Team (TeamCreate + Agent with team_name)
-  team-lead (this session)
-  ├── architecture-lead (Teammate) — mailbox, shared tasks
-  ├── qa-lead (Teammate)
-  └── design-lead (Teammate)
+```javascript
+// 작업 생성
+TaskCreate(subject, description)
 
-Level 1: Teammate internals (Task tool for subagents)
-  architecture-lead
-    └── Task(builder), Task(reviewer)
+// 상태/소유자/의존성 업데이트
+TaskUpdate(taskId, status, owner, addBlockedBy)
 
-Level 2: Subagent internals (Bash for external CLI)
-  builder
-    └── Bash("echo '...' | gemini")
-```
-
-- Level 0: Native Agent Teams (TeamCreate, SendMessage, shared TaskList)
-- Level 1: Regular subagent delegation (Task tool within teammate)
-- Level 2: External CLI invocation (Bash within subagent)
-
----
-
-## Key Constraints
-
-1. **No nested teams** — teammates cannot create teams (no TeamCreate tool)
-2. **No subagent spawn from teammate** — teammates have no Agent tool
-3. **Flat hierarchy only** — team-lead is the sole orchestrator, all teammates are peers
-4. No teammate modification after spawn — cannot change tools/model
-5. Teammates go idle between turns — this is normal, not an error
-6. Send shutdown_request for graceful termination
-7. Task ownership via TaskUpdate(owner=name), not via SendMessage
-8. All teammates share the same permission mode as the lead
-9. Teammates have their own context window (independent from lead)
-
-## Tested and Verified (2026-03-16)
-
-| Test | Result |
-|------|--------|
-| TeamCreate from lead | ✅ Works |
-| TaskCreate/TaskUpdate from lead | ✅ Works |
-| Agent(team_name) spawn teammate | ✅ Works |
-| TaskList/TaskUpdate from teammate | ✅ Works |
-| TeamCreate from teammate | ❌ Tool not available |
-| Agent tool from teammate | ❌ Tool not available |
-| Nested Team A → subagent → Team B | ❌ Impossible (teammate has no Agent/TeamCreate) |
-
-**Conclusion**: 3-level hierarchy (lead → domain-lead → worker) requires ALL agents
-to be spawned as flat teammates by the lead. Domain leads serve as coordinators
-via SendMessage, not as sub-team managers.
-
-## Anthropic Official Pattern (feature-dev plugin)
-
-Anthropic's own `feature-dev` plugin (github.com/anthropics/claude-code/plugins/feature-dev)
-does NOT use TeamCreate. Instead it uses Agent() parallel spawn pattern:
-- Launch 2-3 read-only subagents in parallel (code-explorer, code-architect, code-reviewer)
-- Lead collects results and makes decisions
-- Implementation is done by the lead, not subagents
-
-Two valid patterns:
-| Pattern | Tools | Use case |
-|---------|-------|----------|
-| **Structured** (feature-dev) | Agent() parallel spawn | Phase-based workflow, lead controls |
-| **Autonomous** (TeamCreate) | TeamCreate + SendMessage | Long-running parallel, self-organizing |
-
-Our team-orchestrate v3.0 uses the Autonomous pattern with logical hierarchy.
-
----
-
-## File Locations
-
-```
-~/.claude/teams/{team-name}.json          — team config (members array)
-~/.claude/teams/{team-name}/inboxes/      — mailbox per teammate
-~/.claude/tasks/{team-name}/              — shared task list (1.json, 2.json, ...)
+// 작업 목록 조회
+TaskList()
 ```
 
 ---
 
-## Hooks (fire for Agent Teams only)
+## SendMessage
 
-| Hook | When | Input |
-|------|------|-------|
-| TeammateIdle | Teammate finishes a turn | `{ teammate_name, team_name }` |
-| TaskCompleted | Task marked complete | `{ task_id, task_subject, teammate_name, team_name }` |
+```javascript
+SendMessage(
+  to: string,              // 수신자 이름 (또는 "*" for broadcast)
+  message: string | object,
+  summary?: string
+)
+```
 
-Exit code 2 from hook → feedback loop (teammate continues working).
+**프로토콜 타입**:
+- `shutdown_request`: 종료 요청
+- `shutdown_response`: 종료 응답
+- `plan_approval_request`: 계획 승인 요청
+- `plan_approval_response`: 계획 승인 응답
