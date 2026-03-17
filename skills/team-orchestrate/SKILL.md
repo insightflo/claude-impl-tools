@@ -29,14 +29,25 @@ updated: 2026-03-17
 
 ## Prerequisite Checks (auto-run on activation)
 
+> **CRITICAL**: All checks below are HARD BLOCKERS. If any check fails, STOP immediately and do not proceed to TeamCreate or any execution step. Tell the user exactly what is missing and how to fix it.
+
 1. **TASKS.md exists**: Must be at project root.
-   - Missing → "Create one first with `/tasks-init`."
+   - Missing → STOP. "Create one first with `/tasks-init`."
 
 2. **TASKS.md format**: Must include `deps:` and `domain:` fields.
-   - Invalid → "Convert with `/tasks-migrate`."
+   - Invalid → STOP. "Convert with `/tasks-migrate`."
 
 3. **Agent Teams enabled**: `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` in settings.
-   - Missing → "Run `project-team/install.sh --local --mode=team`."
+   - Missing → STOP. "Run `project-team/install.sh --local --mode=team`."
+
+4. **Project-level hooks installed**: `.claude/hooks/` must exist and contain at minimum `quality-gate.js`, `pre-edit-impact-check.js`, `security-scan.js`.
+   - Missing → STOP. "Run `bash ~/.claude/claude-impl-tools/project-team/install.sh --local` from the project root first. Hooks are mandatory — without them, agents run with no quality gates."
+
+5. **Project-level settings.json registered**: `.claude/settings.json` must exist and reference the hooks.
+   - Missing → STOP. "Hook files exist but are not registered. Re-run `install.sh --local` to register them in `.claude/settings.json`."
+
+6. **governance-setup completed** (recommended): `.claude/collab/decisions/` should contain at least one ADR, and `.claude/collab/reports/` should have a baseline report.
+   - Missing → WARN (non-blocking). "Consider running `/governance-setup` first to establish standards before team execution."
 
 ---
 
@@ -74,6 +85,9 @@ Logical hierarchy (enforced by prompts + SendMessage):
 ---
 
 ## Execution Steps (MUST follow exactly)
+
+> **Before Step 1**: All 6 prerequisite checks must PASS. If checks 1-5 fail, do not proceed.
+> Recommended prior steps: `/governance-setup` → `install.sh --local` → `/tasks-migrate` → then here.
 
 ### Step 1: Analyze TASKS.md
 
