@@ -202,10 +202,10 @@ prompt_install_mode() {
     printf "  ${BOLD}2)${NC} Local install   ${CYAN}(.claude/)${NC}\n"
     printf "\n"
 
-    # 파이프 환경에서는 global 기본값
+    # 파이프 환경에서는 local(프로젝트) 기본값 — 의도치 않은 전역 설치 방지
     if [ ! -t 0 ]; then
-        INSTALL_MODE="global"
-        log_info "Non-interactive: defaulting to global install"
+        INSTALL_MODE="local"
+        log_info "Non-interactive: defaulting to local (project) install"
         return
     fi
 
