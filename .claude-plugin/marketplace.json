@@ -1,0 +1,20 @@
+{
+  "name": "insightflo",
+  "owner": {
+    "name": "Insightflo Team"
+  },
+  "metadata": {
+    "description": "Implementation skill pack for Claude Code — Agent Teams orchestration, governance, and multi-AI review"
+  },
+  "plugins": [
+    {
+      "name": "claude-impl-tools",
+      "source": ".",
+      "description": "21 skills for Agent Teams orchestration, governance hooks, multi-AI review, and project management",
+      "author": {
+        "name": "insightflo"
+      },
+      "category": "development"
+    }
+  ]
+}
