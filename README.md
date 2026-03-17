@@ -12,24 +12,10 @@ A plugin of **21 skills** for Claude Code. Skills auto-install project-level hoo
 
 ### Option 1: Plugin Install (Recommended)
 
-Add marketplace to `~/.claude/settings.json`:
-
-```json
-{
-  "extraKnownMarketplaces": {
-    "insightflo": {
-      "source": {
-        "source": "github",
-        "repo": "insightflo/claude-impl-tools"
-      }
-    }
-  }
-}
-```
-
-Then install:
+Launch Claude Code, then run:
 
 ```
+/plugin marketplace add insightflo/claude-impl-tools
 /plugin install claude-impl-tools@insightflo
 ```
 

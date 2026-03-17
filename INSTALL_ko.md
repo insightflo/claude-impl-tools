@@ -2,21 +2,10 @@
 
 ## 방법 1: 플러그인 (권장)
 
-### 1단계: Marketplace 등록
+### 1단계: Marketplace 추가
 
-`~/.claude/settings.json`에 추가:
-
-```json
-{
-  "extraKnownMarketplaces": {
-    "insightflo": {
-      "source": {
-        "source": "github",
-        "repo": "insightflo/claude-impl-tools"
-      }
-    }
-  }
-}
+```
+/plugin marketplace add insightflo/claude-impl-tools
 ```
 
 ### 2단계: 플러그인 설치

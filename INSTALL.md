@@ -2,21 +2,10 @@
 
 ## Method 1: Plugin (Recommended)
 
-### Step 1: Register marketplace
+### Step 1: Add marketplace
 
-Add to `~/.claude/settings.json`:
-
-```json
-{
-  "extraKnownMarketplaces": {
-    "insightflo": {
-      "source": {
-        "source": "github",
-        "repo": "insightflo/claude-impl-tools"
-      }
-    }
-  }
-}
+```
+/plugin marketplace add insightflo/claude-impl-tools
 ```
 
 ### Step 2: Install plugin

@@ -12,24 +12,10 @@ Claude Code용 **21개 스킬** 플러그인. 스킬 실행 시 프로젝트 레
 
 ### 옵션 1: 플러그인 설치 (권장)
 
-`~/.claude/settings.json`에 marketplace 추가:
-
-```json
-{
-  "extraKnownMarketplaces": {
-    "insightflo": {
-      "source": {
-        "source": "github",
-        "repo": "insightflo/claude-impl-tools"
-      }
-    }
-  }
-}
-```
-
-설치:
+Claude Code에서 실행:
 
 ```
+/plugin marketplace add insightflo/claude-impl-tools
 /plugin install claude-impl-tools@insightflo
 ```
 
