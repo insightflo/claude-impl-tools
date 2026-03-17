@@ -220,3 +220,4 @@ MIT License - Copyright (c) 2026 Insightflo Team
 ---
 
 **[English](./README.md) | [한국어](./README_ko.md)**
+
