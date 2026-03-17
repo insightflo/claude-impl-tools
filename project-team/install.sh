@@ -689,9 +689,10 @@ if (Object.keys(outputHooks).length > 0) {
   delete result.hooks;
 }
 
-// Agent Teams 모드일 때 실험적 기능 플래그 추가
+// Agent Teams 모드일 때 실험적 기능 플래그 및 tmux 모드 추가
 if (process.env.INSTALL_MODE_NAME === 'team') {
   result.env = { ...(result.env || {}), CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1' };
+  result.preferences = { ...(result.preferences || {}), teammateMode: 'tmux' };
 } else if (result.env && result.env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS) {
   delete result.env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS;
   if (Object.keys(result.env).length === 0) delete result.env;
