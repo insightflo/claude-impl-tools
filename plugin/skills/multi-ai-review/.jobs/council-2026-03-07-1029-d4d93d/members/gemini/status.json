@@ -1,0 +1,9 @@
+{
+  "member": "gemini",
+  "state": "error",
+  "startedAt": "2026-03-07T10:29:55.565Z",
+  "command": "gemini --model gemini-3-flash-preview --output-format text -p",
+  "pid": 35099,
+  "message": "Worker died unexpectedly (PID 35099 not found)",
+  "finishedAt": "2026-03-07T10:30:09.313Z"
+}

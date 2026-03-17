@@ -151,7 +151,7 @@ download_repo() {
 install_skills() {
     header "Installing Skills"
 
-    local source_dir="$INSTALL_DIR/skills"
+    local source_dir="$INSTALL_DIR/plugin/skills"
     local count=0
 
     mkdir -p "$SKILLS_TARGET"

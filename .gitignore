@@ -123,3 +123,6 @@ target/
 # LICENSE                    - 라이선스
 # TASKS.md                   - 개발 태스크 (참고용)
 # ============================================
+.claude/settings.json
+.claude/backups/
+plugin/skills/multi-ai-review/.jobs/

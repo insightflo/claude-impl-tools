@@ -1,0 +1,407 @@
+OpenAI Codex v0.107.0 (research preview)
+--------
+workdir: /Users/kwak/Projects/ai/claude-imple-skills
+model: gpt-5.3-codex
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019cc053-e966-7431-9a7a-6fd962185202
+--------
+user
+workflow-guide v4.9.3 알고리즘 검증 (Round 15)
+
+## v4.9.3 변경 사항
+
+### HIGH 수정:
+1. **bash step 4**: `grep -c || echo 0` → `grep -q` + if/else + OR 플래그 패턴으로 교체
+2. **S6 시나리오 분리**: state 복구(①a)와 merge conflict 복구(①b)를 별도 행으로 분리
+3. **S2-running 전제 조건**: "state 파일 미존재 (이전 실행 정상 완료 후 clearState됨)" 명시
+
+---
+
+## 검증 대상
+
+### bash step 4 (수정 후):
+```bash
+# 4. 중단된 작업 확인
+# ⚠️ 레거시/신규 경로 모두 확인 — 하나라도 미완료 태스크 있으면 INCOMPLETE_IN_STATE=1 (OR 판정)
+# ⚠️ grep -q 사용: grep -c || echo 0 은 no-match 시 "0\n0" 이중 출력 버그 있음
+INCOMPLETE_IN_STATE=0
+for STATE_PATH in ".claude/orchestrate-state.json" ".claude/orchestrate/orchestrate-state.json"; do
+  if [ -f "$STATE_PATH" ]; then
+    if grep -qE '"status"[[:space:]]*:[[:space:]]*"(in_progress|pending)"' "$STATE_PATH" 2>/dev/null; then
+      INCOMPLETE_IN_STATE=1
+      echo "state_file=$STATE_PATH incomplete_in_state=1 (중단 감지)"
+    else
+      echo "state_file=$STATE_PATH incomplete_in_state=0 (완료 상태)"
+    fi
+  fi
+done
+echo "INCOMPLETE_IN_STATE=$INCOMPLETE_IN_STATE"
+```
+
+### 알고리즘 ①:
+```
+IF (state file EXISTS) AND (INCOMPLETE_IN_STATE > 0):
+  RETURN "/recover"
+
+IF git merge conflicts exist (git diff --diff-filter=U 결과 있음):
+  RETURN "/recover"
+```
+
+### 시나리오 테이블 (변경된 행):
+| S2 (실행중, incomplete=50) | GOVERNANCE_DONE=yes, AGENT_COUNT>0, incomplete=50, **state 파일 미존재** (이전 실행 정상 완료 후 clearState됨) | ① skip(state없음), ⑥ 30<=incomplete<80 → /orchestrate-standalone | ✅ `/orchestrate-standalone` |
+| S6 (복구-state) | orchestrate-state.json 존재 AND 미완료(in_progress/pending) 태스크 있음 | ①a state+incomplete>0 → /recover | ✅ `/recover` |
+| S6 (복구-merge) | git merge conflicts 존재 (git diff --diff-filter=U) | ①b merge conflict → /recover | ✅ `/recover` |
+
+---
+
+## 검증 요청
+
+1. **bash step 4 수정 정확성**: grep -q 패턴이 올바르게 작동하는가?
+   - no-match 시 exit code 1 → INCOMPLETE_IN_STATE stays 0 (정상)
+   - match 시 exit code 0 → INCOMPLETE_IN_STATE=1 (정상)
+   - 두 경로 모두 체크 후 OR 결과 반영되는가?
+   - 변수 초기화(=0)와 최종 echo가 올바르게 배치되었는가?
+
+2. **시나리오 분리 완전성**: S6를 두 행으로 나눈 것이 알고리즘과 일치하는가?
+   - ①a (state+incomplete) 케이스가 정확한가?
+   - ①b (merge conflict) 케이스가 정확한가?
+
+3. **S2-running 해석**: "state 파일 미존재" 전제조건이 현실적인가?
+   - orchestrate.sh 실행 후 state 파일이 항상 남는다면, "미존재" 전제가 성립하는 경우는?
+
+4. **CRITICAL/HIGH 잔존 여부**: v4.9.3 수정 후 알고리즘에 남은 CRITICAL/HIGH 이슈가 있는가?
+
+결과를 CRITICAL/HIGH/MEDIUM/LOW/PASS 등급으로 명확히 제시해 주세요.
+mcp: pencil starting
+mcp: pencil ready
+mcp startup: ready: pencil
+codex
+요청하신 v4.9.3 검증을 코드 기준으로 확인하겠습니다. 먼저 저장소에서 `workflow-guide`의 실제 스크립트/시나리오 표를 찾아 현재 반영 상태와 알고리즘 일치 여부를 대조하겠습니다.
+exec
+/bin/zsh -lc "rg --files | rg \"workflow-guide|orchestrate|recover|TASKS|README|SKILL\\.md\"" in /Users/kwak/Projects/ai/claude-imple-skillsexec
+/bin/zsh -lc "pwd && rg -n \"workflow-guide|v4\\.9\\.3|INCOMPLETE_IN_STATE|orchestrate-state|S6|merge conflict|diff-filter=U|grep -qE|clearState|state 파일\" -S ." in /Users/kwak/Projects/ai/claude-imple-skills succeeded in 52ms:
+README_ko.md
+README.md
+skills/multi-ai-run/SKILL.md
+skills/security-review/SKILL.md
+skills/quality-auditor/SKILL.md
+project-team/services/README.md
+skills/tasks-migrate/SKILL.md
+skills/governance-setup/SKILL.md
+skills/architecture/SKILL.md
+skills/impact/SKILL.md
+skills/changelog/SKILL.md
+skills/workflow-guide/SKILL.md
+skills/agile/SKILL.md
+skills/coverage/SKILL.md
+skills/recover/SKILL.md
+skills/recover/README.md
+skills/checkpoint/SKILL.md
+skills/context-optimize/SKILL.md
+project-team/README.md
+skills/statusline/SKILL.md
+ succeeded in 50ms:
+/Users/kwak/Projects/ai/claude-imple-skills
+./skills/tasks-migrate/SKILL.md:201:- `/workflow-guide` — 마이그레이션 필요 여부 진단
+./README.md:202:│   ├── workflow-guide/        # Meta hub
+./skills/task-board/SKILL.md:3:description: AI 에이전트 태스크를 실시간 칸반 보드로 시각화합니다. TASKS.md + orchestrate-state + REQ 파일을 통합하여 board-state.json을 생성하고 터미널에 렌더링합니다.
+./skills/task-board/SKILL.md:13:> TASKS.md + `.claude/orchestrate-state.json` + `.claude/collab/requests/` 를 통합하여
+./skills/task-board/SKILL.md:18:- **단일 진실 원천**: `TASKS.md` + `orchestrate-state.json` 이 canonical. `board-state.json`은 파생 데이터.
+./skills/task-board/SKILL.md:34:TASKS.md + orchestrate-state + REQ 파일에서 `board-state.json` 재생성:
+./skills/task-board/SKILL.md:81:| 컬럼 | orchestrate-state 상태 | REQ 상태 |
+./README_ko.md:206:│   ├── workflow-guide/        # 메타 허브
+./skills/workflow-guide/SKILL.md:2:name: workflow-guide
+./skills/workflow-guide/SKILL.md:4:trigger: /workflow, /workflow-guide, "뭐해야해?", "어떤 스킬", "워크플로우 추천"
+./skills/workflow-guide/SKILL.md:135:# ⚠️ 레거시/신규 경로 모두 확인 — 하나라도 미완료 태스크 있으면 INCOMPLETE_IN_STATE=1 (OR 판정)
+./skills/workflow-guide/SKILL.md:137:INCOMPLETE_IN_STATE=0
+./skills/workflow-guide/SKILL.md:138:for STATE_PATH in ".claude/orchestrate-state.json" ".claude/orchestrate/orchestrate-state.json"; do
+./skills/workflow-guide/SKILL.md:140:    if grep -qE '"status"[[:space:]]*:[[:space:]]*"(in_progress|pending)"' "$STATE_PATH" 2>/dev/null; then
+./skills/workflow-guide/SKILL.md:141:      INCOMPLETE_IN_STATE=1
+./skills/workflow-guide/SKILL.md:148:echo "INCOMPLETE_IN_STATE=$INCOMPLETE_IN_STATE"
+./skills/workflow-guide/SKILL.md:153:# ⚠️ merge conflict 감지 (git dirty 는 정상 — /recover 불필요)
+./skills/workflow-guide/SKILL.md:154:CONFLICT_FILES=$(git diff --name-only --diff-filter=U 2>/dev/null | wc -l | tr -d ' ')
+./skills/workflow-guide/SKILL.md:208:# CONFLICT_FILES>0  → git merge conflicts exist (git diff --diff-filter=U 결과)
+codex
+`workflow-guide` 본문과 `orchestrate-standalone`의 실제 state 처리 코드를 함께 확인해서, 시나리오 전제가 문서/구현과 일치하는지 교차 검증하겠습니다.
+exec
+/bin/zsh -lc "nl -ba skills/workflow-guide/SKILL.md | sed -n '120,240p'" in /Users/kwak/Projects/ai/claude-imple-skillsexec
+/bin/zsh -lc "nl -ba skills/workflow-guide/SKILL.md | sed -n '260,380p'" in /Users/kwak/Projects/ai/claude-imple-skills succeeded in 51ms:
+   120	
+   121	```bash
+   122	# 1. 기획 문서 확인
+   123	ls docs/planning/*.md 2>/dev/null
+   124	
+   125	# 2. 태스크 파일 확인 (둘 중 하나만 있어도 OK)
+   126	# 권장: 루트 TASKS.md / 레거시: docs/planning/06-tasks.md
+   127	ls TASKS.md 2>/dev/null || ls docs/planning/06-tasks.md 2>/dev/null
+   128	
+   129	# 3. 코드 베이스 확인 (source_code = src/·app/·lib/ 디렉토리에 실제 코드 파일이 있어야 함)
+   130	# package.json만 있는 신규 프로젝트는 source_code로 보지 않음
+   131	SOURCE_CODE=$(find src/ app/ lib/ -maxdepth 3 -type f \( -name "*.ts" -o -name "*.js" -o -name "*.py" -o -name "*.go" -o -name "*.rs" \) 2>/dev/null | head -1)
+   132	echo "source_code=${SOURCE_CODE:+yes}"
+   133	
+   134	# 4. 중단된 작업 확인
+   135	# ⚠️ 레거시/신규 경로 모두 확인 — 하나라도 미완료 태스크 있으면 INCOMPLETE_IN_STATE=1 (OR 판정)
+   136	# ⚠️ grep -q 사용: grep -c || echo 0 은 no-match 시 "0\n0" 이중 출력 버그 있음
+   137	INCOMPLETE_IN_STATE=0
+   138	for STATE_PATH in ".claude/orchestrate-state.json" ".claude/orchestrate/orchestrate-state.json"; do
+   139	  if [ -f "$STATE_PATH" ]; then
+ succeeded in 51ms:
+   260	    IF incomplete_tasks >= 80: RETURN "/orchestrate-standalone --mode=wave"
+   261	    IF incomplete_tasks >= 30: RETURN "/orchestrate-standalone"
+   262	    ELSE: RETURN "/agile auto"
+   263	
+   264	  # ⑦ 소규모 신규 구현 (거버넌스 불필요, 코드 없음, 미완료 태스크 있음)
+   265	  IF TASK_COUNT > 0 AND TASK_COUNT < 30 AND incomplete_tasks > 0:
+   266	    RETURN "/agile auto"
+   267	
+   268	  # ⑧ 완료
+   269	  IF all_tasks_completed:
+   270	    RETURN "/audit"
+   271	```
+   272	
+   273	**시나리오별 추적 검증:**
+   274	
+   275	| 시나리오 | 초기 상태 | 알고리즘 경로 | 예상 추천 |
+   276	|---------|-----------|--------------|----------|
+   277	| S1 (새 프로젝트) | TASKS.md 없음 | ② → /tasks-init | ✅ `/tasks-init` |
+   278	| S1 (tasks-init 후) | 20 tasks, domain<2, 코드 없음 | ③ skip, ④ skip(20<30), ⑦ → /agile auto | ✅ `/agile auto` |
+   279	| S2 (100 tasks, 12 domains, 거버넌스 없음) | 코드 없음, GOVERNANCE_DONE=no | ③ skip(코드없음), ④ 100>=30 → /governance-setup | ✅ `/governance-setup` |
+exec
+/bin/zsh -lc "nl -ba skills/orchestrate-standalone/scripts/state.js | sed -n '1,340p'" in /Users/kwak/Projects/ai/claude-imple-skills succeeded in 52ms:
+     1	#!/usr/bin/env node
+     2	/**
+     3	 * State Management for Orchestrate Standalone
+     4	 *
+     5	 * Manages orchestrate-state.json for resume capability
+     6	 *
+     7	 * @TASK orchestrate-standalone
+     8	 * @SPEC SKILL.md
+     9	 */
+    10	
+    11	const fs = require('fs');
+    12	const path = require('path');
+    13	
+    14	// ---------------------------------------------------------------------------
+    15	// State File Operations
+    16	// ---------------------------------------------------------------------------
+    17	
+    18	const STATE_FILE = '.claude/orchestrate-state.json';
+    19	const BACKUP_DIR = '.claude/backups';
+    20	
+codex
+지금 문서 설명과 실제 실행 동작이 충돌하는지 확인하기 위해 `orchestrate.sh`에서 완료 시 `clearState()` 호출 여부를 직접 확인하겠습니다.
+exec
+/bin/zsh -lc "nl -ba skills/orchestrate-standalone/scripts/orchestrate.sh | sed -n '1,340p'" in /Users/kwak/Projects/ai/claude-imple-skillsexec
+/bin/zsh -lc "rg -n \"clearState|state\\.js|orchestrate-state|resume|can-resume|is-complete|failed|pending|in_progress\" skills/orchestrate-standalone/scripts -S" in /Users/kwak/Projects/ai/claude-imple-skills succeeded in 51ms:
+     1	#!/bin/bash
+     2	#
+     3	# Orchestrate Standalone - Main Entry Point
+     4	#
+     5	# Executes tasks in parallel layers based on dependencies
+     6	#
+     7	# Usage:
+     8	#   ./orchestrate.sh [--mode=standard] [--resume]
+     9	#
+    10	
+    11	set -euo pipefail
+    12	
+    13	# ---------------------------------------------------------------------------
+    14	# Configuration
+    15	# ---------------------------------------------------------------------------
+    16	
+    17	SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    18	PROJECT_DIR="$(cd "${SCRIPT_DIR}/../../../.." && pwd)"
+    19	NODE_CMD="${NODE_CMD:-node}"
+    20	
+ succeeded in 51ms:
+skills/orchestrate-standalone/scripts/worker.js:128:  const statePath = path.join(projectDir, '.claude', 'orchestrate-state.json');
+skills/orchestrate-standalone/scripts/worker.js:133:    // Update state to "in_progress"
+skills/orchestrate-standalone/scripts/worker.js:134:    updateTaskState(statePath, task.id, 'in_progress', { worker: 'worker-' + process.pid % 4 });
+skills/orchestrate-standalone/scripts/worker.js:172:      updateTaskState(statePath, task.id, 'failed', {
+skills/orchestrate-standalone/scripts/worker.js:176:      reject(new Error(`Task ${task.id} failed to start: ${err.message}`));
+skills/orchestrate-standalone/scripts/worker.js:190:        updateTaskState(statePath, task.id, 'failed', {
+skills/orchestrate-standalone/scripts/worker.js:195:        reject(new Error(`Task ${task.id} failed with code ${code}`));
+skills/orchestrate-standalone/scripts/worker.js:221: * Update task state in orchestrate-state.json
+skills/orchestrate-standalone/scripts/worker.js:271:        const res = { id: task.id, status: 'failed', error: error.message };
+skills/orchestrate-standalone/scripts/gate-chain.js:83:    return { passed: false, gate: 'pre-dispatch', reason: 'policy-gate failed', results };
+skills/orchestrate-standalone/scripts/gate-chain.js:91:    return { passed: false, gate: 'pre-dispatch', reason: 'risk-gate failed', results };
+skills/orchestrate-standalone/scripts/gate-chain.js:115:  const failed = results.filter(r => !r.passed && !r.skipped);
+skills/orchestrate-standalone/scripts/gate-chain.js:117:    passed: failed.length === 0,
+skills/orchestrate-standalone/scripts/gate-chain.js:119:    failed: failed.map(r => r.hook)
+skills/orchestrate-standalone/scripts/gate-chain.js:145:  const failed = results.filter(r => !r.passed && !r.skipped);
+skills/orchestrate-standalone/scripts/gate-chain.js:147:    passed: failed.length === 0,
+skills/orchestrate-standalone/scripts/gate-chain.js:149:    failed: failed.map(r => r.hook)
+skills/orchestrate-standalone/scripts/gate-chain.js:184:        reason: `Hooks failed: ${postResult.failed.join(', ')}`
+skills/orchestrate-standalone/scripts/gate-chain.js:196:      reason: `Hooks failed: ${barrierResult.failed.join(', ')}`
+skills/orchestrate-standalone/scripts/sprint-state.js:15:const STATE_FILE = process.cwd() + '/.claude/sprint-state.json';
+codex
+핵심 동작(`grep -q`의 exit code, OR 누적)이 맞는지 짧은 셸 재현으로 확인하고, 문서와 충돌되는 전제(S2 state 미존재)는 코드 근거로 판단하겠습니다.
+exec
+/bin/zsh -lc "set -e
+# grep -q exit code checks
+printf '{\"status\":\"completed\"}\\n' | grep -qE '\"status\"[[:space:]]*:[[:space:]]*\"(in_progress|pending)\"'; echo \"no_match_exit="'$?" || true' in /Users/kwak/Projects/ai/claude-imple-skillsexec
+/bin/zsh -lc "# Reproduce old -c||echo0 double-output behavior without files
+(printf '{\"status\":\"completed\"}\\n' | grep -cE '\"status\"[[:space:]]*:[[:space:]]*\"(in_progress|pending)\"' || echo 0) | cat -vet" in /Users/kwak/Projects/ai/claude-imple-skillsexec
+/bin/zsh -lc "printf '{\"status\": \"in_progress\"}\\n' | grep -qE '\"status\"[[:space:]]*:[[:space:]]*\"(in_progress|pending)\"'; echo \"match_exit="'$?"' in /Users/kwak/Projects/ai/claude-imple-skills succeeded in 51ms:
+0$
+0$
+ exited 1 in 51ms:
+
+ succeeded in 51ms:
+match_exit=0
+codex
+방금 `no-match` 재현 커맨드에 `set -e`가 걸려 조기 종료됐습니다. 해당 케이스만 다시 실행해 exit code를 정확히 수집하겠습니다.
+exec
+/bin/zsh -lc "printf '{\"status\":\"completed\"}\\n' | grep -qE '\"status\"[[:space:]]*:[[:space:]]*\"(in_progress|pending)\"'; echo \"no_match_exit="'$?"' in /Users/kwak/Projects/ai/claude-imple-skills succeeded in 52ms:
+no_match_exit=1
+exec
+/bin/zsh -lc "nl -ba skills/orchestrate-standalone/templates/orchestrate-state.json | sed -n '1,220p'" in /Users/kwak/Projects/ai/claude-imple-skillsexec
+/bin/zsh -lc '# OR aggregation behavior test with two existing files
+INCOMPLETE_IN_STATE=0
+for STATE_PATH in "skills/orchestrate-standalone/templates/orchestrate-state.json" "README.md"; do
+  if [ -f "$STATE_PATH" ]; then
+    if grep -qE '"'\"status\"[[:space:]]*:[[:space:]]*\"(in_progress|pending)\"' \""'$STATE_PATH" 2>/dev/null; then
+      INCOMPLETE_IN_STATE=1
+      echo "state_file=$STATE_PATH incomplete_in_state=1"
+    else
+      echo "state_file=$STATE_PATH incomplete_in_state=0"
+    fi
+  fi
+done
+echo "INCOMPLETE_IN_STATE=$INCOMPLETE_IN_STATE"' in /Users/kwak/Projects/ai/claude-imple-skillsexec
+/bin/zsh -lc 'for STATE_PATH in "skills/orchestrate-standalone/templates/orchestrate-state.json" "README.md"; do
+  INCOMPLETE_IN_STATE=0
+  if [ -f "$STATE_PATH" ]; then
+    if grep -qE '"'\"status\"[[:space:]]*:[[:space:]]*\"(in_progress|pending)\"' \""'$STATE_PATH" 2>/dev/null; then
+      INCOMPLETE_IN_STATE=1
+      echo "$STATE_PATH => $INCOMPLETE_IN_STATE (match)"
+    else
+      echo "$STATE_PATH => $INCOMPLETE_IN_STATE (no-match)"
+    fi
+  fi
+done' in /Users/kwak/Projects/ai/claude-imple-skills succeeded in 51ms:
+     1	{
+     2	  "$schema": "http://json-schema.org/draft-07/schema#",
+     3	  "title": "Orchestrate State",
+     4	  "description": "State file for orchestrate-standalone resume capability",
+     5	  "type": "object",
+     6	  "properties": {
+     7	    "version": {
+     8	      "type": "string",
+     9	      "description": "State format version",
+    10	      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    11	    },
+    12	    "started_at": {
+    13	      "type": "string",
+    14	      "format": "date-time",
+    15	      "description": "Orchestration start timestamp"
+    16	    },
+    17	    "completed_at": {
+    18	      "type": "string",
+    19	      "format": "date-time",
+    20	      "description": "Orchestration completion timestamp (null if in progress)"
+ succeeded in 51ms:
+skills/orchestrate-standalone/templates/orchestrate-state.json => 1 (match)
+README.md => 0 (no-match)
+ succeeded in 51ms:
+state_file=skills/orchestrate-standalone/templates/orchestrate-state.json incomplete_in_state=1
+state_file=README.md incomplete_in_state=0
+INCOMPLETE_IN_STATE=1
+codex
+마지막으로 `worker.js` 상태 기록 방식을 확인해, `/recover` 조건이 `pending|in_progress`만 보는 게 충분한지(실패 상태 누락 위험)까지 점검하겠습니다.
+exec
+/bin/zsh -lc "nl -ba skills/orchestrate-standalone/scripts/worker.js | sed -n '100,320p'" in /Users/kwak/Projects/ai/claude-imple-skills succeeded in 51ms:
+   100	    try {
+   101	      const checkCmd = process.platform === 'win32' ? 'where' : 'which';
+   102	      execSync(`${checkCmd} ${command}`, { stdio: 'ignore' });
+   103	    } catch (e) {
+   104	      writeStderr(`[Warning] CLI '${command}' not found. Falling back to '${defaultClaudePath}'.`);
+   105	      command = defaultClaudePath;
+   106	      args = [];
+   107	      resolvedModel = 'claude';
+   108	    }
+   109	  }
+   110	
+   111	  return { command, args, model: resolvedModel };
+   112	}
+   113	
+   114	// ---------------------------------------------------------------------------
+   115	// Task Execution
+   116	// ---------------------------------------------------------------------------
+   117	
+   118	/**
+   119	 * Execute a single task
+codex
+**총평: PASS (CRITICAL/HIGH 없음, MEDIUM 2건)**
+
+1. **bash step 4 수정 정확성: PASS**
+- `grep -qE` 동작은 정상입니다.  
+  - no-match: exit code `1` (`no_match_exit=1`)  
+  - match: exit code `0` (`match_exit=0`)
+- OR 누적도 정상입니다. 한 경로에서 매치되면 `INCOMPLETE_IN_STATE=1` 유지됩니다.
+- 초기화(`INCOMPLETE_IN_STATE=0`)와 최종 출력 위치도 올바릅니다.
+- 참고: [workflow-guide/SKILL.md:134](/Users/kwak/Projects/ai/claude-imple-skills/skills/workflow-guide/SKILL.md:134), [workflow-guide/SKILL.md:148](/Users/kwak/Projects/ai/claude-imple-skills/skills/workflow-guide/SKILL.md:148)
+
+2. **S6 시나리오 분리 완전성: PASS**
+- ①a state+incomplete>0 → `/recover` 와 일치합니다.
+- ①b merge conflict 존재 → `/recover` 와 일치합니다.
+- 참고: [workflow-guide/SKILL.md:216](/Users/kwak/Projects/ai/claude-imple-skills/skills/workflow-guide/SKILL.md:216), [workflow-guide/SKILL.md:221](/Users/kwak/Projects/ai/claude-imple-skills/skills/workflow-guide/SKILL.md:221), [workflow-guide/SKILL.md:285](/Users/kwak/Projects/ai/claude-imple-skills/skills/workflow-guide/SKILL.md:285), [workflow-guide/SKILL.md:286](/Users/kwak/Projects/ai/claude-imple-skills/skills/workflow-guide/SKILL.md:286)
+
+3. **S2-running의 “state 파일 미존재” 전제: MEDIUM**
+- 현재 구현상 `orchestrate.sh`는 **완료 시 자동 삭제하지 않고**, 새 실행(`--resume` 아님) 시작 시 `clear`를 호출합니다.  
+- 즉 “이전 실행 정상 완료 후 clearState됨”은 기본 흐름 설명으로는 부정확합니다.
+- state 미존재가 성립하는 현실적 경우:
+  1. 첫 실행 전
+  2. 수동 `state.js clear` 실행
+  3. 새 non-resume 실행이 시작되어 초기 clear 직후(아직 worker가 state를 다시 쓰기 전)
+  4. 외부 정리 스크립트/CI 환경 정리
+- 참고: [orchestrate.sh:243](/Users/kwak/Projects/ai/claude-imple-skills/skills/orchestrate-standalone/scripts/orchestrate.sh:243), [state.js:190](/Users/kwak/Projects/ai/claude-imple-skills/skills/orchestrate-standalone/scripts/state.js:190)
+
+4. **잔존 이슈 (CRITICAL/HIGH 여부)**
+- **CRITICAL: 없음**
+- **HIGH: 없음**
+- **MEDIUM-1:** S2 설명 문구 정확도(위 3번)
+- **MEDIUM-2:** recover 판정이 `pending|in_progress`만 보고 `failed`는 제외합니다. 반면 `canResume()`은 `failed`도 재개 가능으로 봅니다. 정책 의도 확인 권장.
+  - 참고: [workflow-guide/SKILL.md:140](/Users/kwak/Projects/ai/claude-imple-skills/skills/workflow-guide/SKILL.md:140), [state.js:179](/Users/kwak/Projects/ai/claude-imple-skills/skills/orchestrate-standalone/scripts/state.js:179)
+
+원하시면 Round 16용으로 S2 문구/failed 정책까지 반영한 최소 수정안 문구를 바로 제안하겠습니다.
+tokens used
+45,507
+**총평: PASS (CRITICAL/HIGH 없음, MEDIUM 2건)**
+
+1. **bash step 4 수정 정확성: PASS**
+- `grep -qE` 동작은 정상입니다.  
+  - no-match: exit code `1` (`no_match_exit=1`)  
+  - match: exit code `0` (`match_exit=0`)
+- OR 누적도 정상입니다. 한 경로에서 매치되면 `INCOMPLETE_IN_STATE=1` 유지됩니다.
+- 초기화(`INCOMPLETE_IN_STATE=0`)와 최종 출력 위치도 올바릅니다.
+- 참고: [workflow-guide/SKILL.md:134](/Users/kwak/Projects/ai/claude-imple-skills/skills/workflow-guide/SKILL.md:134), [workflow-guide/SKILL.md:148](/Users/kwak/Projects/ai/claude-imple-skills/skills/workflow-guide/SKILL.md:148)
+
+2. **S6 시나리오 분리 완전성: PASS**
+- ①a state+incomplete>0 → `/recover` 와 일치합니다.
+- ①b merge conflict 존재 → `/recover` 와 일치합니다.
+- 참고: [workflow-guide/SKILL.md:216](/Users/kwak/Projects/ai/claude-imple-skills/skills/workflow-guide/SKILL.md:216), [workflow-guide/SKILL.md:221](/Users/kwak/Projects/ai/claude-imple-skills/skills/workflow-guide/SKILL.md:221), [workflow-guide/SKILL.md:285](/Users/kwak/Projects/ai/claude-imple-skills/skills/workflow-guide/SKILL.md:285), [workflow-guide/SKILL.md:286](/Users/kwak/Projects/ai/claude-imple-skills/skills/workflow-guide/SKILL.md:286)
+
+3. **S2-running의 “state 파일 미존재” 전제: MEDIUM**
+- 현재 구현상 `orchestrate.sh`는 **완료 시 자동 삭제하지 않고**, 새 실행(`--resume` 아님) 시작 시 `clear`를 호출합니다.  
+- 즉 “이전 실행 정상 완료 후 clearState됨”은 기본 흐름 설명으로는 부정확합니다.
+- state 미존재가 성립하는 현실적 경우:
+  1. 첫 실행 전
+  2. 수동 `state.js clear` 실행
+  3. 새 non-resume 실행이 시작되어 초기 clear 직후(아직 worker가 state를 다시 쓰기 전)
+  4. 외부 정리 스크립트/CI 환경 정리
+- 참고: [orchestrate.sh:243](/Users/kwak/Projects/ai/claude-imple-skills/skills/orchestrate-standalone/scripts/orchestrate.sh:243), [state.js:190](/Users/kwak/Projects/ai/claude-imple-skills/skills/orchestrate-standalone/scripts/state.js:190)
+
+4. **잔존 이슈 (CRITICAL/HIGH 여부)**
+- **CRITICAL: 없음**
+- **HIGH: 없음**
+- **MEDIUM-1:** S2 설명 문구 정확도(위 3번)
+- **MEDIUM-2:** recover 판정이 `pending|in_progress`만 보고 `failed`는 제외합니다. 반면 `canResume()`은 `failed`도 재개 가능으로 봅니다. 정책 의도 확인 권장.
+  - 참고: [workflow-guide/SKILL.md:140](/Users/kwak/Projects/ai/claude-imple-skills/skills/workflow-guide/SKILL.md:140), [state.js:179](/Users/kwak/Projects/ai/claude-imple-skills/skills/orchestrate-standalone/scripts/state.js:179)
+
+원하시면 Round 16용으로 S2 문구/failed 정책까지 반영한 최소 수정안 문구를 바로 제안하겠습니다.

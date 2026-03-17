@@ -1,0 +1,81 @@
+# Round 13 — workflow-guide v4.9.2 검증 요청
+
+## 변경 사항 (v4.9.2 from v4.9.1)
+- R12: 알고리즘 ① — STATE_STATUS 방식 폐기 (orchestrate-state.json에 top-level status 필드 없음 확인)
+- R12: 알고리즘 ① — 신규 경로 추가: .claude/orchestrate/orchestrate-state.json OR 레거시 경로
+- R12: 파일 존재 = 중단 신호 (clearState()가 완료 시 자동 삭제) 주석 명시
+- R12: 시나리오 추적표 — S6-신규경로 케이스 추가
+
+## 현재 알고리즘 (v4.9.2)
+
+```
+ALGORITHM get_recommendation():
+
+  # ① 복구 체크 (최우선)
+  #    파일은 완료 시 자동 삭제(clearState) → 존재 자체가 중단 신호
+  #    레거시: .claude/orchestrate-state.json / 신규: .claude/orchestrate/orchestrate-state.json
+  IF .claude/orchestrate-state.json EXISTS OR .claude/orchestrate/orchestrate-state.json EXISTS:
+    RETURN "/recover"
+  IF git merge conflicts exist:
+    RETURN "/recover"
+
+  # ② 태스크 파일 체크
+  IF TASKS.md NOT EXISTS:
+    IF docs/planning/06-tasks.md EXISTS: RETURN "/tasks-migrate"
+    ELSE: RETURN "/tasks-init"
+  IF TASK_COUNT == 0:
+    RETURN "/tasks-init"
+
+  # ③ 유지보수 체크 (AGENT_COUNT=0 AND GOVERNANCE_DONE=no 인 경우만)
+  IF source_code EXISTS AND AGENT_COUNT == 0 AND GOVERNANCE_DONE == "no":
+    IF incomplete_tasks > 0: RETURN "/agile iterate"
+    IF all_tasks_completed: RETURN "/audit"
+
+  # ④ 거버넌스 체크 (미완료 태스크 있을 때만)
+  IF TASK_COUNT >= 10 AND (DOMAIN_COUNT >= 2 OR TASK_COUNT >= 30) AND GOVERNANCE_DONE == "no" AND incomplete_tasks > 0:
+    RETURN "/governance-setup"
+
+  # ⑤ 인프라 체크 (거버넌스 완료 후, 미완료 태스크 있을 때만)
+  IF GOVERNANCE_DONE == "yes" AND TASK_COUNT >= 30 AND AGENT_COUNT == 0 AND incomplete_tasks > 0:
+    RETURN "project-team/install.sh --mode standard"
+
+  # ⑥ 구현/배포 판단 (거버넌스 완료 + 인프라 준비)
+  IF GOVERNANCE_DONE == "yes" AND AGENT_COUNT > 0:
+    IF all_tasks_completed: RETURN "/audit"
+    IF incomplete_tasks >= 80: RETURN "/orchestrate-standalone --mode=wave"
+    IF incomplete_tasks >= 30: RETURN "/orchestrate-standalone"
+    ELSE: RETURN "/agile auto"
+
+  # ⑦ 소규모 신규 구현
+  IF TASK_COUNT > 0 AND TASK_COUNT < 30 AND incomplete_tasks > 0:
+    RETURN "/agile auto"
+
+  # ⑧ 완료
+  IF all_tasks_completed:
+    RETURN "/audit"
+```
+
+## 14개 테스트케이스
+
+| 케이스 | 상태 | 예상 결과 |
+|--------|------|-----------|
+| S1 | TASKS.md 없음, 코드 없음 | `/tasks-init` |
+| S1-migrate | TASKS.md 없음, 06-tasks.md 있음 | `/tasks-migrate` |
+| S2 | T=40, inc=40, 코드 없음, GOV=no | `/governance-setup` |
+| S2-after-gov | GOV=yes, AGENT=0, T=40, inc=40 | `install.sh` |
+| S2-running | GOV=yes, AGENT=5, inc=50 | `/orchestrate-standalone` |
+| S3 | 코드 있음, T=20, inc=15, AGENT=0, GOV=no | `/agile iterate` |
+| S3-완료 | 코드 있음, T=20, inc=0, GOV=no | `/audit` |
+| S4/S6 | .claude/orchestrate-state.json 있음 | `/recover` |
+| S5 | merge conflicts | `/recover` |
+| S6-신규경로 | .claude/orchestrate/orchestrate-state.json 있음 | `/recover` |
+| S7 | /multi-ai-review 직접 호출 | N/A |
+| S1-완료 | T=20, inc=0, 코드 없음 | `/audit` |
+| 소규모신규 | T=15, inc=10, 코드 없음, GOV=no | `/agile auto` |
+| 비정상: AGENT>0+GOV=no | T=20, inc=10, AGENT=3, GOV=no | `/agile auto` |
+
+## 검증 요청
+1. 14개 케이스 추적 결과 확인
+2. ① OR 조건 로직 정확성 (레거시/신규 경로)
+3. 알고리즘-스크립트-결정트리-시나리오 4개 문서 일관성 확인
+4. HIGH/MEDIUM 이슈 발견 시 수정안 제시

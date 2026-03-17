@@ -1,0 +1,5 @@
+Loaded cached credentials.
+Error executing tool get_editor_state: Tool execution denied by policy.
+Error executing tool read_file: File path '/Users/kwak/Projects/ai/claude-imple-skills/TASKS.md' is ignored by configured ignore patterns.
+Error executing tool read_file: File path '/Users/kwak/Projects/ai/claude-imple-skills/CLAUDE.md' is ignored by configured ignore patterns.
+Error executing tool run_shell_command: Tool "run_shell_command" not found. Did you mean one of: "grep_search", "cli_help", "get_style_guide"?

@@ -1,0 +1,29 @@
+I will begin by investigating the `skills/workflow-guide/SKILL.md` file to verify the current implementation of the algorithm and the `STATE_STATUS` extraction script.
+I will now read the `skills/workflow-guide/SKILL.md` file to confirm the implementation of the `workflow-guide` algorithm and verify the `STATE_STATUS` extraction logic.
+`workflow-guide` v4.9.1의 알고리즘과 14개 테스트케이스 추적 결과, 모든 항목이 설계 의도대로 정확하게 작동함을 확인했습니다.
+
+### 1. 14개 테스트케이스 알고리즘 추적 결과
+모든 시나리오에서 예상 결과와 알고리즘 경로가 일치합니다. 특히 **S6-완료오탐** 케이스의 경우, `STATE_STATUS`가 `COMPLETED`일 때 ①번 복구 분기를 정상적으로 건너뛰고 이후 진단(②~⑧)으로 이어지는 것을 확인했습니다.
+
+*   **S1 (New Project)**: ② `NOT EXISTS` → `/tasks-init` (일치)
+*   **S2 (Large New)**: ④ `T>=30 + GOV=no` → `/governance-setup` (일치)
+*   **S2-after-gov**: ⑤ `GOV=yes + AGENT=0` → `install.sh` (일치)
+*   **S3 (Maintenance)**: ③ `code=yes + AGENT=0 + GOV=no` → `/agile iterate` (일치)
+*   **S6-완료오탐**: ① `status=COMPLETED` (Skip) → 이후 정상 경로 (일치)
+*   **비정상 (AGENT>0 + GOV=no)**: ③, ④ Skip 후 ⑦ `/agile auto`로 수렴 (안전한 폴백 확인)
+
+### 2. STATE_STATUS 추출 스크립트 정확성
+```bash
+STATE_STATUS=$(cat .claude/orchestrate-state.json 2>/dev/null | grep -o '"status":"[^"]*"' | cut -d'"' -f4 || echo "none")
+```
+*   **정확성**: `jq`가 없는 환경에서도 `grep`과 `cut`을 조합하여 JSON 필드를 안정적으로 추출합니다.
+*   **견고성**: 파일이 없거나(`cat` 실패), 필드가 없는 경우에도 `|| echo "none"` 처리를 통해 변수 미정의 오류를 방지하고 있습니다.
+
+### 3. 비정상 상태 (AGENT>0 + GOV=no) 처리 방향
+*   **판단**: 현재 알고리즘은 대규모 조건(④)에 해당하지 않는 한 `/agile auto` (⑦)로 안내합니다. 이는 에이전트가 존재하더라도 거버넌스 문서가 없는 불안정한 상태에서, 무리하게 오케스트레이션을 강제하기보다 Claude 직접 수행 방식인 `/agile`로 유도하는 **안전한 폴백(Safe Fallback)** 전략으로 판단되어 타당합니다.
+
+### 4. 추가 엣지케이스 관찰 및 제언
+*   **엣지케이스 1 (부분 완료)**: `GOVERNANCE_DONE="yes"`이나 `incomplete_tasks=0`인 경우, ⑥번 분기에서 `/audit`으로 바로 연결되어 불필요한 `install.sh` 추천을 방지하고 있습니다.
+*   **엣지케이스 2 (TASKS.md 손상)**: 태스크가 모두 주석 처리되어 `TASK_COUNT=0`이 될 경우, ②번 분기에서 `/tasks-init`을 추천하여 스캐폴딩을 재유도하는 로직이 적절히 작동합니다.
+
+**결론**: v4.9.1 업데이트 사항이 모든 핵심 시나리오와 비정상 상태를 빈틈없이 커버하고 있음을 확인했습니다. 검증을 마칩니다.

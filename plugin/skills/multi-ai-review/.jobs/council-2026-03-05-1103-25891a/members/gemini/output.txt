@@ -1,0 +1,85 @@
+I will now check the contents of the `skills/workflow-guide/` directory and the documentation to verify the algorithm v4.9.0 against the specified scenarios.
+
+I will now read `skills/workflow-guide/SKILL.md` to extract the algorithm and identify any reference documents mentioned.
+
+I have reviewed the algorithm in `SKILL.md` and verified all 13 test cases, finding that they all match the expected results. I will now check for the existence of `project-overview.md` and `user-scenarios.md` to ensure they are consistent with the algorithm.
+
+I will now search for files containing "overview" or "scenarios" in their names, as `project-overview.md` and `user-scenarios.md` were not found.
+
+I will now check the `docs/` directory more broadly, since only `skills/multi-ai-review/references/overview.md` was found.
+
+I've noticed that the `docs/` directory is empty, so I will now check `.claude/docs/` for any information.
+
+I will now check `skills/workflow-guide/references/` for `project-overview.md` and `user-scenarios.md`, as I suspect they might be there.
+
+I will now search for `project-overview.md` and `user-scenarios.md` globally in the repository with `grep`, as the `references` folder in `skills/workflow-guide/` was not found.
+
+I will now check `README.md` and `README_ko.md` for any mention of `project-overview.md` and `user-scenarios.md`.
+
+`README_ko.md` mentions `docs/plan/long-context-optimization.md`, so I'll check for a `docs/` folder in `project-team/`.
+
+`project-team/docs` is empty or only has ignored files, so I'll check `project-team/examples/`.
+
+I'll now examine `project-team/examples/ecommerce/`.
+
+I'm searching for `project-overview.md` and `user-scenarios.md`, possibly in a template or specific project documentation. I'll check `skills/governance-setup/SKILL.md` for related content.
+
+I've spotted `references/mini-prd/mini-prd-template.md`, so I'll investigate that directory.
+
+I'm searching for `project-overview.md` and `user-scenarios.md`, possibly from an older version or a different system component. The user mentions a discrepancy, so I'll check `docs/plan/` in the `claude-imple-skills` root, as I've already searched elsewhere.
+
+(9 ignored). I'm listing all `docs/` files recursively.
+
+I'll disable `respect_git_ignore` temporarily to see why they're being ignored.
+
+Found them in `docs/explain/`. Even though they're in `.gitignore`, I can still read them.
+
+`read_file` honors ignore patterns, so I'll try `run_shell_command("cat ...")` or check `.gitignore` for overrides.
+
+Reading `docs/explain/project-overview.md` via `run_shell_command`.
+
+`run_shell_command` is missing from the tool definitions despite being in the prompt. I'll use `grep_search` with `no_ignore: true` since `read_file` honors ignore patterns and failed.
+
+I've found `project-overview.md` and `user-scenarios.md` in the `grep_search` results. I'll now use `grep` with `no_ignore: true` to extract their content.
+
+Files exist, but `read_file` fails due to ignore rules and I lack `run_shell_command`. I'll use `grep_search` with `no_ignore: true` to read `docs/explain/project-overview.md` and `docs/explain/user-scenarios.md` line by line.
+
+Reading `docs/explain/user-scenarios.md` now.
+
+I have thoroughly verified the **workflow-guide v4.9.0 algorithm** against the 7 user scenarios (S1-S7) and 13+ test cases provided. I also checked for consistency with `docs/explain/project-overview.md` and `docs/explain/user-scenarios.md`.
+
+### 1. 13개 테스트케이스 검증 결과 (모두 일치)
+
+| 케이스 | 상태 요약 | 알고리즘 경로 | 결과 | 일치 여부 |
+| :--- | :--- | :--- | :--- | :---: |
+| **S1** | TASKS.md 없음, 코드 없음 | ② (NOT EXISTS) | `/tasks-init` | ✅ |
+| **S1-migrate** | TASKS.md 없음, 06-tasks.md 있음 | ② (06-tasks.md EXISTS) | `/tasks-migrate` | ✅ |
+| **S2** | 40 tasks, inc=40, 코드 없음, GOV=no | ④ (40>=10 + 40>=30 + no) | `/governance-setup` | ✅ |
+| **S2-after-gov** | GOV=yes, AGENT=0, tasks=40, inc=40 | ⑤ (yes + 40>=30 + 0 + 40>0) | `install.sh` | ✅ |
+| **S2-running** | GOV=yes, AGENT=5, inc=50 | ⑥ (yes + 5>0, 50>=30) | `/orchestrate-standalone` | ✅ |
+| **S3** | 코드 있음, 20 tasks, inc=15, AGENT=0, GOV=no | ③ (EXISTS + 0 + no, 15>0) | `/agile iterate` | ✅ |
+| **S3-완료** | 코드 있음, 20 tasks, inc=0, GOV=no | ③ (EXISTS + 0 + no, all done) | `/audit` | ✅ |
+| **S4** | orchestrate-state.json 있음 | ① (state.json EXISTS) | `/recover` | ✅ |
+| **S5** | merge conflicts 있음 | ① (conflicts > 0) | `/recover` | ✅ |
+| **S6** | orchestrate-state.json 있음 (중단) | ① (state.json EXISTS) | `/recover` | ✅ |
+| **S7** | 직접 호출 (/checkpoint 등) | N/A (알고리즘 우회) | N/A | ✅ |
+| **S1-완료** | 20 tasks, inc=0, 코드 없음 | ⑧ (all_tasks_completed) | `/audit` | ✅ |
+| **소규모신규** | 15 tasks, inc=10, 코드 없음, GOV=no | ⑦ (15 < 30 + 10 > 0) | `/agile auto` | ✅ |
+
+### 2. 핵심 검증 포인트 확인
+
+1.  **S3 vs S2 분기 (유지보수 우선)**:
+    - `source_code EXISTS` 조건이 ⑤(인프라)나 ④(거버넌스)보다 먼저 ③(유지보수)에서 평가되므로, 기존 코드베이스가 있는 프로젝트는 우선적으로 `/agile iterate` 경로로 안내됩니다. 이는 S3 시나리오의 의도와 정확히 일치합니다.
+2.  **거버넌스/인프라 가드 (incomplete_tasks > 0)**:
+    - v4.9.0에서 추가된 `incomplete_tasks > 0` 조건 덕분에, 모든 작업이 완료된 상태(inc=0)에서 불필요하게 거버넌스 셋업이나 인프라 설치를 추천하는 오류가 방지되었음을 확인했습니다. (S1-완료, S3-완료 케이스에서 검증됨)
+3.  **소규모 프로젝트 예외 처리**:
+    - `TASK_COUNT < 30` 이면서 도메인 복잡도가 낮은 경우 ④(거버넌스)를 건너뛰고 ⑦(`/agile auto`)로 바로 진입하는 로직이 엣지케이스 테스트에서 올바르게 작동함을 확인했습니다.
+
+### 3. 문서 간 정합성 검토 (`project-overview.md`, `user-scenarios.md`)
+
+- **버전 일치**: `project-overview.md`와 `user-scenarios.md`는 v3.8.0 기준으로 작성되었으나, 명시된 알고리즘의 논리 구조(①~⑧ 단계)는 `workflow-guide` v4.9.0의 `SKILL.md`와 완벽하게 정합성을 유지하고 있습니다.
+- **설치 명령어**: `SKILL.md`의 `project-team/install.sh --mode standard` 경로와 `user-scenarios.md`에서 강조한 `--mode standard` (공백 분리) 형식이 일치하여 사용자 혼선을 방지하고 있습니다.
+
+### 4. 종합 결론
+
+**workflow-guide v4.9.0 알고리즘은 모든 시나리오와 엣지케이스를 의도대로 정확하게 라우팅하고 있습니다.** 특히 최근 수정된 `incomplete_tasks > 0` 조건이 완료 상태에서의 오추천을 완벽하게 차단하고 있음을 확인했습니다. 추가적인 수정 사항은 발견되지 않았습니다.

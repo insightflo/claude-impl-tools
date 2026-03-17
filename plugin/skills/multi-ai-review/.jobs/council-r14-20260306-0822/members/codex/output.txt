@@ -1,0 +1,474 @@
+OpenAI Codex v0.107.0 (research preview)
+--------
+workdir: /Users/kwak/Projects/ai/claude-imple-skills
+model: gpt-5.3-codex
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019cc04f-6b5e-7623-b519-dcb3d5c884e2
+--------
+user
+workflow-guide v4.9.3 알고리즘 및 문서 일관성 검증 (Round 14)
+
+## 변경 사항 (v4.9.3)
+
+### HIGH 수정 (Round 13):
+1. **알고리즘 ①**: state 파일 존재만으로 /recover 안내 → `파일 존재 AND INCOMPLETE_IN_STATE > 0` 조건으로 변경
+   - 이유: orchestrate.sh는 완료 시 state 파일을 자동 삭제하지 않음 (clearState()는 새 실행 시작 시만 호출)
+   - bash step 4: 레거시/신규 경로 모두 루프, 각 경로에서 in_progress/pending 태스크 수 grep
+
+### MEDIUM 수정:
+2. **결정 트리 ①**: merge conflict 체크 라인 추가, 오탐 방지 주석
+3. **결정 트리**: `--mode=sprint` 제거 (알고리즘에 없는 모드)
+4. **시나리오 테이블**: S2-running (incomplete=50), 비정상(AGENT>0+GOV=no) 행 추가
+
+---
+
+## 검증 대상
+
+### 1단계 Bash 스크립트 (step 4):
+```bash
+for STATE_PATH in ".claude/orchestrate-state.json" ".claude/orchestrate/orchestrate-state.json"; do
+  if [ -f "$STATE_PATH" ]; then
+    INCOMPLETE_IN_STATE=$(grep -cE '"status"[[:space:]]*:[[:space:]]*"(in_progress|pending)"' "$STATE_PATH" 2>/dev/null || echo 0)
+    echo "state_file=$STATE_PATH incomplete_in_state=$INCOMPLETE_IN_STATE"
+  fi
+done
+```
+
+### 2단계 알고리즘 ①:
+```
+ALGORITHM get_recommendation():
+
+  # ① 복구 체크 (최우선)
+  #    ⚠️ orchestrate.sh는 완료 시 state 파일을 자동 삭제하지 않음
+  #       → 파일 존재 + 미완료(in_progress/pending) 태스크 존재 시만 복구 신호
+  #    레거시: .claude/orchestrate-state.json / 신규: .claude/orchestrate/orchestrate-state.json
+  IF (state file EXISTS) AND (INCOMPLETE_IN_STATE > 0):
+    RETURN "/recover"
+
+  # ⚠️ git dirty (미커밋 변경사항)는 정상 개발 상태 — /recover 트리거 아님
+  # 오직 unresolved merge conflicts만 복구 필요
+  IF git merge conflicts exist (git diff --diff-filter=U 결과 있음):
+    RETURN "/recover"
+
+  # ②~⑧ (변경 없음)
+  ② IF TASKS.md NOT EXISTS → /tasks-migrate or /tasks-init; IF TASK_COUNT==0 → /tasks-init
+  ③ IF source_code EXISTS AND AGENT_COUNT==0 AND GOVERNANCE_DONE=="no":
+       IF incomplete>0: /agile iterate; IF all done: /audit
+  ④ IF TASK_COUNT>=10 AND (DOMAIN_COUNT>=2 OR TASK_COUNT>=30) AND GOV=="no" AND incomplete>0: /governance-setup
+  ⑤ IF GOV=="yes" AND TASK_COUNT>=30 AND AGENT_COUNT==0 AND incomplete>0: project-team/install.sh
+  ⑥ IF GOV=="yes" AND AGENT_COUNT>0: all done→/audit; >=80→wave; >=30→orchestrate; else→agile auto
+  ⑦ IF TASK_COUNT>0 AND TASK_COUNT<30 AND incomplete>0: /agile auto
+  ⑧ IF all_tasks_completed: /audit
+```
+
+### 결정 트리 (수정된 부분):
+```
+├─ orchestrate-state.json 존재 AND 미완료(in_progress/pending) 태스크 있음? ── YES → /recover
+│   ↳ 레거시·신규 경로 모두 확인 / 완료된 state 파일은 오탐 방지로 건너뜀
+│
+├─ git merge conflicts 존재? (git diff --diff-filter=U) ─── YES → /recover
+│   ↳ dirty working tree(미커밋 변경)는 정상 개발 상태 — /recover 트리거 아님
+│
+├─ TASKS.md 없음? ...
+│
+├─ 구현 시작?
+│   ├─ ≤30개 태스크 ─── /agile auto
+│   ├─ 30~80개 태스크 ─ /orchestrate-standalone
+│   ├─ 80~200개 ──────── /orchestrate-standalone --mode=wave
+│   ...
+```
+
+### 시나리오 테이블 (추가된 행):
+| S2 (실행중, incomplete=50) | GOVERNANCE_DONE=yes, AGENT_COUNT>0, incomplete=50 | ⑥ 30<=incomplete<80 → /orchestrate-standalone | ✅ `/orchestrate-standalone` |
+| 비정상 (AGENT>0+GOV=no) | AGENT_COUNT>0, GOVERNANCE_DONE=no, T=20, incomplete>0 | ③ skip(AGENT>0), ④ skip(T<30), ⑤ skip(GOV=no), ⑥ skip(GOV=no), ⑦ T<30 AND incomplete>0 → /agile auto | ✅ `/agile auto` |
+
+---
+
+## 검증 요청
+
+다음 항목에 대해 CRITICAL/HIGH/MEDIUM/LOW/PASS 등급으로 평가해 주세요:
+
+1. **bash step 4 정확성**: grep 패턴이 orchestrate-state.json의 실제 task-level status 필드를 올바르게 매칭하는가?
+   - orchestrate-state.json 구조: `{"tasks": [{"id":"T1.1","status":"in_progress",...}, ...]}`
+   - grep -cE '"status"[[:space:]]*:[[:space:]]*"(in_progress|pending)"' 가 이 구조에서 제대로 작동하는가?
+
+2. **알고리즘 ① 완전성**: INCOMPLETE_IN_STATE > 0 조건이 모든 중단 케이스를 커버하는가?
+   - 케이스 1: 실행 중 중단 (in_progress 태스크 있음) → 정상 감지?
+   - 케이스 2: 완료 후 state 파일 잔존 (all completed) → 오탐 방지?
+   - 케이스 3: 새 실행 중 이전 파일 잔존 (clearState 아직 안 됨) → pending 태스크로 감지?
+
+3. **결정 트리 일관성**: 알고리즘과 결정 트리가 일치하는가?
+   - merge conflict 체크가 알고리즘 ①b로 올바르게 반영되었는가?
+   - --mode=sprint 제거로 알고리즘-트리 불일치가 해소되었는가?
+
+4. **시나리오 테이블 완전성**: 15개 케이스가 모두 올바른 경로를 추적하는가?
+   - S2-running 추적: ① skip, ② skip, ③ skip(GOV=yes), ④ skip(GOV=yes), ⑤ skip(AGENT>0), ⑥ GOV=yes AND AGENT>0, incomplete=50 → 30<=50<80 → /orchestrate-standalone ✓?
+   - 비정상 추적: T=20이므로 ④ skip(T<30), ⑥ skip(GOV=no) → ⑦ T<30 AND incomplete>0 → /agile auto ✓?
+
+5. **새로운 엣지케이스**: v4.9.3에서 발견된 다른 로직 버그나 불일치가 있는가?
+
+결과를 CRITICAL/HIGH/MEDIUM/LOW 분류로 명확히 제시해 주세요.
+mcp: pencil starting
+mcp: pencil ready
+mcp startup: ready: pencil
+codex
+요청하신 v4.9.3 Round 14 검증을 실제 저장소 기준으로 점검하겠습니다. 먼저 `workflow-guide` 관련 문서와 알고리즘/결정트리/시나리오 테이블, 그리고 bash step 4 스니펫이 들어간 파일을 찾아 일치 여부를 확인하겠습니다.
+exec
+/bin/zsh -lc "rg -n \"v4\\.9\\.3|INCOMPLETE_IN_STATE|orchestrate-state|--mode=sprint|merge conflicts|diff-filter=U|S2|AGENT_COUNT|GOVERNANCE_DONE|get_recommendation|결정 트리|시나리오\" -S skills README.md README_ko.md" in /Users/kwak/Projects/ai/claude-imple-skillsexec
+/bin/zsh -lc "pwd && rg --files | rg 'workflow-guide|orchestrate|recover|TASKS|AGENTS'" in /Users/kwak/Projects/ai/claude-imple-skills succeeded in 51ms:
+/Users/kwak/Projects/ai/claude-imple-skills
+skills/workflow-guide/SKILL.md
+skills/recover/SKILL.md
+skills/recover/README.md
+skills/orchestrate-standalone/references/dag-algorithm.md
+skills/orchestrate-standalone/references/gate-protocol.md
+skills/orchestrate-standalone/references/hybrid-wave-architecture.md
+skills/orchestrate-standalone/SKILL.md
+skills/orchestrate-standalone/templates/contract-first.yaml
+skills/orchestrate-standalone/templates/orchestrate-state.json
+skills/orchestrate-standalone/templates/task-metadata.yaml
+skills/orchestrate-standalone/scripts/orchestrate.sh
+skills/orchestrate-standalone/scripts/sprint-planner.js
+skills/orchestrate-standalone/scripts/sprint-runner.js
+skills/orchestrate-standalone/scripts/sprint-state.js
+skills/orchestrate-standalone/scripts/state.js
+skills/orchestrate-standalone/scripts/sprint-review.js
+skills/orchestrate-standalone/scripts/scheduler.js
+skills/orchestrate-standalone/scripts/sprint-retro.js
+skills/orchestrate-standalone/scripts/test-cli-routing.sh
+ succeeded in 51ms:
+README_ko.md:89:| `/orchestrate-standalone` | 50~200개 태스크를 전문가 에이전트로 실행 (`--mode=sprint`으로 Agile PI 계획 + 스프린트 리뷰 게이트) |
+README_ko.md:300:| v3.7.0 | 2026-03-05 | Agile Sprint Mode (`--mode=sprint`), multi-ai-review 좀비 프로세스 수정, 계층형 에이전트 협업 버스 (REQ/DEC 프로토콜, domain-boundary-enforcer, Wave Barrier 스캐너) |
+README.md:85:| `/orchestrate-standalone` | Execute 50-200 tasks with specialist agents (`--mode=sprint` for Agile PI planning + sprint review gates) |
+README.md:296:| v3.7.0 | 2026-03-05 | Agile Sprint Mode (`--mode=sprint`), multi-ai-review zombie fix, hierarchical agent collaboration bus (REQ/DEC protocol, domain-boundary-enforcer, Wave Barrier scanner) |
+skills/context-optimize/SKILL.md:32:## 사용 시나리오
+skills/task-board/SKILL.md:3:description: AI 에이전트 태스크를 실시간 칸반 보드로 시각화합니다. TASKS.md + orchestrate-state + REQ 파일을 통합하여 board-state.json을 생성하고 터미널에 렌더링합니다.
+skills/task-board/SKILL.md:13:> TASKS.md + `.claude/orchestrate-state.json` + `.claude/collab/requests/` 를 통합하여
+skills/task-board/SKILL.md:18:- **단일 진실 원천**: `TASKS.md` + `orchestrate-state.json` 이 canonical. `board-state.json`은 파생 데이터.
+skills/task-board/SKILL.md:34:TASKS.md + orchestrate-state + REQ 파일에서 `board-state.json` 재생성:
+skills/task-board/SKILL.md:81:| 컬럼 | orchestrate-state 상태 | REQ 상태 |
+skills/multi-ai-review/templates/gemini-prompt.md:112:- 모든 사용자 시나리오 커버 여부
+skills/task-board/scripts/board-builder.js:7: *   2. .claude/orchestrate-state.json    (orchestrate status: pending/in_progress/completed/failed)
+skills/task-board/scripts/board-builder.js:44:  // orchestrate-state statuses
+skills/task-board/scripts/board-builder.js:87:// orchestrate-state.json parser
+skills/task-board/scripts/board-builder.js:100:      source: 'orchestrate-state',
+skills/task-board/scripts/board-builder.js:140:// Merge: orchestrate-state overrides tasks-md for same task ID
+skills/task-board/scripts/board-builder.js:149:  // Override with orchestrate-state (more precise status), but preserve richer title from tasks-md
+skills/task-board/scripts/board-builder.js:196:  // Support both legacy (.claude/orchestrate-state.json) and new (.claude/orchestrate/orchestrate-state.json) paths
+skills/task-board/scripts/board-builder.js:197:  const statePath = fs.existsSync(path.join(p, '.claude', 'orchestrate', 'orchestrate-state.json'))
+skills/task-board/scripts/board-builder.js:198:    ? path.join(p, '.claude', 'orchestrate', 'orchestrate-state.json')
+codex
+관련 문자열 검색 결과를 확인했는데, `workflow-guide/SKILL.md` 안에 수정된 부분과 함께 과거 `--mode=sprint` 안내가 일부 잔존해 있어 보입니다. 이제 해당 구간을 라인 기준으로 직접 읽고, 실제 `orchestrate-state.json` 구조/스크립트와 대조하겠습니다.
+exec
+/bin/zsh -lc "nl -ba skills/workflow-guide/SKILL.md | sed -n '120,240p'" in /Users/kwak/Projects/ai/claude-imple-skillsexec
+/bin/zsh -lc "nl -ba skills/workflow-guide/SKILL.md | sed -n '380,620p'" in /Users/kwak/Projects/ai/claude-imple-skillsexec
+/bin/zsh -lc "nl -ba skills/workflow-guide/SKILL.md | sed -n '240,380p'" in /Users/kwak/Projects/ai/claude-imple-skills succeeded in 51ms:
+   120	
+   121	```bash
+   122	# 1. 기획 문서 확인
+   123	ls docs/planning/*.md 2>/dev/null
+   124	
+   125	# 2. 태스크 파일 확인 (둘 중 하나만 있어도 OK)
+   126	# 권장: 루트 TASKS.md / 레거시: docs/planning/06-tasks.md
+   127	ls TASKS.md 2>/dev/null || ls docs/planning/06-tasks.md 2>/dev/null
+   128	
+   129	# 3. 코드 베이스 확인 (source_code = src/·app/·lib/ 디렉토리에 실제 코드 파일이 있어야 함)
+   130	# package.json만 있는 신규 프로젝트는 source_code로 보지 않음
+   131	SOURCE_CODE=$(find src/ app/ lib/ -maxdepth 3 -type f \( -name "*.ts" -o -name "*.js" -o -name "*.py" -o -name "*.go" -o -name "*.rs" \) 2>/dev/null | head -1)
+   132	echo "source_code=${SOURCE_CODE:+yes}"
+   133	
+   134	# 4. 중단된 작업 확인
+   135	# ⚠️ 레거시 경로와 신규 경로 모두 확인 (task-board 호환)
+   136	# ⚠️ orchestrate.sh 완료 시 state 파일이 자동 삭제되지 않음 → 파일 존재만으로는 불충분
+   137	# ⚠️ 미완료 태스크(in_progress/pending) 존재 여부로 실제 중단 여부 판단
+   138	for STATE_PATH in ".claude/orchestrate-state.json" ".claude/orchestrate/orchestrate-state.json"; do
+   139	  if [ -f "$STATE_PATH" ]; then
+ succeeded in 51ms:
+   240	  #    DOMAIN_COUNT는 TASKS.md 'domain:' 필드 기반; 없으면 TASK_COUNT>=30으로 대체
+   241	  #    ⚠️ incomplete_tasks == 0 (모든 완료) → 거버넌스 불필요 → ⑦·⑧으로 이동
+   242	  IF TASK_COUNT >= 10 AND (DOMAIN_COUNT >= 2 OR TASK_COUNT >= 30) AND GOVERNANCE_DONE == "no" AND incomplete_tasks > 0:
+   243	    RETURN "/governance-setup"
+   244	    # ⚠️ AGENT_COUNT, TASKS.md 목적·설명 필드, 사용자 맥락은 이 조건에 영향 없음
+   245	
+   246	  # ⑤ 인프라 체크 (거버넌스 완료 후, 미완료 태스크 있을 때만)
+   247	  #    ⚠️ all_tasks_completed이면 install.sh 불필요 → ⑥·⑧으로 이동
+   248	  IF GOVERNANCE_DONE == "yes" AND TASK_COUNT >= 30 AND AGENT_COUNT == 0 AND incomplete_tasks > 0:
+   249	    RETURN "project-team/install.sh --mode standard"
+   250	    # 참고: claude-imple-skills 클론 디렉토리 내 project-team/ 에서 실행
+   251	
+   252	  # ⑥ 구현/배포 판단 (거버넌스 완료 + 인프라 준비)
+   253	  IF GOVERNANCE_DONE == "yes" AND AGENT_COUNT > 0:
+   254	    IF all_tasks_completed: RETURN "/audit"   # 전체 완료 → 배포 전 감사
+   255	    IF incomplete_tasks >= 80: RETURN "/orchestrate-standalone --mode=wave"
+   256	    IF incomplete_tasks >= 30: RETURN "/orchestrate-standalone"
+   257	    ELSE: RETURN "/agile auto"
+   258	
+   259	  # ⑦ 소규모 신규 구현 (거버넌스 불필요, 코드 없음, 미완료 태스크 있음)
+ succeeded in 51ms:
+   380	    ├─ Phase 완료 ───────────────────── /audit
+   381	    └─ 배포 전 ──────────────────────── /multi-ai-review
+   382	```
+   383	
+   384	---
+   385	
+   386	## 📊 태스크 규모별 구현 스킬 선택
+   387	
+   388	| 태스크 수 | 권장 스킬 | 코드 작성 주체 | 에이전트 팀 | 선행 스킬 |
+   389	|-----------|-----------|---------------|------------|-----------|
+   390	| **1~10개** | `/agile run` + `/agile done` | Claude 직접 | ❌ 불필요 | - |
+   391	| **10~30개** | `/agile auto` | Claude 직접 | ❌ 불필요 | - |
+   392	| **30~80개** | `/orchestrate-standalone` | 전문가 에이전트 | ✅ 선택 | `/governance-setup` |
+   393	| **50~200개** | `/orchestrate-standalone --mode=sprint` | Agile 스프린트 에이전트 | ✅ 선택 | `/governance-setup` |
+   394	| **80~200개** | `/orchestrate-standalone --mode=wave` | 도메인 병렬 에이전트 | ✅ 권장 | `/governance-setup` |
+   395	| **200개+** | 하위 프로젝트 분할 → `/orchestrate-standalone --mode=wave` | 도메인 병렬 에이전트 | ✅ 필수 | `/governance-setup` |
+   396	
+   397	> **Sprint vs Wave 선택 기준**: `--mode=sprint`은 Human-in-the-loop 리뷰가 필요할 때 (각 스프린트 경계에서 사용자 승인), `--mode=wave`는 완전 자율 도메인 병렬 실행 시 사용합니다.
+   398	>
+   399	> **v2.0 Hybrid Wave Architecture**: 80개 이상 태스크는 `--mode=wave`로 Contract-First + 도메인 병렬 + Cross-Review 게이트를 적용하여 대규모에서도 일관성을 보장합니다.
+codex
+핵심 문서 구간을 확인했습니다. 다음으로 `orchestrate-state.json` 실제 구조와 `clearState()` 호출 시점을 확인해, step 4의 `grep` 조건이 실제 런타임 데이터에 맞는지 검증하겠습니다.
+exec
+/bin/zsh -lc "nl -ba skills/orchestrate-standalone/templates/orchestrate-state.json | sed -n '1,200p'" in /Users/kwak/Projects/ai/claude-imple-skillsexec
+/bin/zsh -lc "nl -ba skills/orchestrate-standalone/scripts/orchestrate.sh | sed -n '1,320p'" in /Users/kwak/Projects/ai/claude-imple-skills succeeded in 52ms:
+     1	{
+     2	  "$schema": "http://json-schema.org/draft-07/schema#",
+     3	  "title": "Orchestrate State",
+     4	  "description": "State file for orchestrate-standalone resume capability",
+     5	  "type": "object",
+     6	  "properties": {
+     7	    "version": {
+     8	      "type": "string",
+     9	      "description": "State format version",
+    10	      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    11	    },
+    12	    "started_at": {
+    13	      "type": "string",
+    14	      "format": "date-time",
+    15	      "description": "Orchestration start timestamp"
+    16	    },
+    17	    "completed_at": {
+    18	      "type": "string",
+    19	      "format": "date-time",
+    20	      "description": "Orchestration completion timestamp (null if in progress)"
+ succeeded in 52ms:
+     1	#!/bin/bash
+     2	#
+     3	# Orchestrate Standalone - Main Entry Point
+     4	#
+     5	# Executes tasks in parallel layers based on dependencies
+     6	#
+     7	# Usage:
+     8	#   ./orchestrate.sh [--mode=standard] [--resume]
+     9	#
+    10	
+    11	set -euo pipefail
+    12	
+    13	# ---------------------------------------------------------------------------
+    14	# Configuration
+    15	# ---------------------------------------------------------------------------
+    16	
+    17	SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    18	PROJECT_DIR="$(cd "${SCRIPT_DIR}/../../../.." && pwd)"
+    19	NODE_CMD="${NODE_CMD:-node}"
+    20	
+exec
+/bin/zsh -lc "nl -ba skills/orchestrate-standalone/scripts/state.js | sed -n '1,320p'" in /Users/kwak/Projects/ai/claude-imple-skills succeeded in 52ms:
+     1	#!/usr/bin/env node
+     2	/**
+     3	 * State Management for Orchestrate Standalone
+     4	 *
+     5	 * Manages orchestrate-state.json for resume capability
+     6	 *
+     7	 * @TASK orchestrate-standalone
+     8	 * @SPEC SKILL.md
+     9	 */
+    10	
+    11	const fs = require('fs');
+    12	const path = require('path');
+    13	
+    14	// ---------------------------------------------------------------------------
+    15	// State File Operations
+    16	// ---------------------------------------------------------------------------
+    17	
+    18	const STATE_FILE = '.claude/orchestrate-state.json';
+    19	const BACKUP_DIR = '.claude/backups';
+    20	
+exec
+/bin/zsh -lc "nl -ba skills/orchestrate-standalone/scripts/worker.js | sed -n '1,320p'" in /Users/kwak/Projects/ai/claude-imple-skillsexec
+/bin/zsh -lc "rg -n \"status\\s*[:=].*in_progress|status\\s*[:=].*pending|state\\.js update|orchestrate-state|completed_at|tasks\" -S skills/orchestrate-standalone/scripts" in /Users/kwak/Projects/ai/claude-imple-skills succeeded in 51ms:
+     1	#!/usr/bin/env node
+     2	/**
+     3	 * Task Worker for Orchestrate Standalone
+     4	 *
+     5	 * Executes individual tasks and reports results
+     6	 *
+     7	 * @TASK orchestrate-standalone
+     8	 * @SPEC SKILL.md
+     9	 */
+    10	
+    11	const { spawn, execSync } = require('child_process');
+    12	const fs = require('fs');
+    13	const path = require('path');
+    14	
+    15	function writeStderr(message) {
+    16	  process.stderr.write(`${message}\n`);
+    17	}
+    18	
+    19	// ---------------------------------------------------------------------------
+    20	// Routing Management
+ succeeded in 50ms:
+skills/orchestrate-standalone/scripts/scheduler.js:22: * Parse TASKS.md and extract tasks with metadata
+skills/orchestrate-standalone/scripts/scheduler.js:24:function parseTasks(tasksPath) {
+skills/orchestrate-standalone/scripts/scheduler.js:25:  const content = fs.readFileSync(tasksPath, 'utf8');
+skills/orchestrate-standalone/scripts/scheduler.js:26:  const tasks = [];
+skills/orchestrate-standalone/scripts/scheduler.js:38:    tasks.push({
+skills/orchestrate-standalone/scripts/scheduler.js:47:      status: 'pending'
+skills/orchestrate-standalone/scripts/scheduler.js:51:  return tasks;
+skills/orchestrate-standalone/scripts/scheduler.js:97: * Build dependency graph and return sorted tasks
+skills/orchestrate-standalone/scripts/scheduler.js:99:function buildDAG(tasks) {
+skills/orchestrate-standalone/scripts/scheduler.js:104:  for (const task of tasks) {
+skills/orchestrate-standalone/scripts/scheduler.js:109:  for (const task of tasks) {
+skills/orchestrate-standalone/scripts/scheduler.js:120:  const queue = tasks.filter(t => inDegree[t.id] === 0);
+skills/orchestrate-standalone/scripts/scheduler.js:126:    // Reduce in-degree for dependent tasks
+skills/orchestrate-standalone/scripts/scheduler.js:130:        const dependent = tasks.find(t => t.id === dependentId);
+skills/orchestrate-standalone/scripts/scheduler.js:137:  if (sorted.length !== tasks.length) {
+skills/orchestrate-standalone/scripts/scheduler.js:138:    throw new Error('Circular dependency detected in tasks');
+skills/orchestrate-standalone/scripts/scheduler.js:151:function createLayers(sortedTasks, graph) {
+skills/orchestrate-standalone/scripts/scheduler.js:155:  for (const task of sortedTasks) {
+skills/orchestrate-standalone/scripts/scheduler.js:199:    // Critical risk tasks always conflict (serial execution)
+skills/orchestrate-standalone/scripts/scheduler.js:214:function detectConflicts(tasks) {
+exec
+/bin/zsh -lc "nl -ba skills/orchestrate-standalone/SKILL.md | sed -n '150,260p'" in /Users/kwak/Projects/ai/claude-imple-skills succeeded in 51ms:
+   150	3. 병렬 레이어 생성 (Topological Sort)
+   151	   ↓
+   152	4. 충돌 감지 (파일/도메인)
+   153	   ↓
+   154	5. 게이트 체인 통과
+   155	   ↓
+   156	6. Worker Pool 병렬 실행
+   157	   ↓
+   158	7. 상태 저장 (.claude/orchestrate-state.json)
+   159	```
+   160	
+   161	---
+   162	
+   163	## 🪝 게이트 체인
+   164	
+   165	### Pre-Dispatch Gate
+   166	```javascript
+   167	policy-gate (권한 + 표준)
+   168	  ↓
+   169	risk-gate (영향도 + 위험도)
+exec
+/bin/zsh -lc "nl -ba skills/workflow-guide/SKILL.md | sed -n '1,120p'" in /Users/kwak/Projects/ai/claude-imple-skills succeeded in 52ms:
+     1	---
+     2	name: workflow-guide
+     3	description: 여러 플러그인 중 상황에 맞는 워크플로우를 안내합니다. /workflow, "어떤 스킬을 써야 해?", "워크플로우 추천" 트리거.
+     4	trigger: /workflow, /workflow-guide, "뭐해야해?", "어떤 스킬", "워크플로우 추천"
+     5	version: 4.9.3
+     6	updated: 2026-03-06
+     7	
+     8	---
+     9	
+    10	# 🧭 워크플로우 선택 가이드 (Meta Hub)
+    11	
+    12	> **🔥 Heavy-Hitter (즉시 실행)**
+    13	> ```
+    14	> /workflow | "뭐해야해?" | "어떤 스킬 써야 해?"
+    15	> ```
+    16	> **결과**: 프로젝트 상태 자동 분석 → 최적 스킬 1~2개 추천
+    17	>
+    18	> **⚠️ 핵심 원칙**: 이 스킬은 **구현 코드를 작성하지 않습니다**. 오직 **상황 진단 → 스킬 추천 → 사용자 확인**만 수행합니다.
+    19	
+    20	> **v4.1.0**: Long Context 최적화 - H2O 패턴으로 핵심 정보 상단 배치
+exec
+/bin/zsh -lc "printf '%s
+' '{\"tasks\":[{\"id\":\"T1.1\",\"status\":\"in_progress\"},{\"id\":\"T1.2\",\"status\":\"pending\"},{\"id\":\"T1.3\",\"status\":\"completed\"}]}' | grep -cE '\"status\"[[:space:]]*:[[:space:]]*\"(in_progress|pending)\"'; printf '%s
+' '{\"tasks\":[{\"id\":\"T1.1\",\"status\":\"completed\"}]}' | grep -cE '\"status\"[[:space:]]*:[[:space:]]*\"(in_progress|pending)\"'" in /Users/kwak/Projects/ai/claude-imple-skills exited 1 in 51ms:
+1
+0
+codex
+step 4에서 추가로 중요한 쉘 동작 하나를 확인 중입니다. `grep -c ... || echo 0` 조합은 no-match 시 `0`이 중복 출력될 수 있어 변수 값이 깨질 가능성이 있어, 실제로 재현해서 영향도를 판단하겠습니다.
+exec
+/bin/zsh -lc 'INCOMPLETE_IN_STATE=$(printf '"'%s
+' '{\"tasks\":[{\"status\":\"completed\"}]}' | grep -cE '\"status\"[[:space:]]*:[[:space:]]*\"(in_progress|pending)\"' || echo 0); printf 'val=<%s>\\n' \""'$INCOMPLETE_IN_STATE"' in /Users/kwak/Projects/ai/claude-imple-skills succeeded in 52ms:
+val=<0
+0>
+codex
+**총평:** `v4.9.3`의 핵심 수정 의도는 반영됐지만, 아직 **문서-알고리즘 불일치가 남아 있어 전체 등급은 `HIGH`** 입니다.
+
+1. **bash step 4 정확성: `HIGH`**
+- 패턴 자체는 구조(`tasks[].status`)에 대해 정상 매칭입니다: `"status":"in_progress|pending"`는 잘 잡습니다.
+- 하지만 현재 구현은 no-match 시 변수값이 깨집니다. `grep -c ... || echo 0`는 매치 0개일 때 `0`이 두 번 출력되어 `INCOMPLETE_IN_STATE="0\n0"`가 됩니다(실제 재현됨).
+- 또한 2개 경로를 루프 돌며 단일 변수에 덮어써서, 경로별 결과를 OR 집계하지 않습니다.
+- 근거: [skills/workflow-guide/SKILL.md:138](/Users/kwak/Projects/ai/claude-imple-skills/skills/workflow-guide/SKILL.md:138), [skills/workflow-guide/SKILL.md:140](/Users/kwak/Projects/ai/claude-imple-skills/skills/workflow-guide/SKILL.md:140)
+
+2. **알고리즘 ① 완전성: `MEDIUM`**
+- 질문하신 3개 케이스는 의도대로 동작합니다.
+- 케이스 1(실행 중 중단): `in_progress`로 감지 가능.
+- 케이스 2(완료 후 state 잔존): `incomplete=0`이면 오탐 방지됨.
+- 케이스 3(이전 파일 잔존 + 새 실행): `pending` 있으면 감지됨.
+- 다만 `failed/timeout only` 상태는 ①에서 누락됩니다(재개 가능성 관점에서 갭).
+- 근거: [skills/workflow-guide/SKILL.md:211](/Users/kwak/Projects/ai/claude-imple-skills/skills/workflow-guide/SKILL.md:211), [skills/orchestrate-standalone/scripts/state.js:179](/Users/kwak/Projects/ai/claude-imple-skills/skills/orchestrate-standalone/scripts/state.js:179)
+
+3. **결정 트리 일관성: `MEDIUM`**
+- merge conflict 체크 추가는 알고리즘과 일치합니다.
+- 결정 트리 본문에서는 `--mode=sprint` 제거되어 요청사항 충족입니다.
+- 그러나 문서 전체로 보면 여전히 sprint 추천 문구가 다수 남아 알고리즘과 불일치합니다.
+- 경계값도 겹칩니다(`<=30` vs `30~80`, `30`/`80` 중복).
+- 근거: [skills/workflow-guide/SKILL.md:342](/Users/kwak/Projects/ai/claude-imple-skills/skills/workflow-guide/SKILL.md:342), [skills/workflow-guide/SKILL.md:360](/Users/kwak/Projects/ai/claude-imple-skills/skills/workflow-guide/SKILL.md:360), [skills/workflow-guide/SKILL.md:393](/Users/kwak/Projects/ai/claude-imple-skills/skills/workflow-guide/SKILL.md:393), [skills/workflow-guide/SKILL.md:512](/Users/kwak/Projects/ai/claude-imple-skills/skills/workflow-guide/SKILL.md:512)
+
+4. **시나리오 테이블 완전성: `HIGH`**
+- 새로 추가한 `S2-running`, `비정상(AGENT>0+GOV=no)` 추적은 맞습니다.
+- 하지만 기존 `S6 (복구)` 행이 여전히 `state 존재 OR merge conflict`로 되어 있어, v4.9.3의 핵심 변경(존재+incomplete>0)과 충돌합니다.
+- 따라서 “15개 모두 정확”은 아닙니다.
+- 근거: [skills/workflow-guide/SKILL.md:277](/Users/kwak/Projects/ai/claude-imple-skills/skills/workflow-guide/SKILL.md:277), [skills/workflow-guide/SKILL.md:280](/Users/kwak/Projects/ai/claude-imple-skills/skills/workflow-guide/SKILL.md:280), [skills/workflow-guide/SKILL.md:286](/Users/kwak/Projects/ai/claude-imple-skills/skills/workflow-guide/SKILL.md:286)
+
+5. **새 엣지케이스: `MEDIUM`**
+- `HIGH`: dual-path 결과를 단일 `INCOMPLETE_IN_STATE`로 덮어써 OR 판정이 불명확.
+- `MEDIUM`: `failed/timeout`만 남은 중단/재개 케이스 미포함.
+- `LOW`: 문서 버전 표기 불일치(헤더 4.9.3 vs 하단 Last Updated 4.9.0).
+- 근거: [skills/workflow-guide/SKILL.md:5](/Users/kwak/Projects/ai/claude-imple-skills/skills/workflow-guide/SKILL.md:5), [skills/workflow-guide/SKILL.md:594](/Users/kwak/Projects/ai/claude-imple-skills/skills/workflow-guide/SKILL.md:594)
+
+
+tokens used
+59,364
+**총평:** `v4.9.3`의 핵심 수정 의도는 반영됐지만, 아직 **문서-알고리즘 불일치가 남아 있어 전체 등급은 `HIGH`** 입니다.
+
+1. **bash step 4 정확성: `HIGH`**
+- 패턴 자체는 구조(`tasks[].status`)에 대해 정상 매칭입니다: `"status":"in_progress|pending"`는 잘 잡습니다.
+- 하지만 현재 구현은 no-match 시 변수값이 깨집니다. `grep -c ... || echo 0`는 매치 0개일 때 `0`이 두 번 출력되어 `INCOMPLETE_IN_STATE="0\n0"`가 됩니다(실제 재현됨).
+- 또한 2개 경로를 루프 돌며 단일 변수에 덮어써서, 경로별 결과를 OR 집계하지 않습니다.
+- 근거: [skills/workflow-guide/SKILL.md:138](/Users/kwak/Projects/ai/claude-imple-skills/skills/workflow-guide/SKILL.md:138), [skills/workflow-guide/SKILL.md:140](/Users/kwak/Projects/ai/claude-imple-skills/skills/workflow-guide/SKILL.md:140)
+
+2. **알고리즘 ① 완전성: `MEDIUM`**
+- 질문하신 3개 케이스는 의도대로 동작합니다.
+- 케이스 1(실행 중 중단): `in_progress`로 감지 가능.
+- 케이스 2(완료 후 state 잔존): `incomplete=0`이면 오탐 방지됨.
+- 케이스 3(이전 파일 잔존 + 새 실행): `pending` 있으면 감지됨.
+- 다만 `failed/timeout only` 상태는 ①에서 누락됩니다(재개 가능성 관점에서 갭).
+- 근거: [skills/workflow-guide/SKILL.md:211](/Users/kwak/Projects/ai/claude-imple-skills/skills/workflow-guide/SKILL.md:211), [skills/orchestrate-standalone/scripts/state.js:179](/Users/kwak/Projects/ai/claude-imple-skills/skills/orchestrate-standalone/scripts/state.js:179)
+
+3. **결정 트리 일관성: `MEDIUM`**
+- merge conflict 체크 추가는 알고리즘과 일치합니다.
+- 결정 트리 본문에서는 `--mode=sprint` 제거되어 요청사항 충족입니다.
+- 그러나 문서 전체로 보면 여전히 sprint 추천 문구가 다수 남아 알고리즘과 불일치합니다.
+- 경계값도 겹칩니다(`<=30` vs `30~80`, `30`/`80` 중복).
+- 근거: [skills/workflow-guide/SKILL.md:342](/Users/kwak/Projects/ai/claude-imple-skills/skills/workflow-guide/SKILL.md:342), [skills/workflow-guide/SKILL.md:360](/Users/kwak/Projects/ai/claude-imple-skills/skills/workflow-guide/SKILL.md:360), [skills/workflow-guide/SKILL.md:393](/Users/kwak/Projects/ai/claude-imple-skills/skills/workflow-guide/SKILL.md:393), [skills/workflow-guide/SKILL.md:512](/Users/kwak/Projects/ai/claude-imple-skills/skills/workflow-guide/SKILL.md:512)
+
+4. **시나리오 테이블 완전성: `HIGH`**
+- 새로 추가한 `S2-running`, `비정상(AGENT>0+GOV=no)` 추적은 맞습니다.
+- 하지만 기존 `S6 (복구)` 행이 여전히 `state 존재 OR merge conflict`로 되어 있어, v4.9.3의 핵심 변경(존재+incomplete>0)과 충돌합니다.
+- 따라서 “15개 모두 정확”은 아닙니다.
+- 근거: [skills/workflow-guide/SKILL.md:277](/Users/kwak/Projects/ai/claude-imple-skills/skills/workflow-guide/SKILL.md:277), [skills/workflow-guide/SKILL.md:280](/Users/kwak/Projects/ai/claude-imple-skills/skills/workflow-guide/SKILL.md:280), [skills/workflow-guide/SKILL.md:286](/Users/kwak/Projects/ai/claude-imple-skills/skills/workflow-guide/SKILL.md:286)
+
+5. **새 엣지케이스: `MEDIUM`**
+- `HIGH`: dual-path 결과를 단일 `INCOMPLETE_IN_STATE`로 덮어써 OR 판정이 불명확.
+- `MEDIUM`: `failed/timeout`만 남은 중단/재개 케이스 미포함.
+- `LOW`: 문서 버전 표기 불일치(헤더 4.9.3 vs 하단 Last Updated 4.9.0).
+- 근거: [skills/workflow-guide/SKILL.md:5](/Users/kwak/Projects/ai/claude-imple-skills/skills/workflow-guide/SKILL.md:5), [skills/workflow-guide/SKILL.md:594](/Users/kwak/Projects/ai/claude-imple-skills/skills/workflow-guide/SKILL.md:594)
+

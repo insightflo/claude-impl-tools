@@ -1,0 +1,828 @@
+OpenAI Codex v0.107.0 (research preview)
+--------
+workdir: /Users/kwak/Projects/ai/claude-imple-skills
+model: gpt-5.3-codex
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019cbbb0-fb5e-7a60-9fc9-ff5bcf0e1a00
+--------
+user
+다음 버그 수정 계획서를 검토해 주세요. 별도 세션에서 이 문서만 보고 구현할 수 있는지, 누락되거나 잘못된 내용이 있는지 확인해주세요.
+
+# Sprint Mode 버그 수정 계획
+
+> **작성일**: 2026-03-05
+> **대상**: `skills/orchestrate-standalone/scripts/` 의 Sprint Mode 구현체
+> **배경**: Multi-AI 퀄리티 리뷰(Claude + Gemini + Codex)에서 발견된 6개 버그
+> **목표**: 이 문서만 보고도 별도 세션에서 완전히 수정 가능한 수준의 명세
+
+---
+
+## 파일 구조 (수정 대상)
+
+```
+skills/orchestrate-standalone/scripts/
+├── orchestrate.sh        ← Bug #1, #2, #4 수정
+├── sprint-runner.js      ← Bug #1, #3 수정
+├── sprint-review.js      ← Bug #5 수정
+└── sprint-retro.js       ← 변경 없음 (호출 경로만 추가)
+```
+
+---
+
+## Bug #1 (Critical): sprint-retro.js가 실행 흐름에 없음
+
+### 현상
+
+사용자가 Sprint Review에서 `[A]` 승인을 선택해도 `sprint-retro.js`가 실행되지 않는다.
+
+### 실행 흐름 추적
+
+```
+orchestrate.sh
+  → sprint-planner.js     (PI Planning, state=PI_PLANNING→SPRINT_RUNNING)
+  → sprint-runner.js
+      → waves 실행
+      → state.transition('wave_complete')  (state=SPRINT_RUNNING→SPRINT_REVIEW)
+      → spawn sprint-review.js
+          → [A] 선택: state.transition('approve') (state=SPRINT_REVIEW→SPRINT_RETRO)
+          → process.exit(0)
+      → return reviewExitCode (= 0)
+  ← exit 0
+
+※ sprint-retro.js 호출 없음 → 상태가 SPRINT_RETRO에서 영원히 멈춤
+```
+
+### 기대 흐름
+
+```
+sprint-runner.js에서 sprint-review.js exit 0(approve) 수신 후:
+  → sprint-retro.js 실행 (SPRINT_RETRO → PI_COMPLETE 또는 SPRINT_RUNNING)
+  → 다음 스프린트면 sprint-runner.js를 재호출하거나, PI 완료 메시지 출력
+```
+
+### 수정 방법
+
+**파일**: `skills/orchestrate-standalone/scripts/sprint-runner.js`
+
+`runSprintReview()` 함수 다음에 `runSprintRetro()` 함수를 추가하고, `main()` 함수에서 exit 0일 때 호출:
+
+```javascript
+// 추가할 함수 (runSprintReview 아래에 배치)
+function runSprintRetro() {
+  const retroScript = path.join(__dirname, 'sprint-retro.js');
+
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [retroScript], {
+      stdio: 'inherit',
+      cwd: process.cwd(),
+      env: process.env
+    });
+
+    child.on('error', (error) => {
+      reject(new Error(`Failed to start sprint-retro.js: ${error.message}`));
+    });
+
+    child.on('close', (code) => {
+      resolve(Number.isInteger(code) ? code : 1);
+    });
+  });
+}
+```
+
+**수정할 main() 부분** (현재 끝부분):
+
+```javascript
+// 현재 코드 (수정 전)
+state.transition('wave_complete');
+const reviewExitCode = await runSprintReview();
+return reviewExitCode;
+
+// 수정 후
+state.transition('wave_complete');
+const reviewExitCode = await runSprintReview();
+
+if (reviewExitCode === 0) {
+  // 승인: retro 실행
+  const retroExitCode = await runSprintRetro();
+  return retroExitCode;
+}
+
+// modify(2) 또는 stop(3): 그대로 반환
+return reviewExitCode;
+```
+
+---
+
+## Bug #2 (Critical): orchestrate.sh exit code 처리 오류
+
+### 현상
+
+`sprint-runner.js`가 반환하는 exit code:
+- `0` = Review 승인
+- `2` = 수정 요청 (Modify)
+- `3` = 중단 (Stop)
+
+하지만 `orchestrate.sh`의 현재 코드:
+
+```bash
+# 현재 코드 (orchestrate.sh:176)
+if ! "$NODE_CMD" "$SCRIPT_DIR/sprint-runner.js" "$TASKS_FILE"; then
+    log_error "Sprint runner execution failed"
+    exit 1
+fi
+```
+
+`if !` 구문은 exit 0만 성공으로 처리 → exit 2(수정), exit 3(중단)이 모두 "Sprint runner execution failed"로 처리됨.
+
+사용자가 `[M]`으로 수정 요청해도 에러로 종료되어 **피드백 루프 불가능**.
+
+### 수정 방법
+
+**파일**: `skills/orchestrate-standalone/scripts/orchestrate.sh`
+
+현재 sprint mode 블록(line 172-189)을 전체 교체:
+
+```bash
+# Sprint mode: special handling with planner/runner
+if [ "$MODE" = "sprint" ]; then
+    header "Executing Sprint Mode (Workers: $WORKER_COUNT, Sprint Size: $SPRINT_SIZE)"
+
+    if ! "$NODE_CMD" "$SCRIPT_DIR/sprint-planner.js" "$TASKS_FILE" "$SPRINT_SIZE"; then
+        log_error "Sprint planning failed or cancelled"
+        exit 1
+    fi
+
+    "$NODE_CMD" "$SCRIPT_DIR/sprint-runner.js" "$TASKS_FILE"
+    SPRINT_EXIT=$?
+
+    case $SPRINT_EXIT in
+        0)
+            header "Orchestration Complete"
+            log_success "Sprint mode execution finished!"
+            ;;
+        2)
+            log_warn "Modification requested. Review instructions saved to .claude/sprint-state.json"
+            log_info "Re-run: $0 --mode=sprint --resume"
+            exit 2
+            ;;
+        3)
+            log_info "Sprint stopped by user. State saved."
+            log_info "Resume with: $0 --mode=sprint --resume"
+            exit 0
+            ;;
+        *)
+            log_error "Sprint runner failed (exit code: $SPRINT_EXIT)"
+            exit 1
+            ;;
+    esac
+
+    exit 0
+fi
+```
+
+---
+
+## Bug #3 (High): Wave 실패 시 Review Gate 도달 불가
+
+### 현상
+
+```javascript
+// sprint-runner.js:292-294 (현재 코드)
+if (failed.length > 0) {
+  const failedIds = failed.map((f) => f.id).join(', ');
+  throw new Error(`Task execution failed in wave ${i + 1}: ${failedIds}`);
+}
+```
+
+Wave에서 task가 하나라도 실패하면 즉시 에러를 던져 프로세스가 종료됨.
+사용자가 Review Gate에서 결정할 기회가 없음.
+
+### 수정 방법
+
+**파일**: `skills/orchestrate-standalone/scripts/sprint-runner.js`
+
+```javascript
+// 수정 후 main() 함수 내 wave 루프 부분
+let hasFailure = false;
+
+for (let i = 0; i < waves.length; i += 1) {
+  const wave = waves[i];
+  const { results, failed } = await executeWave(wave, i, waves.length, { projectDir: process.cwd() });
+
+  for (const result of results) {
+    statusById[normalizeTaskId(result.id)] = result.status;
+  }
+
+  sprintState = state.get();
+  updateSprintTaskStatuses(sprintState, sprintIndex, statusById, idByKey);
+  state.save();
+
+  if (failed.length > 0) {
+    const failedIds = failed.map((f) => f.id).join(', ');
+    console.warn(`[Sprint Runner] Wave ${i + 1} partial failure: ${failedIds}`);
+    console.warn('[Sprint Runner] Proceeding to review gate for user decision...');
+    hasFailure = true;
+    break;  // throw 대신 break: review gate로 진행
+  }
+}
+
+state.transition('wave_complete');
+
+const reviewExitCode = await runSprintReview();
+
+if (reviewExitCode === 0) {
+  const retroExitCode = await runSprintRetro();
+  return retroExitCode;
+}
+
+return reviewExitCode;
+```
+
+**참고**: `hasFailure` 변수는 review gate에서 실패 여부를 표시하는 데 활용 가능하지만, 현재 `sprint-review.js`가 `sprint-state.json`에서 task 상태를 읽으므로 별도 전달 불필요.
+
+---
+
+## Bug #4 (Medium): Sprint Mode에서 scheduler.js 이중 실행
+
+### 현상
+
+`orchestrate.sh`는 MODE 분기 전에 항상 `scheduler.js`를 실행하고 `task-layers.json`을 생성함:
+
+```bash
+# orchestrate.sh:149 (항상 실행됨)
+LAYER_OUTPUT="$("$NODE_CMD" "$SCRIPT_DIR/scheduler.js" "$TASKS_FILE" 2>&1)"
+# ...
+LAYERS_FILE="$PROJECT_DIR/.claude/task-layers.json"
+if [ ! -f "$LAYERS_FILE" ]; then
+    log_error "Failed to create task layers"
+    exit 1
+fi
+TOTAL_LAYERS=$(node -e "const d = require('$LAYERS_FILE'); console.log(d.layers.length);")
+TOTAL_TASKS=$(node -e "const d = require('$LAYERS_FILE'); console.log(d.tasks.length);")
+```
+
+Sprint mode는 `task-layers.json`을 사용하지 않아서 이 과정이 낭비이며, 대규모 TASKS.md에서 불필요한 실행 시간을 유발함.
+
+### 수정 방법
+
+**파일**: `skills/orchestrate-standalone/scripts/orchestrate.sh`
+
+"Parse Tasks and Build DAG" 헤더 블록 전체를 sprint mode 조건으로 감싸기:
+
+```bash
+# ---------------------------------------------------------------------------
+# Parse Tasks and Build DAG (non-sprint modes only)
+# ---------------------------------------------------------------------------
+
+if [ "$MODE" != "sprint" ]; then
+    header "Building Task Dependency Graph"
+
+    LAYER_OUTPUT="$("$NODE_CMD" "$SCRIPT_DIR/scheduler.js" "$TASKS_FILE" 2>&1)"
+    if [ $? -ne 0 ]; then
+        log_error "Failed to parse tasks"
+        echo "$LAYER_OUTPUT"
+        exit 1
+    fi
+
+    LAYERS_FILE="$PROJECT_DIR/.claude/task-layers.json"
+    if [ ! -f "$LAYERS_FILE" ]; then
+        log_error "Failed to create task layers"
+        exit 1
+    fi
+
+    TOTAL_LAYERS=$(node -e "const d = require('$LAYERS_FILE'); console.log(d.layers.length);")
+    TOTAL_TASKS=$(node -e "const d = require('$LAYERS_FILE'); console.log(d.tasks.length);")
+
+    log_success "$TOTAL_TASKS tasks organized into $TOTAL_LAYERS layers"
+fi
+```
+
+그리고 아래 "Execute Layers" 섹션도 `if [ "$MODE" != "sprint" ]; then ... fi`로 감싸거나, 현재처럼 sprint 분기 블록이 `exit 0`으로 끝나므로 자연스럽게 스킵됨을 확인. 단, 현재 코드는 `header "Execute Layers"` 라인이 sprint 분기 `exit 0` 이후에 있으므로 실제로는 실행 안 됨 — 즉, 이 bug의 실제 문제는 `LAYERS_FILE` 체크 실패 시 sprint mode도 abort된다는 점.
+
+---
+
+## Bug #5 (Medium): 마지막 스프린트 UI 표시 오류
+
+### 현상
+
+```javascript
+// sprint-review.js:428 (현재 코드)
+console.log(`[A] 승인 — Sprint ${sprintNumber + 1} 시작`);
+```
+
+마지막 스프린트에서 승인해도 "Sprint 5 시작" 같은 존재하지 않는 다음 스프린트를 표시함.
+
+### 수정 방법
+
+**파일**: `skills/orchestrate-standalone/scripts/sprint-review.js`
+
+`printReview()` 함수 내 해당 라인 수정:
+
+```javascript
+// 수정 전 (sprint-review.js:428)
+console.log(`[A] 승인 — Sprint ${sprintNumber + 1} 시작`);
+
+// 수정 후
+const isLastSprint = sprintState.total_sprints > 0 && sprintNumber >= sprintState.total_sprints;
+const approveLabel = isLastSprint
+  ? 'PI 완료 → Retrospective'
+  : `Sprint ${sprintNumber + 1} 시작`;
+console.log(`[A] 승인 — ${approveLabel}`);
+```
+
+---
+
+## Bug #6 (Low): 비대화형 환경에서 readline 이슈
+
+### 현상
+
+CI 환경이나 파이프 내에서 실행 시 `process.stdin.isTTY`가 `undefined`가 되어
+readline 입력이 즉시 `undefined`/빈 문자열을 반환하고 루프를 빠져나가거나 무한 루프에 빠질 수 있음.
+
+영향 파일: `sprint-planner.js:225`, `sprint-review.js:434`
+
+### 수정 방법 (Low 우선순위, 이번 수정에서는 선택 사항)
+
+두 파일의 `approvalLoop` / `handleGateDecision` 함수 시작 부분에 TTY 체크 추가:
+
+```javascript
+// sprint-planner.js approvalLoop() 시작 부분
+async function approvalLoop(sortedTasks, initialSprintSize) {
+  if (!process.stdin.isTTY) {
+    throw new Error(
+      'Sprint planner requires an interactive terminal. ' +
+      'Use --approve flag for non-interactive mode (not yet implemented).'
+    );
+  }
+  // ... 나머지 코드
+}
+
+// sprint-review.js handleGateDecision() 시작 부분
+async function handleGateDecision(sprintState) {
+  if (!process.stdin.isTTY) {
+    throw new Error(
+      'Sprint review requires an interactive terminal. ' +
+      'Use --decision=approve|modify|stop flag for non-interactive mode (not yet implemented).'
+    );
+  }
+  // ... 나머지 코드
+}
+```
+
+---
+
+## 수정 순서 및 검증 방법
+
+### 권장 수정 순서
+
+```
+1. orchestrate.sh   — Bug #2 (exit code), Bug #4 (scheduler 조건)
+2. sprint-runner.js — Bug #1 (retro 호출), Bug #3 (wave failure → review)
+3. sprint-review.js — Bug #5 (마지막 스프린트 UI)
+4. sprint-planner.js / sprint-review.js — Bug #6 (Low, 선택)
+```
+
+### 단위 검증 방법
+
+**Bug #1 검증**: sprint-retro.js 호출 여부
+```bash
+# sprint-state.json을 SPRINT_REVIEW 상태로 설정한 후
+echo '{"type":"shutdown_request"}' | node scripts/sprint-runner.js TASKS.md 2>&1 | grep -E "retro|retro.js"
+# sprint-retro.js가 호출되면 성공
+```
+
+**Bug #2 검증**: exit code 분기
+```bash
+# orchestrate.sh에서 sprint-runner가 exit 2 반환 시
+# "Modification requested" 메시지가 출력되어야 함
+# exit 3 반환 시 "Sprint stopped by user" 메시지
+```
+
+**Bug #3 검증**: wave 실패 후 review 진입
+```bash
+# worker.js가 실패를 반환하도록 mock 후
+# sprint-review.js가 실행되는지 확인
+```
+
+**Bug #4 검증**: scheduler.js 실행 여부
+```bash
+./scripts/orchestrate.sh --mode=sprint 2>&1 | grep -i "Building Task Dependency"
+# sprint mode에서는 이 메시지가 출력되지 않아야 함
+```
+
+### 통합 검증: Dry-run Flow
+
+```bash
+# 1. 테스트용 TASKS.md 준비 (최소 2개 스프린트 분량)
+# 2. orchestrate.sh --mode=sprint 실행
+# 3. PI Planning에서 [A] 선택
+# 4. Wave 실행 완료 후 Review Gate에서 [A] 선택
+# 5. sprint-retro.md 파일 생성 확인
+# 6. sprint-state.json에서 current_sprint가 2로 증가했는지 확인
+# 7. 두 번째 스프린트 자동 시작 확인 (또는 PI 완료)
+```
+
+---
+
+## 수정 후 기대 흐름
+
+```
+orchestrate.sh --mode=sprint
+  │
+  ├── [sprint mode 분기: scheduler.js 실행 안 함]
+  │
+  ├── sprint-planner.js
+  │   ├── TASKS.md 파싱 → DAG → sprint 분할
+  │   └── [A] 승인 → state=SPRINT_RUNNING → exit 0
+  │
+  └── sprint-runner.js (루프)
+      ├── wave 실행 (실패 시 break + 경고, review로 진행)
+      ├── state.transition('wave_complete') → SPRINT_REVIEW
+      ├── spawn sprint-review.js
+      │   ├── git diff 표시, 테스트 결과 표시
+      │   └── [A]=exit 0, [M]=exit 2, [S]=exit 3
+      │
+      ├── exit 0 (approve):
+      │   ├── spawn sprint-retro.js
+      │   │   ├── 메트릭 계산 → sprint-retro.md append
+      │   │   └── state.transition('next_sprint' | 'pi_complete')
+      │   └── return 0
+      │
+      ├── exit 2 (modify):
+      │   └── return 2 → orchestrate.sh: "Modification requested" + exit 2
+      │
+      └── exit 3 (stop):
+          └── return 3 → orchestrate.sh: "Sprint stopped" + exit 0
+
+orchestrate.sh case $SPRINT_EXIT:
+  0 → "Sprint mode execution finished!"
+  2 → "Modification requested. Re-run with --resume"
+  3 → "Sprint stopped by user. State saved."
+  * → "Sprint runner failed"
+```
+
+---
+
+## 참조 파일
+
+- `docs/plan/agile-sprint-mode.md` — 원본 설계 문서
+- `skills/orchestrate-standalone/scripts/sprint-state.js` — 상태 머신
+- `skills/orchestrate-standalone/SKILL.md` — 사용자 문서
+mcp: pencil starting
+mcp: pencil ready
+mcp startup: ready: pencil
+codex
+요청하신 계획서가 실제 코드 기준으로 독립 구현 가능한지 확인하겠습니다. 먼저 `orchestrate.sh`, `sprint-runner.js`, `sprint-review.js`, `sprint-retro.js`, `sprint-state.js`의 현재 동작과 exit code/상태 전이를 대조해 누락·오류를 체크하겠습니다.
+exec
+/bin/zsh -lc 'rg --files skills/orchestrate-standalone/scripts | sort' in /Users/kwak/Projects/ai/claude-imple-skillsexec
+/bin/zsh -lc "nl -ba skills/orchestrate-standalone/scripts/orchestrate.sh | sed -n '1,280p'" in /Users/kwak/Projects/ai/claude-imple-skillsexec
+/bin/zsh -lc "nl -ba skills/orchestrate-standalone/scripts/sprint-runner.js | sed -n '1,360p'" in /Users/kwak/Projects/ai/claude-imple-skillsexec
+/bin/zsh -lc "nl -ba skills/orchestrate-standalone/scripts/sprint-retro.js | sed -n '1,340p'" in /Users/kwak/Projects/ai/claude-imple-skillsexec
+/bin/zsh -lc "nl -ba skills/orchestrate-standalone/scripts/sprint-state.js | sed -n '1,420p'" in /Users/kwak/Projects/ai/claude-imple-skillsexec
+/bin/zsh -lc "nl -ba skills/orchestrate-standalone/scripts/sprint-review.js | sed -n '1,520p'" in /Users/kwak/Projects/ai/claude-imple-skills succeeded in 52ms:
+skills/orchestrate-standalone/scripts/gate-chain.js
+skills/orchestrate-standalone/scripts/orchestrate.sh
+skills/orchestrate-standalone/scripts/scheduler.js
+skills/orchestrate-standalone/scripts/sprint-planner.js
+skills/orchestrate-standalone/scripts/sprint-retro.js
+skills/orchestrate-standalone/scripts/sprint-review.js
+skills/orchestrate-standalone/scripts/sprint-runner.js
+skills/orchestrate-standalone/scripts/sprint-state.js
+skills/orchestrate-standalone/scripts/state.js
+skills/orchestrate-standalone/scripts/test-cli-routing.sh
+skills/orchestrate-standalone/scripts/worker.js
+ succeeded in 51ms:
+     1	#!/bin/bash
+     2	#
+     3	# Orchestrate Standalone - Main Entry Point
+     4	#
+     5	# Executes tasks in parallel layers based on dependencies
+     6	#
+     7	# Usage:
+     8	#   ./orchestrate.sh [--mode=standard] [--resume]
+     9	#
+    10	
+    11	set -euo pipefail
+    12	
+    13	# ---------------------------------------------------------------------------
+    14	# Configuration
+    15	# ---------------------------------------------------------------------------
+    16	
+    17	SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    18	PROJECT_DIR="$(cd "${SCRIPT_DIR}/../../../.." && pwd)"
+    19	NODE_CMD="${NODE_CMD:-node}"
+    20	
+ succeeded in 51ms:
+     1	#!/usr/bin/env node
+     2	/**
+     3	 * Sprint Retrospective for Orchestrate Standalone
+     4	 *
+     5	 * Calculates sprint completion metrics, appends retrospective notes,
+     6	 * adjusts velocity recommendation, and transitions sprint state.
+     7	 *
+     8	 * @TASK orchestrate-standalone
+     9	 * @SPEC SKILL.md
+    10	 */
+    11	
+    12	const fs = require('fs');
+    13	const path = require('path');
+    14	const state = require('./sprint-state');
+    15	
+    16	const ROOT = process.cwd();
+    17	const TASKS_FILE = path.join(ROOT, 'TASKS.md');
+    18	const RETRO_FILE = path.join(ROOT, '.claude', 'sprint-retro.md');
+    19	
+    20	function toInt(value, fallback = 0) {
+ succeeded in 51ms:
+     1	#!/usr/bin/env node
+     2	/**
+     3	 * Sprint Runner for Orchestrate Standalone
+     4	 *
+     5	 * Executes a single sprint using wave-based scheduling.
+     6	 *
+     7	 * @TASK orchestrate-standalone
+     8	 * @SPEC SKILL.md
+     9	 */
+    10	
+    11	const fs = require('fs');
+    12	const path = require('path');
+    13	const { spawn } = require('child_process');
+    14	
+    15	const { parseTasks, buildDAG, createWaves } = require('./scheduler');
+    16	const { executeTask } = require('./worker');
+    17	const state = require('./sprint-state');
+    18	
+    19	function normalizeTaskId(id) {
+    20	  return String(id || '').trim().toUpperCase();
+ succeeded in 52ms:
+     1	#!/usr/bin/env node
+     2	/**
+     3	 * Sprint Review for Orchestrate Standalone
+     4	 *
+     5	 * Shows git diff stats, test results, and handles user gate decision.
+     6	 *
+     7	 * @TASK orchestrate-standalone
+     8	 * @SPEC SKILL.md
+     9	 */
+    10	
+    11	const fs = require('fs');
+    12	const path = require('path');
+    13	const readline = require('readline');
+    14	const { execSync } = require('child_process');
+    15	const state = require('./sprint-state');
+    16	
+    17	function stripAnsi(text) {
+    18	  return String(text || '').replace(/\x1B\[[0-9;]*m/g, '');
+    19	}
+    20	
+ succeeded in 52ms:
+     1	#!/usr/bin/env node
+     2	/**
+     3	 * Sprint State Management for Agile Sprint Mode
+     4	 *
+     5	 * State machine for managing sprint lifecycle:
+     6	 * PI_PLANNING → SPRINT_RUNNING → SPRINT_REVIEW → SPRINT_RETRO → (next sprint or PI_COMPLETE)
+     7	 *
+     8	 * @TASK orchestrate-standalone
+     9	 * @SPEC SKILL.md
+    10	 */
+    11	
+    12	const fs = require('fs');
+    13	const path = require('path');
+    14	
+    15	const STATE_FILE = process.cwd() + '/.claude/sprint-state.json';
+    16	
+    17	const TRANSITIONS = {
+    18	  PI_PLANNING: { approve: 'SPRINT_RUNNING' },
+    19	  SPRINT_RUNNING: { wave_complete: 'SPRINT_REVIEW' },
+    20	  SPRINT_REVIEW: {
+codex
+현재 코드와 계획서를 라인 단위로 대조 중입니다. `sprint-retro.js` 후반부와 planner/상태머신 연계를 추가 확인해서, 실제 구현 시 빠질 수 있는 단계까지 점검하겠습니다.
+exec
+/bin/zsh -lc "nl -ba skills/orchestrate-standalone/scripts/sprint-planner.js | sed -n '1,420p'" in /Users/kwak/Projects/ai/claude-imple-skillsexec
+/bin/zsh -lc "nl -ba skills/orchestrate-standalone/scripts/sprint-retro.js | sed -n '330,520p'" in /Users/kwak/Projects/ai/claude-imple-skillsexec
+/bin/zsh -lc "nl -ba skills/orchestrate-standalone/SKILL.md | sed -n '1,280p'" in /Users/kwak/Projects/ai/claude-imple-skillsexec
+/bin/zsh -lc "rg -n \"SPRINT_RETRO|sprint-retro|exit\\(2\\)|handleGateDecision|approvalLoop|--resume|sprint-runner|sprint-review\" skills/orchestrate-standalone/scripts skills/orchestrate-standalone/SKILL.md" in /Users/kwak/Projects/ai/claude-imple-skills succeeded in 51ms:
+   330	    const userFixRequest = getUserFixRequest(currentSprint, sprintState);
+   331	
+   332	    appendRetroEntry({
+   333	      sprintNumber: getCurrentSprintNumber(sprintState, currentIndex),
+   334	      date: formatDateLocal(new Date()),
+   335	      completionRate,
+   336	      completed,
+   337	      planned,
+   338	      blockedCount: blocked.count,
+   339	      blockedReason: blocked.reason,
+   340	      testFailures,
+   341	      userFixRequest,
+   342	      nextSprintSize
+   343	    });
+   344	
+   345	    transitionSprintState(sprintState, currentIndex, nextSprintSize, completionRate);
+   346	  } catch (error) {
+   347	    console.error(`오류: ${error.message}`);
+   348	    process.exit(1);
+   349	  }
+ succeeded in 51ms:
+     1	#!/usr/bin/env node
+     2	/**
+     3	 * Sprint Planner for Orchestrate Standalone
+     4	 *
+     5	 * Reads TASKS.md, builds DAG, slices tasks into PI sprints,
+     6	 * shows plan, and asks for approval.
+     7	 *
+     8	 * @TASK orchestrate-standalone
+     9	 * @SPEC SKILL.md
+    10	 */
+    11	
+    12	const fs = require('fs');
+    13	const readline = require('readline');
+    14	const { parseTasks, buildDAG } = require('./scheduler');
+    15	const state = require('./sprint-state');
+    16	
+    17	const SPRINT_TITLES = ['Foundation', 'Core Features', 'Integration', 'Stabilization'];
+    18	
+    19	function extractPhaseInfo(task) {
+    20	  const id = (task && task.id) ? String(task.id) : '';
+ succeeded in 51ms:
+     1	---
+     2	name: orchestrate-standalone
+     3	description: 30~200개 태스크를 의존성 기반으로 병렬 실행합니다. Hybrid Wave 모드로 대규모도 일관성 유지.
+     4	triggers:
+     5	  - /orchestrate-standalone
+     6	  - /orchestrate
+     7	  - 오케스트레이트
+     8	  - 태스크 실행
+     9	version: 2.1.0
+    10	updated: 2026-03-05
+    11	---
+    12	
+    13	# 🚀 Orchestrate Standalone
+    14	
+    15	> **목표**: 30~200개 태스크를 의존성 기반 병렬 실행
+    16	>
+    17	> **철학**: Contract-First + Wave 단위 병렬 + 중간 검증 = 대규모에서도 일관성 유지
+    18	
+    19	---
+    20	
+ succeeded in 51ms:
+skills/orchestrate-standalone/SKILL.md:217:/orchestestrate-standalone --resume
+skills/orchestrate-standalone/scripts/orchestrate.sh:8:#   ./orchestrate.sh [--mode=standard] [--resume]
+skills/orchestrate-standalone/scripts/orchestrate.sh:73:        --resume)
+skills/orchestrate-standalone/scripts/orchestrate.sh:85:  --resume          Resume from previous state
+skills/orchestrate-standalone/scripts/orchestrate.sh:98:  $0 --resume             # Resume after interruption
+skills/orchestrate-standalone/scripts/orchestrate.sh:176:        if ! "$NODE_CMD" "$SCRIPT_DIR/sprint-runner.js" "$TASKS_FILE"; then
+skills/orchestrate-standalone/scripts/sprint-planner.js:224:async function approvalLoop(sortedTasks, initialSprintSize) {
+skills/orchestrate-standalone/scripts/sprint-planner.js:283:  await approvalLoop(sorted, sprintSize);
+skills/orchestrate-standalone/scripts/sprint-retro.js:18:const RETRO_FILE = path.join(ROOT, '.claude', 'sprint-retro.md');
+skills/orchestrate-standalone/scripts/sprint-runner.js:207:  const reviewScript = path.join(__dirname, 'sprint-review.js');
+skills/orchestrate-standalone/scripts/sprint-runner.js:217:      reject(new Error(`Failed to start sprint-review.js: ${error.message}`));
+skills/orchestrate-standalone/scripts/sprint-state.js:6: * PI_PLANNING → SPRINT_RUNNING → SPRINT_REVIEW → SPRINT_RETRO → (next sprint or PI_COMPLETE)
+skills/orchestrate-standalone/scripts/sprint-state.js:21:    approve: 'SPRINT_RETRO',
+skills/orchestrate-standalone/scripts/sprint-state.js:25:  SPRINT_RETRO: {
+skills/orchestrate-standalone/scripts/sprint-review.js:433:async function handleGateDecision(sprintState) {
+skills/orchestrate-standalone/scripts/sprint-review.js:472:        process.exit(2);
+skills/orchestrate-standalone/scripts/sprint-review.js:502:    await handleGateDecision(sprintState);
+exec
+/bin/zsh -lc "nl -ba docs/plan/agile-sprint-mode.md | sed -n '1,360p'" in /Users/kwak/Projects/ai/claude-imple-skillsexec
+/bin/zsh -lc 'rg -n "sprint-runner|sprint-review|sprint-retro|SPRINT_REVIEW|SPRINT_RETRO|approve|modify|stop" docs/plan/agile-sprint-mode.md' in /Users/kwak/Projects/ai/claude-imple-skills succeeded in 52ms:
+     1	# Agile Sprint Mode — 구현 계획
+     2	
+     3	> **목적**: `/orchestrate-standalone`에 `--mode=sprint` 추가하여 50-200 태스크 규모에서 Agile 스프린트 구조(Sprint Gate + Review + Retro)를 제공
+     4	>
+     5	> **상태**: 설계 완료, 구현 대기
+     6	>
+     7	> **우선순위**: High — 현재 가장 중요한 기능 갭
+     8	
+     9	---
+    10	
+    11	## 배경 및 문제 정의
+    12	
+    13	### 현재 구조의 갭
+    14	
+    15	```
+    16	≤30 태스크  →  /agile          → Skeleton/Muscles/Skin, 사용자 체크포인트 있음  ✅
+    17	50-200 태스크 → /orchestrate-standalone → Wave 병렬 실행, 블랙박스 운영         ❌
+    18	```
+    19	
+    20	`/orchestrate-standalone`은 Wave 기반 병렬 실행이 효율적이지만 **중간 사용자 승인 게이트가 없다**. 100개 태스크를 끝까지 실행하고 나면 방향이 어긋났을 때 대규모 재작업이 발생한다.
+ succeeded in 51ms:
+63:│  (sprint-review.js)      │  테스트 결과 요약 (pass/fail 수)
+77:│  (sprint-retro.js)       │  .claude/sprint-retro.md 에 누적 저장
+88:[PI_PLANNING] → (user approve) → [SPRINT_RUNNING]
+89:[SPRINT_RUNNING] → (wave done) → [SPRINT_REVIEW]
+90:[SPRINT_REVIEW] → (A: approve) → [SPRINT_RETRO]
+91:[SPRINT_REVIEW] → (M: modify) → [SPRINT_RUNNING]  ← 현 스프린트 재실행
+92:[SPRINT_REVIEW] → (S: stop) → [PAUSED]
+93:[SPRINT_RETRO] → (last sprint) → [PI_COMPLETE]
+94:[SPRINT_RETRO] → (more sprints) → [SPRINT_RUNNING]  ← 다음 스프린트
+110:      "approved_at": "2026-03-05T10:00:00Z"
+131:#### `skills/orchestrate-standalone/scripts/sprint-runner.js` ⭐ 메인 루프
+135:`sprint-planner.js`가 PI 계획을 세우고 종료하면, `sprint-runner.js`가 이어받아 각 스프린트를 반복 실행한다.
+159:    const reviewExit = await runReview();   // sprint-review.js 실행 (child_process.spawn)
+160:    // exit 0 = approve, 2 = modify, 3 = stop
+171:    // 5. approve: Retro 실행
+172:    await runRetro();   // sprint-retro.js 실행
+191:- `child_process.spawn('node', ['sprint-review.js'])` 실행
+197:- sprint-review.js 실행 실패 시: 에러 메시지 출력 후 상태 PAUSED로 저장
+229:#### `skills/orchestrate-standalone/scripts/sprint-review.js`
+266:#### `skills/orchestrate-standalone/scripts/sprint-retro.js`
+codex
+핵심 누락 가능성이 보여 `--resume` 동작과 전체 스프린트 반복 종료 조건을 추가 확인하고 있습니다. 문서 기준 구현 시 실제로 1개 스프린트만 돌고 끝나는지, 재개 메시지가 실제로 동작하는지까지 검증 포인트로 정리하겠습니다.
+exec
+/bin/zsh -lc 'bash -n skills/orchestrate-standalone/scripts/orchestrate.sh; echo $?' in /Users/kwak/Projects/ai/claude-imple-skills succeeded in 52ms:
+skills/orchestrate-standalone/scripts/orchestrate.sh: line 289: unexpected EOF while looking for matching `"'
+skills/orchestrate-standalone/scripts/orchestrate.sh: line 290: syntax error: unexpected end of file
+2
+exec
+/bin/zsh -lc "nl -ba skills/orchestrate-standalone/scripts/orchestrate.sh | sed -n '268,320p'" in /Users/kwak/Projects/ai/claude-imple-skills succeeded in 52ms:
+   268	
+   269	    log_success "Layer $LAYER_NUM/$TOTAL_LAYERS completed"
+   270	done
+   271	
+   272	# ---------------------------------------------------------------------------
+   273	# Final Summary
+   274	# ---------------------------------------------------------------------------
+   275	
+   276	header "Orchestration Complete"
+   277	
+   278	PROGRESS=$("$NODE_CMD" "$SCRIPT_DIR/state.js" progress" 2>/dev/null || echo '{}')
+   279	COMPLETED=$(echo "$PROGRESS" | node -pe "JSON.parse(require('fs').readFileSync(0, 'utf8')).completed")
+   280	FAILED=$(echo "$PROGRESS" | node -pe "JSON.parse(require('fs').readFileSync(0, 'utf8')).failed")
+   281	PERCENT=$(echo "$PROGRESS" | node -pe "JSON.parse(require('fs').readFileSync(0, 'utf8')).percent")
+   282	
+   283	log_success "Completed: $COMPLETED tasks"
+   284	if [ "$FAILED" -gt 0 ]; then
+   285	    log_warn "Failed: $FAILED tasks"
+   286	fi
+   287	log_info "Progress: ${PERCENT}%"
+exec
+/bin/zsh -lc "nl -ba skills/orchestrate-standalone/scripts/orchestrate.sh | sed -n '192,208p'" in /Users/kwak/Projects/ai/claude-imple-skills succeeded in 51ms:
+   192	
+   193	# Initialize state if not resuming
+   194	if [ "$RESUME" != "true" ]; then
+   195	    "$NODE_CMD" "$SCRIPT_DIR/state.js" clear &>/dev/null || true
+   196	fi
+   197	
+   198	CURRENT_LAYER=0
+   199	if [ "$RESUME" = "true" ]; then
+   200	    CURRENT_LAYER=$("$NODE_CMD" "$SCRIPT_DIR/state.js" load 2>/dev/null" | node -pe "JSON.parse(require('fs').readFileSync(0, 'utf8')).current_layer || 0")
+   201	    log_info "Resuming from layer $CURRENT_LAYER"
+   202	fi
+   203	
+   204	while [ $CURRENT_LAYER -lt $TOTAL_LAYERS ]; do
+   205	    LAYER_NUM=$((CURRENT_LAYER + 1))
+   206	
+   207	    # Get tasks for this layer
+   208	    LAYER_TASKS=$("$NODE_CMD" -e "
+exec
+/bin/zsh -lc 'node --check skills/orchestrate-standalone/scripts/sprint-runner.js && echo sprint-runner-ok' in /Users/kwak/Projects/ai/claude-imple-skillsexec
+/bin/zsh -lc 'node --check skills/orchestrate-standalone/scripts/sprint-review.js && echo sprint-review-ok' in /Users/kwak/Projects/ai/claude-imple-skills succeeded in 51ms:
+sprint-runner-ok
+exec
+/bin/zsh -lc 'node --check skills/orchestrate-standalone/scripts/sprint-state.js && echo sprint-state-ok' in /Users/kwak/Projects/ai/claude-imple-skillsexec
+/bin/zsh -lc 'node --check skills/orchestrate-standalone/scripts/sprint-retro.js && echo sprint-retro-ok' in /Users/kwak/Projects/ai/claude-imple-skills succeeded in 52ms:
+sprint-review-ok
+exec
+/bin/zsh -lc 'node --check skills/orchestrate-standalone/scripts/sprint-planner.js && echo sprint-planner-ok' in /Users/kwak/Projects/ai/claude-imple-skills succeeded in 51ms:
+sprint-state-ok
+ succeeded in 50ms:
+sprint-retro-ok
+ succeeded in 52ms:
+sprint-planner-ok
+codex
+1. **Critical**: Bug #2 제안 코드가 `set -e`와 충돌합니다.  
+   제안안처럼 `"$NODE_CMD" ...`를 단독 실행하면 `exit 2/3`에서 바로 셸이 종료되어 `SPRINT_EXIT=$?`까지 못 갑니다.  
+   근거: [orchestrate.sh:11](/Users/kwak/Projects/ai/claude-imple-skills/skills/orchestrate-standalone/scripts/orchestrate.sh:11) (`set -euo pipefail`).  
+   결론: `if ...; then ... else ... fi` 또는 `set +e` 블록으로 exit code를 캡처하도록 계획서 수정이 필요합니다.
+
+2. **Critical**: Bug #1 수정안만으로는 “다음 스프린트 자동 진행”이 안 됩니다.  
+   현재/제안 모두 `sprint-runner.js`는 1회 실행 후 `return`합니다. `sprint-retro.js`가 `next_sprint`로 전이해도 runner 루프가 없어 종료됩니다.  
+   근거: [sprint-runner.js:280](/Users/kwak/Projects/ai/claude-imple-skills/skills/orchestrate-standalone/scripts/sprint-runner.js:280), [sprint-runner.js:300](/Users/kwak/Projects/ai/claude-imple-skills/skills/orchestrate-standalone/scripts/sprint-runner.js:300), [sprint-retro.js:289](/Users/kwak/Projects/ai/claude-imple-skills/skills/orchestrate-standalone/scripts/sprint-retro.js:289).  
+   결론: runner에 `while (state !== PI_COMPLETE && state !== PAUSED)` 루프 명세를 명확히 추가해야 합니다.
+
+3. **High**: `--resume` 재개 플로우가 계획서에 빠졌습니다.  
+   계획서 메시지는 “`--resume`으로 재실행”을 안내하지만, 현재 구조상 sprint 모드에서 planner를 항상 먼저 실행하면 상태가 덮어써져 재개가 깨집니다.  
+   근거: [orchestrate.sh:172](/Users/kwak/Projects/ai/claude-imple-skills/skills/orchestrate-standalone/scripts/orchestrate.sh:172), [sprint-planner.js:243](/Users/kwak/Projects/ai/claude-imple-skills/skills/orchestrate-standalone/scripts/sprint-planner.js:243).  
+   결론: `RESUME=true`일 때 planner를 건너뛰는 조건을 계획서에 명시해야 합니다.
+
+4. **High**: 현재 `orchestrate.sh` 자체 문법 오류가 있고 계획서에서 다루지 않았습니다.  
+   근거: [orchestrate.sh:200](/Users/kwak/Projects/ai/claude-imple-skills/skills/orchestrate-standalone/scripts/orchestrate.sh:200), [orchestrate.sh:278](/Users/kwak/Projects/ai/claude-imple-skills/skills/orchestrate-standalone/scripts/orchestrate.sh:278).  
+   `bash -n` 결과도 실패합니다.  
+   결론: 이 오류를 함께 고치지 않으면 별도 세션 구현/검증이 막힙니다.
+
+5. **Medium**: Bug #4 제안 snippet도 동일하게 `set -e` 안전하지 않습니다.  
+   `LAYER_OUTPUT="$(...)"` 후 `$?` 검사 패턴은 실패 시 의도한 에러 처리 블록이 실행되지 않을 수 있습니다.  
+   근거: [orchestrate.sh:149](/Users/kwak/Projects/ai/claude-imple-skills/skills/orchestrate-standalone/scripts/orchestrate.sh:149).  
+   결론: `if ! LAYER_OUTPUT="$(...)"; then ... fi` 형태로 명시하세요.
+
+6. **Medium**: Bug #1 검증 커맨드가 실동작 검증으로 부적절합니다.  
+   `sprint-runner.js`는 stdin JSON을 소비하지 않고, review 입력 루프가 있어 제시된 파이프 테스트로 retro 호출 보장이 안 됩니다.
+
+요약: **현재 계획서는 방향은 맞지만, 그대로는 별도 세션에서 완전 구현 명세로 부족**합니다. 특히 `set -e` 처리, multi-sprint 루프, `--resume` 조건, 기존 `orchestrate.sh` 문법 오류 4가지는 반드시 계획서에 추가/수정해야 합니다.
+tokens used
+54,773

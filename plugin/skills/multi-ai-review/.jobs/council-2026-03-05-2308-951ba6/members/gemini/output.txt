@@ -1,0 +1,38 @@
+I will begin by listing the files in the `skills/workflow-guide/` directory to locate the relevant algorithm, script, and decision tree documentation for verification.
+I will read the `SKILL.md` file in the `skills/workflow-guide/` directory to identify the algorithm, script, decision tree, and scenario sections for consistency checking.
+`workflow-guide` v4.9.2의 알고리즘 및 문서 일관성 검증 결과를 보고합니다.
+
+### 1. 14개 테스트케이스 추적 결과
+모든 케이스가 설계된 의도대로 정확하게 작동함을 확인했습니다.
+
+| 케이스 | 상태 요약 | 알고리즘 경로 | 결과 |
+|:---|:---|:---|:---|
+| **S1** | TASKS.md 없음 | ② TASKS.md NOT EXISTS | `/tasks-init` ✅ |
+| **S1-migrate** | 06-tasks.md 존재 | ② 06-tasks.md EXISTS | `/tasks-migrate` ✅ |
+| **S2** | T=40, inc=40, GOV=no | ④ T>=30 AND inc>0 | `/governance-setup` ✅ |
+| **S2-after-gov** | GOV=yes, AGENT=0 | ⑤ GOV=yes AND AGENT=0 | `install.sh` ✅ |
+| **S2-running** | GOV=yes, inc=50 | ⑥ GOV=yes AND inc>=30 | `/orchestrate-standalone` ✅ |
+| **S3** | 코드 있음, AGENT=0, GOV=no | ③ AGENT=0 AND inc>0 | `/agile iterate` ✅ |
+| **S3-완료** | 코드 있음, inc=0 | ③ all_tasks_completed | `/audit` ✅ |
+| **S4/S6** | orchestrate-state.json 있음 | ① File EXISTS (Legacy) | `/recover` ✅ |
+| **S5** | merge conflicts | ① Conflict EXISTS | `/recover` ✅ |
+| **S6-신규경로** | 신규 경로 파일 존재 | ① File EXISTS (New) | `/recover` ✅ |
+| **S1-완료** | T=20, inc=0, 코드 없음 | ⑧ all_tasks_completed | `/audit` ✅ |
+| **소규모신규** | T=15, inc=10 | ⑦ T<30 AND inc>0 | `/agile auto` ✅ |
+| **비정상** | AGENT>0, GOV=no | ③~⑥ skip → ⑦ T<30 | `/agile auto` ✅ |
+
+### 2. 주요 로직 변경 사항 검증 (v4.9.2)
+- **① 복구 체크 (OR 로직)**: 레거시(`.claude/orchestrate-state.json`)와 신규(`.claude/orchestrate/orchestrate-state.json`) 경로를 `OR` 조건으로 완벽히 수용하고 있습니다.
+- **STATE_STATUS 제거**: 파일의 내부 필드(status)를 확인하지 않고, 파일의 **존재 여부**만으로 중단 신호를 판단하도록 수정되었습니다. (clearState가 완료 시 파일을 자동 삭제하는 메커니즘과 일치)
+- **가드 조건 추가**: ④(Governance)와 ⑤(Install) 단계에 `incomplete_tasks > 0` 조건을 명시하여, 모든 작업이 완료된 상태에서 거버넌스나 인프라 설치를 오추천하는 문제를 방지했습니다.
+
+### 3. 문서 간 일관성 (Consistency)
+- **알고리즘 (2단계)**: 변수 매핑과 조건문 순서가 v4.9.2 사양과 일치합니다.
+- **스크립트 (1단계)**: `ls` 명령어를 통해 레거시/신규 경로를 모두 스캔하도록 업데이트되었습니다.
+- **결정 트리 (H3)**: 알고리즘의 핵심 분기를 시각적으로 정확하게 투영하고 있습니다.
+- **시나리오 테이블**: 신규 경로(S6-신규경로) 및 레거시 통합(S1-레거시) 케이스가 누락 없이 반영되어 있습니다.
+
+### 4. 종합 판정
+**PASS (v4.9.2 준수)**
+- 알고리즘의 무결성이 확인되었으며, 특히 복구 경로 확장에 따른 예외 상황 처리가 견고합니다.
+- HIGH/MEDIUM 수준의 결함은 발견되지 않았습니다.

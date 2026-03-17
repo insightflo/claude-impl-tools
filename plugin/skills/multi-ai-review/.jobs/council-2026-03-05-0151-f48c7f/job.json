@@ -1,0 +1,25 @@
+{
+  "id": "council-2026-03-05-0151-f48c7f",
+  "createdAt": "2026-03-05T01:51:03.149Z",
+  "configPath": "/Users/kwak/Projects/ai/claude-imple-skills/skills/multi-ai-review/council.config.yaml",
+  "hostRole": "unknown",
+  "chairmanRole": "claude",
+  "settings": {
+    "excludeChairmanFromMembers": true,
+    "timeoutSec": 180
+  },
+  "members": [
+    {
+      "name": "gemini",
+      "command": "gemini --model gemini-3-flash-preview --output-format text -p",
+      "emoji": "💎",
+      "color": "GREEN"
+    },
+    {
+      "name": "codex",
+      "command": "codex exec",
+      "emoji": "🤖",
+      "color": "BLUE"
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+Loaded cached credentials.
+Error executing tool list_directory: Error: Failed to list directory.
+Error executing tool read_file: File path '/Users/kwak/Projects/ai/claude-imple-skills/docs/explain/project-overview.md' is ignored by configured ignore patterns.
+Error executing tool run_shell_command: Tool "run_shell_command" not found. Did you mean one of: "grep_search", "cli_help", "get_style_guide"?

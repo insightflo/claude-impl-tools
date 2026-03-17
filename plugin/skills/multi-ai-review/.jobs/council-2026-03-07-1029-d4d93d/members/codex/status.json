@@ -1,0 +1,9 @@
+{
+  "member": "codex",
+  "state": "error",
+  "startedAt": "2026-03-07T10:29:55.560Z",
+  "command": "codex exec --skip-git-repo-check",
+  "pid": 35088,
+  "message": "Worker died unexpectedly (PID 35088 not found)",
+  "finishedAt": "2026-03-07T10:30:03.632Z"
+}

@@ -1,0 +1,23 @@
+# Whitebox AI 코딩 시스템 리뷰 Round 3
+
+## 핵심 목표
+"AI 코딩 과정을 관찰하고, 의사결정 내리고, 통제할 수 있는 화이트박스"
+
+## Codex 픽스 완료 (Round 2 → 3)
+1. permission-checker.js 에러 메시지 계약 수정 → 테스트 10 suite / 1028 tests 전부 PASS
+2. project-team/install.sh + 루트 install.sh allowed_hooks와 실제 settings.json 등록 훅 일치
+3. statusline, task-board를 기본 설치 루프에 포함
+4. 죽은 스킬 참조 제거 (agile, recover, governance-setup, checkpoint — /trinity, /eros 등 0건)
+5. permission-checker에 ~/.claude/logs/hooks.log 최소 telemetry stub 추가
+
+## 남은 미해결 항목 (Round 2 기준)
+- poc/whitebox-tui.js + hitl-gate.js PoC 실행 테스트 미완료
+- TUI render 루프와 HITL 프롬프트 UI 충돌 (화면 클리어가 /dev/tty 프롬프트 덮어씀)
+- Reasoning block을 TUI에 표시 안 됨
+- hooks.log는 stub만 있고 실질적 telemetry dashboard 없음
+
+## 이번 리뷰 질문
+1. Codex 픽스 후 "화이트박스" 목표 달성도는 몇 %인가?
+2. 남은 미해결 항목 중 실제로 중요한 것과 nice-to-have를 구분하면?
+3. PoC 테스트 전에 코드 레벨에서 추가로 고쳐야 할 것이 있는가?
+4. 이 시점에서 프로젝트를 "완성"이라고 부를 수 있는 조건은?

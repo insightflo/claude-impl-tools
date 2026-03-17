@@ -1,0 +1,7 @@
+{
+  "member": "gemini",
+  "state": "running",
+  "startedAt": "2026-03-05T10:55:33.995Z",
+  "command": "gemini --model gemini-3-flash-preview --output-format text -p",
+  "pid": 97307
+}

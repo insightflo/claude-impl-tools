@@ -1,0 +1,20 @@
+1. **High**: `workflow-guide` 문서 내부에서 의사결정 순서가 상충합니다.  
+핵심 알고리즘은 `③ 유지보수 → ④ 거버넌스` 순서인데, 하단 결정 트리는 거버넌스를 먼저 보여줍니다. 구현/운영자가 트리를 따르면 S3 경로가 흔들릴 수 있습니다.  
+참조: [skills/workflow-guide/SKILL.md#L198](/Users/kwak/Projects/ai/claude-imple-skills/skills/workflow-guide/SKILL.md#L198), [skills/workflow-guide/SKILL.md#L206](/Users/kwak/Projects/ai/claude-imple-skills/skills/workflow-guide/SKILL.md#L206), [skills/workflow-guide/SKILL.md#L304](/Users/kwak/Projects/ai/claude-imple-skills/skills/workflow-guide/SKILL.md#L304), [skills/workflow-guide/SKILL.md#L314](/Users/kwak/Projects/ai/claude-imple-skills/skills/workflow-guide/SKILL.md#L314)
+
+2. **High**: `git dirty`를 무조건 `/recover`로 보내는 규칙 때문에 S3(`기존 코드 + 미완료 태스크 → /agile iterate`)가 실제 운영에서 자주 깨질 수 있습니다.  
+참조: [skills/workflow-guide/SKILL.md#L188](/Users/kwak/Projects/ai/claude-imple-skills/skills/workflow-guide/SKILL.md#L188), [docs/explain/user-scenarios.md#L226](/Users/kwak/Projects/ai/claude-imple-skills/docs/explain/user-scenarios.md#L226)
+
+3. **Medium**: 자연어 매핑에서 `"리뷰해줘"`가 `/checkpoint`로 고정되어 S4의 자연어 트리거(`/multi-ai-review`)와 충돌 가능성이 있습니다.  
+참조: [skills/workflow-guide/SKILL.md#L446](/Users/kwak/Projects/ai/claude-imple-skills/skills/workflow-guide/SKILL.md#L446), [docs/explain/user-scenarios.md#L294](/Users/kwak/Projects/ai/claude-imple-skills/docs/explain/user-scenarios.md#L294)
+
+4. **Medium**: `project-overview` 5.4절이 최신 알고리즘을 “정확히” 반영하진 않습니다(예: `git dirty/conflicts`, `TASK_COUNT>=10` 게이트, ⑦/⑧ 단계 생략).  
+참조: [docs/explain/project-overview.md#L280](/Users/kwak/Projects/ai/claude-imple-skills/docs/explain/project-overview.md#L280), [skills/workflow-guide/SKILL.md#L184](/Users/kwak/Projects/ai/claude-imple-skills/skills/workflow-guide/SKILL.md#L184)
+
+**검증 요약**
+- 1) 알고리즘 정확성: 핵심 알고리즘 블록 자체는 S1/S2/S5/S6에 맞고, MANDATORY 규칙도 명확합니다.  
+참조: [skills/workflow-guide/SKILL.md#L177](/Users/kwak/Projects/ai/claude-imple-skills/skills/workflow-guide/SKILL.md#L177)
+- 2) 시나리오 커버리지: `user-scenarios.md`의 Step 0/커버 스킬/20/20 표는 대체로 정확합니다.  
+S4/S7이 workflow-guide 없이 직접 호출 시나리오인 점도 문서상 맞습니다.  
+참조: [docs/explain/user-scenarios.md#L279](/Users/kwak/Projects/ai/claude-imple-skills/docs/explain/user-scenarios.md#L279), [docs/explain/user-scenarios.md#L503](/Users/kwak/Projects/ai/claude-imple-skills/docs/explain/user-scenarios.md#L503), [docs/explain/user-scenarios.md#L602](/Users/kwak/Projects/ai/claude-imple-skills/docs/explain/user-scenarios.md#L602)
+- 3) 프로젝트 개요 정확성: 스킬 20개, 에이전트 9개, 모드 정보는 저장소와 일치합니다. 다만 5.4절은 알고리즘 요약 보강 필요가 있습니다.

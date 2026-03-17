@@ -1,0 +1,1 @@
+I will begin by listing the files in the repository to locate the relevant scripts for the Sprint Mode implementation.

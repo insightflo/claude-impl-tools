@@ -1,0 +1,4 @@
+I will begin by exploring the directory structure to locate the specific files mentioned for review and then read their contents to verify the algorithms and scenarios.
+I will use `glob` to find the exact paths for `user-scenarios.md` and `project-overview.md` to ensure I'm reviewing the correct files.
+I will search for the filenames again with `respect_git_ignore: false` to locate the files in case they are being ignored.
+I've found the file paths and will now read `skills/workflow-guide/SKILL.md` to begin my review of the algorithm's accuracy.

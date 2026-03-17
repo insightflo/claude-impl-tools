@@ -1,0 +1,662 @@
+당신은 claude-imple-skills 프로젝트의 최종 품질 검토자입니다. (3차 최종 검토)
+
+지금까지 2회에 걸쳐 아래 사항들이 수정되었습니다:
+- 1차: 누락 스킬 6개 추가, agile/recover 스크립트 없음 명시, task-board 서브커맨드, 에이전트 수 9개로 정정
+- 2차: install.sh --mode=standard → --mode standard 수정 (실제 파싱 방식 반영)
+
+이제 최종 문서가 '실제 개발자가 이 문서를 보고 모든 기능을 막힘 없이 테스트할 수 있는가'를 기준으로 검토하세요.
+
+## 최종 검토 기준
+1. 각 시나리오의 사용자 입력이 Claude Code에서 실제로 실행 가능한가?
+2. 스킬 트리거 문구가 실제 SKILL.md description과 일치하는가?
+3. 흐름이 실제 개발자 워크플로우를 반영하는가?
+4. 빠진 엣지 케이스나 전제 조건이 있는가?
+5. 문서 내 용어/표현의 일관성
+
+## 검토할 문서
+# 사용자 시나리오 및 실행 흐름
+
+> **작성일**: 2026-03-05
+> **기준 버전**: v3.8.0
+> **참조**: `docs/explain/project-overview.md`
+> **작성 방법**: Multi-AI Review 3회 (Codex + Gemini → Claude 의장 종합)
+
+---
+
+## 전제 조건
+
+```bash
+# 필수
+command -v claude   # Claude Code CLI
+
+# Multi-AI 기능 사용 시
+command -v gemini   # Gemini CLI (GEMINI_API_KEY 필요)
+command -v codex    # Codex CLI (OPENAI_API_KEY 필요)
+```
+
+---
+
+## 목차
+
+1. [1인 개발자 - SaaS MVP 고속 착수](#시나리오-1-1인-개발자---saas-mvp-고속-착수)
+2. [5명 팀 - 대형 플랫폼 병렬 구현](#시나리오-2-5명-팀---대형-플랫폼-병렬-구현)
+3. [유지보수 - 버그 수정 전 영향도 분석](#시나리오-3-유지보수---버그-수정-전-영향도-분석)
+4. [Multi-AI 컨센서스 코드 리뷰](#시나리오-4-multi-ai-컨센서스-코드-리뷰)
+5. [배포 직전 종합 품질 감사 + 릴리즈](#시나리오-5-배포-직전-종합-품질-감사--릴리즈)
+6. [중단된 오케스트레이션 복구](#시나리오-6-중단된-오케스트레이션-복구)
+7. [역할별 Multi-AI 모델 라우팅 실행](#시나리오-7-역할별-multi-ai-모델-라우팅-실행)
+
+---
+
+## 시나리오 1: 1인 개발자 - SaaS MVP 고속 착수
+
+### 배경
+아이디어만 있는 1인 프리랜서 개발자가 2주 안에 MVP를 완성하려 함. 메모장에 적어둔 기존 할 일 목록이 있고, 프로젝트 구조부터 핵심 기능까지 빠르게 진행하고 싶어서 Claude에게 일임.
+
+### 사용자 입력
+```
+뭐부터 시작해야 해?
+
+# 기존 메모/레거시 태스크가 있는 경우
+/tasks-migrate
+
+# 새로 시작하는 경우
+/tasks-init
+/agile auto
+```
+
+### 호출 흐름
+
+#### 0단계: 워크플로우 가이드
+- **트리거 스킬**: `workflow-guide` ("뭐해야해?", "어떤 스킬?", `/workflow`)
+- **SKILL.md 위치**: `skills/workflow-guide/SKILL.md`
+- **동작**: 현재 상태(TASKS.md 유무, 태스크 수, 에이전트 수)를 bash로 silent 분석 → 상황별 추천 스킬 안내 (스크립트 없음, Claude 직접 수행)
+
+#### 1단계: 기존 태스크 마이그레이션 (선택)
+- **트리거 스킬**: `tasks-migrate` (`/tasks-migrate`)
+- **SKILL.md 위치**: `skills/tasks-migrate/SKILL.md`
+- **동작**: 레거시 태스크 파일(`docs/planning/06-tasks.md`, TODO 주석 등) → 루트 `TASKS.md`로 통합 (스크립트 없음, Claude 직접 수행)
+- **파일 R/W**:
+  - **읽기**: 기존 태스크 파일들, TODO 주석
+  - **쓰기**: `TASKS.md` (통합)
+
+#### 2단계: 태스크 초기화
+- **트리거 스킬**: `tasks-init` (`/tasks-init`)
+- **실행 스크립트**:
+  ```
+  skills/tasks-init/scripts/tasks-init.sh   # 진입점, 환경 확인
+  skills/tasks-init/scripts/analyze.js      # 프로젝트 구조/요구사항 분석
+  skills/tasks-init/scripts/generate.js     # TASKS.md 스캐폴딩 생성
+  ```
+- **에이전트**: 없음 (Claude 직접 실행)
+- **파일 R/W**:
+  - **읽기**: `package.json`, `pyproject.toml`, `requirements.txt`, 소스 트리
+  - **쓰기**: `TASKS.md` (Skeleton→Muscles→Skin 레이어 태스크 생성, 약 15~25개)
+  - **템플릿 읽기**: `skills/tasks-init/templates/TASKS.md`, `templates/task-metadata.yaml`
+
+#### 3단계: Agile 자동 실행
+- **트리거 스킬**: `agile` (`/agile auto`, `/sprint`, "스프린트 시작")
+- **SKILL.md 위치**: `skills/agile/SKILL.md` (스크립트 없음 — SKILL.md 프롬프트 기반으로 Claude가 직접 수행)
+- **동작**: `TASKS.md`를 Skeleton→Muscles→Skin 레이어별로 읽고, 각 태스크를 Claude가 순차 구현. 레이어 완료 시 사용자 체크인
+- **에이전트**: Claude 단일 에이전트 (PM + Developer 역할 겸임)
+- **파일 R/W**:
+  - **읽기**: `TASKS.md`, `.claude/settings.json`
+  - **쓰기**: 소스 코드(`src/`), `TASKS.md` 체크박스 업데이트
+
+#### 4단계: 상태바 표시 (자동)
+- **트리거**: `statusline` (설치 후 자동 활성화)
+- **실행 스크립트**:
+  ```
+  skills/statusline/hooks/tasks-status-writer.js   # TASKS.md 진행률 계산
+  skills/statusline/statusline-segment.sh          # 상태바 Line 3 출력
+  ```
+- **파일 읽기**: `TASKS.md`
+
+### 기대 출력
+```
+✅ TASKS.md 생성 완료 (Skeleton 8개 / Muscles 10개 / Skin 7개)
+🚀 /agile auto 시작 → Skeleton 레이어부터 구현...
+📊 [▓▓▓▓░░░░░░] 4/25 완료
+```
+
+**커버 스킬**: `workflow-guide`, `tasks-migrate`, `tasks-init`, `agile`, `statusline`
+
+---
+
+## 시나리오 2: 5명 팀 - 대형 플랫폼 병렬 구현
+
+### 배경
+백엔드/프론트/QA/DB가 분업하는 100개+ 태스크 규모의 커머스 플랫폼 팀 리드. 아키텍처를 먼저 확정하고, 도메인 간 의존성을 유지하며 최대 병렬로 실행하고 싶어 함.
+
+### 사용자 입력
+```
+/governance-setup
+# (project-team 설치 — 스킬 안내에 따라 터미널에서 실행)
+/architecture
+/orchestrate --mode=wave
+/task-board show
+```
+
+### 호출 흐름
+
+#### 1단계: 거버넌스 팀 설정
+- **트리거 스킬**: `governance-setup` (`/governance`, "거버넌스 설정")
+- **SKILL.md 위치**: `skills/governance-setup/SKILL.md` (스크립트 없음 — Claude가 직접 수행)
+- **동작**: 프로젝트 규모 분석 → 에이전트 팀 구성 모드(Lite/Standard/Full) 권장
+- **파일 쓰기**: `.claude/project-team.yaml` (governance 구성 기록)
+
+#### 2단계: Project Team 설치
+- **스킬 안내에 따라 터미널에서 실행**:
+  ```bash
+  cd project-team && ./install.sh --local --mode standard
+  # 주의: install.sh는 --mode standard (공백 분리) 형식 사용
+  # (--mode=standard 형식은 "Unknown option" 오류 발생)
+  ```
+- **설치 내용 (Standard 모드)**: 9 agents + 4 gate hooks
+  - Agents: ProjectManager, ChiefArchitect, ChiefDesigner, QAManager, DBA, SecuritySpecialist, FrontendSpecialist, BackendSpecialist, MaintenanceAnalyst
+  - Hooks: `policy-gate.js`, `security-scan.js`, `quality-gate.js`, `contract-gate.js`
+- **파일 쓰기**: `.claude/agents/`, `.claude/hooks/`, `.claude/settings.json`
+
+#### 3단계: 아키텍처 확인
+- **트리거 스킬**: `architecture` (`/architecture`, "전체 구조", "도메인 구조")
+- **SKILL.md 위치**: `skills/architecture/SKILL.md` (스크립트 없음 — Claude가 직접 수행)
+- **동작**: 소스 트리 분석 → 도메인 맵, 레이어 구조, API 목록 시각화
+- **파일 읽기**: `src/`, `domains/`, `.claude/project-team.yaml`
+
+#### 4단계: Wave 오케스트레이션
+- **트리거 스킬**: `orchestrate-standalone` (`/orchestrate`, "오케스트레이트")
+- **실행 스크립트**:
+  ```
+  skills/orchestrate-standalone/scripts/orchestrate.sh --mode=wave   # 메인 진입점 (bash)
+  skills/orchestrate-standalone/scripts/scheduler.js                  # DAG 계산, Wave 구성
+  skills/orchestrate-standalone/scripts/worker.js                     # 태스크별 에이전트 디스패치
+  skills/orchestrate-standalone/scripts/gate-chain.js                 # Wave Barrier 검증
+  skills/orchestrate-standalone/scripts/state.js                      # 실행 상태 저장/복원
+  ```
+- **실행 모드**: `lite|standard|full|wave|sprint` 중 선택 (`--mode=wave` = 6 workers)
+- **에이전트 개입**:
+
+  | 에이전트 | 역할 | 개입 시점 |
+  |---------|------|---------|
+  | Chief Architect | API 계약 승인, VETO | Phase 0 (Contract 생성 후) |
+  | Backend Specialist | API/Business Logic 구현 | Wave 실행 중 |
+  | Frontend Specialist | UI 컴포넌트 구현 | Wave 실행 중 |
+  | QA Manager | 게이트 통과 판정 | Wave Barrier |
+  | DBA | DB 스키마 검증 | migration 태스크 |
+
+- **파일 R/W**:
+  - **읽기**: `TASKS.md`, `.claude/model-routing.yaml`, `.claude/project-team.yaml`
+  - **쓰기**: `.claude/orchestrate-state.json`, `contracts/interfaces/` (API 계약), `.claude/task-layers.json`
+  - **Hook 자동 실행**: `project-team/hooks/pre-edit-impact-check.js`, `project-team/hooks/quality-gate.js`, `project-team/hooks/task-sync.js`
+
+#### 4.5단계: Long Context 최적화 (컨텍스트 과부하 시)
+- **트리거 스킬**: `context-optimize` (`/compress`, 컨텍스트 과부하 감지 시)
+- **SKILL.md 위치**: `skills/context-optimize/SKILL.md` (스크립트 없음 — Claude가 직접 수행)
+- **동작**: H2O 패턴으로 핵심 정보 추출 → 요약 → 컨텍스트 압축
+- **적용 시점**: 100개+ 태스크 실행 중 대화 길이가 매우 길어질 때
+
+#### 5단계: 칸반 보드
+- **트리거 스킬**: `task-board` (`/task-board show`, "보드 보여줘", "칸반 보드")
+- **실행 스크립트**:
+  ```
+  skills/task-board/scripts/board-builder.js   # board-state.json 생성
+  skills/task-board/scripts/board-show.sh      # 터미널 렌더링
+  ```
+- **서브커맨드**: `show` (표시), `rebuild` (재빌드), `init` (초기화), `health` (상태 점검)
+- **파일 읽기**: `TASKS.md`, `.claude/orchestrate-state.json`, `.claude/collab/board-state.json`, `.claude/task-layers.json`
+
+### 기대 출력
+```
+Wave 1 완료 (15/100) ✅ Gate: PASS
+Wave 2 진행 중 (28/100)...
+┌─ Backlog(55) ─┬─ In Progress(12) ─┬─ Blocked(1) ─┬─ Done(32) ─┐
+```
+
+**커버 스킬**: `governance-setup`, `architecture`, `orchestrate-standalone`, `context-optimize`, `task-board`
+
+---
+
+## 시나리오 3: 유지보수 - 버그 수정 전 영향도 분석
+
+### 배경
+운영 중인 결제 서비스의 환불 버그를 수정해야 하는 유지보수 개발자. 결제 도메인은 민감하므로 변경 전 파급 범위와 의존성 라이브러리까지 파악해야 함.
+
+### 사용자 입력
+```
+src/domains/payment/refundService.ts 수정하려고 하는데
+/impact src/domains/payment/refundService.ts
+/deps payment
+```
+
+### 호출 흐름
+
+#### 1단계: 영향도 분석
+- **트리거 스킬**: `impact` (`/impact`, "영향도 분석", "이 파일 수정하면 어디 영향 가?")
+- **SKILL.md 위치**: `skills/impact/SKILL.md` (스크립트 없음 — Claude 정적 분석)
+- **동작**:
+  1. 대상 파일의 import/export 정적 분석
+  2. 의존 체인 추적 (직접 의존 → 간접 의존)
+  3. 위험 구역 분류 (`payment`, `auth`, `billing` → 자동 HIGH 분류)
+  4. 관련 테스트 파일 매핑
+- **에이전트 개입**:
+  - **Maintenance Analyst**: 위험도 평가 (CRITICAL/HIGH/MEDIUM/LOW)
+  - 고위험 시: **Chief Architect** 검토자로 추천
+
+- **Hook 연동** (Project Team 설치 시 자동):
+  ```
+  project-team/hooks/pre-edit-impact-check.js   # 수정 시도 전 자동 실행
+  project-team/hooks/risk-area-warning.js        # payment/auth 경로 경고
+  ```
+
+- **파일 R/W**:
+  - **읽기**: `src/domains/payment/refundService.ts`, 의존 파일들, `.claude/risk-areas.yaml`
+  - **쓰기**: 없음 (분석 리포트 채팅 출력만)
+
+#### 2단계: 의존성 그래프 분석
+- **트리거 스킬**: `deps` (`/deps`, "의존성 그래프", "순환 의존성 확인")
+- **SKILL.md 위치**: `skills/deps/SKILL.md` (스크립트 없음 — Claude가 import/require 파싱)
+- **동작**:
+  - `/deps payment` → payment 도메인의 외부 라이브러리 + 도메인 간 의존 분석
+  - 순환 의존성 감지
+  - 옵션: `/deps --cycles`, `/deps <파일> --tree`, `/deps --matrix`
+- **파일 읽기**: `src/`, `.claude/project-team.yaml`의 `domains` 정의, `.claude/architecture-map.json`
+
+### 기대 출력
+```
+⚠️  영향도: HIGH
+직접 의존: 3개 파일 (orderService.ts, invoiceService.ts, webhookHandler.ts)
+간접 의존: 9개 파일
+관련 테스트: 12개 (7개 필수 재실행)
+권장 검토자: Chief Architect, QA Manager
+
+의존성 그래프 - payment 도메인:
+  payment → [stripe ^14.0.0, axios ^1.6.0]
+  ⚠️ 순환 없음, 외부 deps 2개 확인 필요
+```
+
+**커버 스킬**: `impact`, `deps`
+
+---
+
+## 시나리오 4: Multi-AI 컨센서스 코드 리뷰
+
+### 배경
+중요한 인증 모듈 PR이 올라왔는데, 보안/품질 측면에서 Claude 혼자의 판단이 아닌 Gemini + Codex의 교차 검토까지 받고 싶은 시니어 개발자.
+
+### 사용자 입력
+```
+이번 PR 인증 모듈 심층 리뷰해줘. Council 소집.
+```
+
+### 호출 흐름
+
+#### 3-Stage Pipeline
+
+**Stage 1: Initial Opinions (병렬)**
+- **트리거 스킬**: `multi-ai-review` ("리뷰해줘", "council 소집", "여러 AI 의견 들어보자")
+- **실행 스크립트**:
+  ```
+  skills/multi-ai-review/scripts/council.sh          # 메인 진입점, Job 생성
+  skills/multi-ai-review/scripts/council-job.sh      # Job runner → council-job.js 위임
+  skills/multi-ai-review/scripts/council-job.js      # Job 오케스트레이터 (config 파싱, 멤버 디스패치)
+  skills/multi-ai-review/scripts/council-job-worker.js  # 멤버별 워커 (병렬 실행)
+  ```
+- **설정 파일**: `skills/multi-ai-review/council.config.yaml`
+  ```yaml
+  members:
+    - name: gemini
+      command: "gemini --model gemini-3-flash-preview --output-format text -p"
+    - name: codex
+      command: "codex exec"
+  ```
+- **동작**:
+  - `council.sh` → Job 디렉토리 생성 (`skills/multi-ai-review/scripts/.jobs/council-{timestamp}-{hash}/`)
+  - `council-job-worker.js`가 각 멤버 CLI에 동시 전송
+  - 정리: `cleanup.sh` (1시간 이상 된 고아 Job 자동 삭제)
+
+**Stage 2: Cross-Review (반박)**
+- Gemini가 Codex 의견을 검토 → 반박/동의
+- Codex가 Gemini 의견을 검토 → 반박/동의
+
+**Stage 3: Chairman Synthesis**
+- Claude(호스트)가 모든 의견 종합 → 합의안 + 이견 포인트 정리
+
+- **파일 R/W**:
+  - **읽기**: `council.config.yaml`, 대상 소스 코드
+  - **쓰기**: `.jobs/council-*/` (각 멤버 opinion.md, cross-review.md, status)
+
+### 기대 출력
+```
+=== Gemini 의견 ===
+[창의적 관점] 토큰 갱신 로직에 Race Condition 우려...
+
+=== Codex 의견 ===
+[기술적 관점] OWASP A07 - JWT secret 하드코딩 위험...
+
+=== 의장 종합 (Claude) ===
+합의: JWT 관리 개선 필요 (2/2 동의)
+권장 액션: secret을 환경변수로 이동, refresh token 분리 설계
+```
+
+**커버 스킬**: `multi-ai-review`
+
+---
+
+## 시나리오 5: 배포 직전 종합 품질 감사 + 릴리즈
+
+### 배경
+v2.0.0 릴리즈를 앞두고 QA 책임자가 코드 품질, 테스트 커버리지, 보안 취약점을 한 번에 점검한 뒤 릴리즈 노트를 작성.
+
+### 사용자 입력
+```
+/quality-auditor
+/security-review --deep
+/coverage
+/changelog
+```
+
+### 호출 흐름
+
+#### 1단계: 종합 품질 감사
+- **트리거 스킬**: `quality-auditor` (`/audit`, "품질 감사", "배포 전 검사")
+- **SKILL.md 위치**: `skills/quality-auditor/SKILL.md` (스크립트 없음 — Claude가 단계별 수행)
+- **동작**:
+  1. 기획 정합성 (PRD/TASKS.md 일치 여부)
+  2. DDD 검증 (도메인 경계, 계약 유효성)
+  3. 테스트 실행 (`npm test`, `pytest` 등)
+  4. 브라우저 검증 (playwright MCP 설치 시)
+- **에이전트 개입**:
+  - **QA Manager**: 판정 (PASS/CAUTION/FAIL)
+- **Hook 연동** (Project Team 설치 시):
+  - `project-team/hooks/quality-gate.js` (기준: `project-team/hooks/QUALITY_GATE.md`)
+- **파일 R/W**:
+  - **읽기**: `management/mini-prd.md`, `TASKS.md`, `project-team/hooks/QUALITY_GATE.md`
+  - **쓰기**: 감사 리포트 (채팅 출력)
+
+#### 2단계: 보안 스캔
+- **트리거 스킬**: `security-review` (`/security-review`)
+- **SKILL.md 위치**: `skills/security-review/SKILL.md` (스크립트 없음 — Claude OWASP 정적 분석)
+- **에이전트 개입**:
+  - **Security Specialist**: 심각도 분류, 즉시 조치 Top 3 제시
+- **Hook 연동**: `project-team/hooks/security-scan.js`
+- **파일 R/W**:
+  - **읽기**: `src/`, `app/`, `api/`, `package-lock.json`, `.env.example`
+  - **쓰기**: `.claude/security-review.json` (옵션)
+
+#### 3단계: 테스트 커버리지 분석
+- **트리거 스킬**: `coverage` (`/coverage`, "테스트 커버리지")
+- **SKILL.md 위치**: `skills/coverage/SKILL.md` (스크립트 없음 — Claude가 커버리지 도구 실행)
+- **동작**: 미커버 영역 식별, 트렌드 추적, 도메인/파일별 커버리지 시각화
+- **파일 읽기**: `coverage/lcov.info`, `.nyc_output/`, `coverage.json`
+
+#### 4단계: 변경 이력 + 릴리즈 노트
+- **트리거 스킬**: `changelog` (`/changelog`, "최근 변경사항", "릴리즈 노트")
+- **SKILL.md 위치**: `skills/changelog/SKILL.md` (스크립트 없음 — Claude가 git log 파싱)
+- **동작**: 이번 버전 변경 이력 조회 → 릴리즈 노트 형식으로 정리
+- **파일 R/W**:
+  - **읽기**: `.claude/changelog/`, `git log`
+  - **쓰기**: `CHANGELOG.md` (옵션)
+
+### 기대 출력
+```
+품질 감사 결과:
+  ✅ 기획 정합성: PASS (95% 일치)
+  ✅ 테스트: PASS (커버리지 87%)
+  ⚠️  보안: CAUTION (MEDIUM 취약점 2건)
+  ✅ DDD 검증: PASS
+
+최종 판정: CAUTION → 배포 전 MEDIUM 취약점 2건 수정 권장
+
+## v2.0.0 (2026-03-05)
+- feat: Sprint Mode 추가
+- fix: PAUSED resume 버그 수정 (#13)
+- fix: NODE_CMD 하드코딩 (#15)
+```
+
+**커버 스킬**: `quality-auditor`, `security-review`, `coverage`, `changelog`
+
+---
+
+## 시나리오 6: 중단된 오케스트레이션 복구
+
+### 배경
+평소에 `/checkpoint`로 체크포인트를 저장해두던 개발자. Wave 3 실행 중 네트워크 오류로 Claude Code가 강제 종료됨. 이미 완료된 80개 태스크는 살리고, 나머지 20개만 이어서 실행하고 싶음.
+
+### 사용자 입력
+```
+# 평소 체크포인트 저장 습관 (선제적)
+/checkpoint
+
+# 중단 후 복구 시
+/recover
+# 안내에 따라
+/orchestrate --resume
+```
+
+### 호출 흐름
+
+#### 0단계: 체크포인트 (선제적 — 중단 전 습관)
+- **트리거 스킬**: `checkpoint` (`/checkpoint`, "체크포인트 저장")
+- **실행 스크립트**:
+  ```
+  skills/checkpoint/scripts/checkpoint.js   # Git diff 감지 + TASKS.md 컨텍스트 + AI 리뷰
+  ```
+- **동작**: 태스크/PR 완료 시 즉시 코드 리뷰 + 상태 스냅샷
+- **파일 R/W**:
+  - **읽기**: Git diff, `TASKS.md`
+  - **쓰기**: `.claude/checkpoint/` (체크포인트 저장)
+
+#### 1단계: 상태 파악
+- **트리거 스킬**: `recover` (`/recover`, "작업 복구", "중단된 작업")
+- **SKILL.md 위치**: `skills/recover/SKILL.md` (스크립트 없음 — Claude가 직접 상태 파악)
+- **동작**:
+  - 미완료 태스크 식별 (TASKS.md 체크박스)
+  - Git worktree 상태 확인
+  - `orchestrate-state.json` 로드
+- **파일 읽기**:
+  - `TASKS.md`
+  - `.claude/orchestrate-state.json`
+  - `.claude/checkpoint/` (최근 체크포인트)
+
+#### 2단계: 재개
+- **트리거 스킬**: `orchestrate-standalone --resume`
+- **실행 스크립트**:
+  ```
+  skills/orchestrate-standalone/scripts/orchestrate.sh --resume
+  skills/orchestrate-standalone/scripts/state.js      # can-resume 체크, 상태 로드
+  ```
+- **Sprint 모드 중단 시**:
+  ```
+  skills/orchestrate-standalone/scripts/orchestrate.sh --mode=sprint --resume
+  skills/orchestrate-standalone/scripts/sprint-state.js   # PAUSED 상태 확인
+  skills/orchestrate-standalone/scripts/sprint-runner.js  # Wave 재시작
+  skills/orchestrate-standalone/scripts/sprint-planner.js # 플랜 재확인
+  ```
+- **에이전트**: 중단 시점의 담당 에이전트 재투입 (scheduler.js가 재결정)
+- **파일 R/W**:
+  - **읽기**: `.claude/orchestrate-state.json`
+  - **쓰기**: `.claude/orchestrate-state.json` (RUNNING 상태로 업데이트), `TASKS.md` (task-sync hook)
+
+### 기대 출력
+```
+복구 가능: ✅
+마지막 성공 지점: Wave 3, Task T4.7 (총 80개 완료)
+재개 지점: Wave 3, Task T4.8
+명령: /orchestrate --resume
+```
+
+**커버 스킬**: `checkpoint`, `recover`, `orchestrate-standalone` (resume)
+
+---
+
+## 시나리오 7: 역할별 Multi-AI 모델 라우팅 실행
+
+### 배경
+대형 기능 개발 시 프론트엔드는 Gemini(UI 창의성), 백엔드는 Codex(로직 정확성)에 각각 맡기고, 아키텍처 결정은 Claude가 담당하도록 역할별 모델을 분리하고 싶음.
+
+### 사용자 입력
+```
+# TASKS.md에 태그 설정
+- [ ] T2.1: Dashboard UI 구현 [model:gemini]
+- [ ] T2.2: Payment API 구현 [model:codex]
+- [ ] T2.3: DB 스키마 설계 [owner:dba]
+
+/orchestrate-standalone
+```
+
+### 호출 흐름
+
+#### 라우팅 결정
+- **트리거 스킬**: `orchestrate-standalone` → 내부 `multi-ai-run` 라우팅
+- **라우팅 우선순위**:
+  1. 태스크 제목의 `[model:xxx]` 태그 (최우선)
+  2. `skills/multi-ai-run/routing.config.yaml`의 `role_routing` (역할명 매핑)
+  3. 같은 파일의 `task_type_routing` (태스크 유형)
+  4. `.claude/model-routing.yaml` (프로젝트 오버라이드)
+  5. `default: claude`
+
+- **실행 스크립트**:
+  ```
+  skills/orchestrate-standalone/scripts/scheduler.js
+    └─ task.model = "gemini" 감지 → worker.js에 전달
+
+  skills/orchestrate-standalone/scripts/worker.js
+    ├─ task.model = "gemini" → gemini --model ... -p "{prompt}"
+    ├─ task.model = "codex"  → codex exec --sandbox workspace-write "{prompt}"
+    └─ task.owner = "dba"    → routing.config.yaml 조회 → claude (기본)
+  ```
+
+- **설정 파일**:
+  ```yaml
+  # skills/multi-ai-run/routing.config.yaml
+  cli_models:
+    codex:
+      args: "--sandbox workspace-write"  # 프로젝트 폴더 직접 R/W
+    gemini:
+      args: "--output-format text"
+  role_routing:
+    backend-specialist: codex
+    frontend-specialist: gemini
+    dba: claude
+  ```
+
+- **에이전트 개입**:
+
+  | 태스크 | 모델 | 실제 CLI | 파일 쓰기 방식 |
+  |-------|------|---------|-------------|
+  | T2.1 Dashboard UI | Gemini | `gemini --model ... -p "..."` | Claude가 출력 받아 Edit 도구로 적용 |
+  | T2.2 Payment API | Codex | `codex exec --sandbox workspace-write "..."` | Codex가 직접 파일 수정 |
+  | T2.3 DB 스키마 | Claude | Claude 직접 처리 | Edit/Write 도구 |
+
+- **파일 R/W**:
+  - **읽기**: `TASKS.md`, `skills/multi-ai-run/routing.config.yaml`, `.claude/model-routing.yaml` (프로젝트 오버라이드 있으면)
+  - **쓰기**: 각 에이전트 담당 소스 파일
+
+### 기대 출력
+```
+[T2.1] Gemini → Dashboard.tsx 생성 완료
+[T2.2] Codex → payment-service.ts 생성 완료 (직접 파일 쓰기)
+[T2.3] Claude → schema.prisma 업데이트 완료
+```
+
+**커버 스킬**: `multi-ai-run`, `orchestrate-standalone` (라우팅)
+
+---
+
+## 전체 스킬 커버리지
+
+| 스킬 | 시나리오 | 역할 |
+|-----|---------|------|
+| `workflow-guide` | S1 (0단계) | 시작 가이드 |
+| `tasks-migrate` | S1 (1단계) | 레거시 태스크 통합 |
+| `tasks-init` | S1 (2단계) | TASKS.md 스캐폴딩 |
+| `agile` | S1 (3단계) | 레이어드 스프린트 |
+| `statusline` | S1 (4단계, 자동) | 진행률 상태바 |
+| `governance-setup` | S2 (1단계) | 에이전트 팀 설정 |
+| `architecture` | S2 (3단계) | 도메인/구조 시각화 |
+| `orchestrate-standalone` | S2 (4단계), S6 (재개), S7 | 병렬 태스크 실행 |
+| `context-optimize` | S2 (4.5단계) | Long Context 압축 |
+| `task-board` | S2 (5단계) | 칸반 보드 시각화 |
+| `impact` | S3 (1단계) | 수정 전 영향도 분석 |
+| `deps` | S3 (2단계) | 의존성 그래프 분석 |
+| `multi-ai-review` | S4 | Multi-AI 코드 리뷰 |
+| `quality-auditor` | S5 (1단계) | 종합 품질 감사 |
+| `security-review` | S5 (2단계) | OWASP 보안 스캔 |
+| `coverage` | S5 (3단계) | 테스트 커버리지 |
+| `changelog` | S5 (4단계) | 변경 이력/릴리즈 노트 |
+| `checkpoint` | S6 (0단계, 선제적) | 상태 스냅샷 |
+| `recover` | S6 (1단계) | 중단 작업 복구 |
+| `multi-ai-run` | S7 | 역할별 모델 라우팅 |
+
+**총 20/20 스킬 커버** ✅
+
+---
+
+## 흐름 요약 맵
+
+```
+사용자 입력
+    │
+    ├─ /workflow-guide ──────────────────── 다음 스킬 추천 (Claude 직접)
+    │
+    ├─ /tasks-migrate ───────────────────── 레거시 → TASKS.md (Claude 직접)
+    │
+    ├─ /tasks-init ──────────────────────── tasks-init.sh → analyze.js → generate.js → TASKS.md
+    │
+    ├─ /agile auto ──────────────────────── TASKS.md 읽기 → Claude 순차 구현 (스크립트 없음)
+    │
+    ├─ /architecture ────────────────────── 소스 분석 → 도메인 맵 (Claude 직접)
+    │
+    ├─ /governance-setup ────────────────── 팀 구성 권장 (Claude 직접)
+    │      └─ project-team/install.sh
+    │
+    ├─ /orchestrate-standalone ──────────── orchestrate.sh
+    │      ├─ scheduler.js (DAG)
+    │      ├─ worker.js (모델 라우팅)
+    │      ├─ gate-chain.js (Wave 검증)
+    │      ├─ state.js (상태 저장)
+    │      └─ sprint-{planner,runner,review,retro,state}.js (sprint 모드)
+    │
+    ├─ /context-optimize ────────────────── H2O 압축 (Claude 직접)
+    │
+    ├─ /task-board show ─────────────────── board-builder.js → board-show.sh
+    │
+    ├─ /impact ──────────────────────────── 정적 분석 (Claude 직접)
+    │      └─ (Hook) pre-edit-impact-check.js
+    │
+    ├─ /deps ────────────────────────────── import 파싱 (Claude 직접)
+    │
+    ├─ /multi-ai-review ─────────────────── council.sh
+    │      ├─ council-job.js (오케스트레이터)
+    │      ├─ council-job-worker.js (병렬 멤버)
+    │      └─ cleanup.sh (정리)
+    │
+    ├─ /quality-auditor ─────────────────── 다단계 감사 (Claude 직접)
+    │      └─ (Hook) quality-gate.js
+    │
+    ├─ /security-review ─────────────────── OWASP 정적 분석 (Claude 직접)
+    │      └─ (Hook) security-scan.js
+    │
+    ├─ /coverage ────────────────────────── 커버리지 도구 실행 (Claude 직접)
+    │
+    ├─ /changelog ───────────────────────── git log 파싱 (Claude 직접)
+    │
+    ├─ /checkpoint ──────────────────────── checkpoint.js (Git diff + AI 리뷰)
+    │
+    ├─ /recover ─────────────────────────── orchestrate-state.json 복원 (Claude 직접)
+    │      └─ orchestrate.sh --resume
+    │
+    └─ /multi-ai-run ────────────────────── routing.config.yaml 기반 모델 분기
+           ├─ gemini → UI 태스크
+           ├─ codex (--sandbox workspace-write) → 코드 태스크
+           └─ claude → 아키텍처/조율
+```
+
+---
+
+*이 문서는 Multi-AI Review 3회 (Codex 실측 검증 + Gemini 흐름 분석 → Claude 의장 종합)로 작성되었습니다.*
+
+## 출력 형식
+- 최종 이슈: 번호 목록 (없으면 '없음')
+- 최종 평가: PASS / NEEDS_FIX
+- 종합 점수: /100

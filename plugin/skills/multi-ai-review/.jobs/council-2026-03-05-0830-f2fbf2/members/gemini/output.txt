@@ -1,0 +1,3 @@
+I will begin by listing the files and directories to verify the structure and existence of the skills, scripts, and agent configurations mentioned in the document.
+I'll now verify the `project-team/install.sh` script to ensure it handles the `--mode` flag as specified, and I'll also check the `orchestrate-standalone` and `multi-ai-review` scripts to confirm their functionality and command-line options.
+I'll now examine the `project-team/install.sh` file to understand how it handles the `--mode` flag, and I'll also verify the `orchestrate.sh` script for `--mode=wave` and `--resume` support, as well as the `statusline-segment.sh` script and its associated hooks.

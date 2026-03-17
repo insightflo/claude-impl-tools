@@ -1,0 +1,473 @@
+OpenAI Codex v0.107.0 (research preview)
+--------
+workdir: /Users/kwak/Projects/ai/claude-imple-skills
+model: gpt-5.3-codex
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019cbdaa-4d88-7271-bfca-c5e0645c3b69
+--------
+user
+# Round 11 — workflow-guide v4.9.0 검증 요청
+
+## 검증 목표
+workflow-guide 알고리즘이 모든 7개 사용자 시나리오(S1~S7)와 엣지케이스(13개 이상 테스트케이스)를 올바르게 라우팅하는지 확인
+
+## 현재 알고리즘 (v4.9.0)
+
+```
+ALGORITHM get_recommendation():
+
+  # ① 복구 체크 (최우선)
+  IF .claude/orchestrate-state.json EXISTS:
+    RETURN "/recover"
+  IF git merge conflicts exist (git diff --diff-filter=U 결과 있음):
+    RETURN "/recover"
+
+  # ② 태스크 파일 체크
+  IF TASKS.md NOT EXISTS:
+    IF docs/planning/06-tasks.md EXISTS: RETURN "/tasks-migrate"
+    ELSE: RETURN "/tasks-init"
+  IF TASK_COUNT == 0:
+    RETURN "/tasks-init"
+
+  # ③ 유지보수 체크 (AGENT_COUNT=0 AND GOVERNANCE_DONE=no 인 경우만)
+  IF source_code EXISTS AND AGENT_COUNT == 0 AND GOVERNANCE_DONE == "no":
+    IF incomplete_tasks > 0: RETURN "/agile iterate"
+    IF all_tasks_completed: RETURN "/audit"
+
+  # ④ 거버넌스 체크 (미완료 태스크 있을 때만)
+  IF TASK_COUNT >= 10 AND (DOMAIN_COUNT >= 2 OR TASK_COUNT >= 30) AND GOVERNANCE_DONE == "no" AND incomplete_tasks > 0:
+    RETURN "/governance-setup"
+
+  # ⑤ 인프라 체크 (거버넌스 완료 후, 미완료 태스크 있을 때만)
+  IF GOVERNANCE_DONE == "yes" AND TASK_COUNT >= 30 AND AGENT_COUNT == 0 AND incomplete_tasks > 0:
+    RETURN "project-team/install.sh --mode standard"
+
+  # ⑥ 구현/배포 판단 (거버넌스 완료 + 인프라 준비)
+  IF GOVERNANCE_DONE == "yes" AND AGENT_COUNT > 0:
+    IF all_tasks_completed: RETURN "/audit"
+    IF incomplete_tasks >= 80: RETURN "/orchestrate-standalone --mode=wave"
+    IF incomplete_tasks >= 30: RETURN "/orchestrate-standalone"
+    ELSE: RETURN "/agile auto"
+
+  # ⑦ 소규모 신규 구현 (거버넌스 불필요, 코드 없음, 미완료 태스크 있음)
+  IF TASK_COUNT > 0 AND TASK_COUNT < 30 AND incomplete_tasks > 0:
+    RETURN "/agile auto"
+
+  # ⑧ 완료
+  IF all_tasks_completed:
+    RETURN "/audit"
+```
+
+## 변수 정의
+- TASK_COUNT: TASKS.md 전체 태스크 수 (체크박스 줄 기준)
+- incomplete_tasks: [ ] 미완료 태스크 수
+- all_tasks_completed: TASK_COUNT > 0 AND incomplete_tasks == 0
+- source_code EXISTS: src/ or app/ or lib/ 에 파일 존재
+- AGENT_COUNT: .claude/agents/*.md 파일 수
+- GOVERNANCE_DONE: management/project-plan.md 존재 여부 (yes/no)
+- DOMAIN_COUNT: TASKS.md 내 'domain:' 필드 유니크 수
+- git dirty (uncommitted): 정상 상태, /recover 트리거 아님
+
+## 13개 테스트케이스 추적
+
+| 케이스 | 상태 | 예상 알고리즘 경로 | 예상 결과 |
+|--------|------|-------------------|-----------|
+| S1 | TASKS.md 없음, 코드 없음 | ② NOT EXISTS → | `/tasks-init` |
+| S1-migrate | TASKS.md 없음, 06-tasks.md 있음 | ② 06-tasks.md EXISTS → | `/tasks-migrate` |
+| S2 | TASKS.md 있음(40개), TASK_COUNT=40, inc=40, 코드 없음, GOV=no | ② ok, ③ skip(코드없음), ④ 40>=10 + 40>=30 + no + 40>0 → | `/governance-setup` |
+| S2-after-gov | GOV=yes, AGENT_COUNT=0, TASK_COUNT=40, inc=40 | ② ok, ③ skip(GOV=yes), ④ skip(GOV=yes), ⑤ yes+40+0+40>0 → | `install.sh` |
+| S2-running | GOV=yes, AGENT_COUNT=5, inc=50 | ② ok, ③-⑤ skip, ⑥ yes+5>0, 50>=30 → | `/orchestrate-standalone` |
+| S3 | 코드 있음(src/), TASK_COUNT=20, inc=15, AGENT_COUNT=0, GOV=no | ② ok, ③ EXISTS+0+no → inc>0 → | `/agile iterate` |
+| S3-완료 | 코드 있음, TASK_COUNT=20, inc=0, GOV=no | ② ok, ③ EXISTS+0+no → completed → | `/audit` |
+| S4 | orchestrate-state.json 있음 | ① state.json → | `/recover` |
+| S5 | merge conflicts 있음 | ① conflicts → | `/recover` |
+| S6 | orchestrate-state.json 있음 (중단) | ① state.json → | `/recover` |
+| S7 | /multi-ai-review, /checkpoint 직접 호출 | workflow-guide 스킬 자체 미호출 | N/A |
+| S1-완료 | TASK_COUNT=20, inc=0, 코드 없음 | ③ skip(코드없음), ④ skip(inc=0), ⑦ skip(inc=0), ⑧ all done → | `/audit` |
+| 엣지: 소규모신규 | TASK_COUNT=15, inc=10, 코드 없음, GOV=no | ② ok, ③ skip, ④ 15>=10 + GOV=no + 10>0, DOMAIN<2 AND <30 → ④ skip, ⑦ 15<30+10>0 → | `/agile auto` |
+
+## 중요 검증 포인트
+
+1. **S3 vs S2 분기**: source_code + AGENT_COUNT=0 + GOVERNANCE_DONE=no 시 ③이 잡아야 함 (S3)
+   - S2 post-governance: GOV=yes → ③ 건너뜀 → ⑤로 이동 (올바름)
+
+2. **④ 소규모 엣지**: DOMAIN_COUNT < 2 AND TASK_COUNT < 30 이면 ④ 건너뜀 → ⑦로
+
+3. **모든 완료 상태**: ⑦·④·⑤는 incomplete_tasks > 0 조건으로 건너뜀 → ⑧ /audit
+
+4. **S7 독립성**: /multi-ai-review, /checkpoint는 workflow-guide를 거치지 않고 직접 호출
+
+## 검증 요청 항목
+
+1. 13개 케이스 각각 알고리즘 추적 → 결과 일치 여부
+2. 누락된 엣지케이스 발견 시 보고
+3. HIGH/MEDIUM 이슈 발견 시 수정안 제시
+4. project-overview.md, user-scenarios.md와의 불일치 여부
+
+## 최근 수정 이력 (v4.9.0)
+- R10: ④에 incomplete_tasks > 0 추가
+- R10: ⑤에 incomplete_tasks > 0 추가
+- R9: ⑦에 incomplete_tasks > 0 추가
+- R8: ③에 GOVERNANCE_DONE == "no" 추가
+- R6: ③에 AGENT_COUNT == 0 추가
+mcp: pencil starting
+mcp: pencil ready
+mcp startup: ready: pencil
+codex
+요청하신 13개 케이스를 실제 저장소 기준으로 하나씩 추적하고, `project-overview.md`/`user-scenarios.md`와의 정합성까지 확인하겠습니다. 먼저 관련 문서와 workflow-guide 스킬 파일에서 v4.9.0 알고리즘 정의를 직접 대조하겠습니다.
+exec
+/bin/zsh -lc 'pwd && ls -la' in /Users/kwak/Projects/ai/claude-imple-skillsexec
+/bin/zsh -lc "rg --files | rg -n \"workflow-guide|project-overview|user-scenarios|TASKS|SKILL\\.md|README\"" in /Users/kwak/Projects/ai/claude-imple-skills succeeded in 52ms:
+/Users/kwak/Projects/ai/claude-imple-skills
+total 208
+drwxr-xr-x@ 21 kwak  staff    672 Mar  5 15:05 .
+drwxr-xr-x  23 kwak  staff    736 Mar  4 11:41 ..
+-rw-r--r--@  1 kwak  staff   6148 Mar  4 11:36 .DS_Store
+drwxr-xr-x@ 30 kwak  staff    960 Mar  5 14:50 .claude
+drwxr-xr-x@ 16 kwak  staff    512 Mar  5 18:24 .git
+-rw-r--r--@  1 kwak  staff   2793 Mar  3 15:47 .gitignore
+drwxr-xr-x@  6 kwak  staff    192 Mar  1 13:22 .pytest_cache
+-rw-r--r--@  1 kwak  staff   9152 Mar  3 15:48 AGENTS.md
+-rw-r--r--@  1 kwak  staff   1580 Feb 11 15:50 CLAUDE.md
+-rw-r--r--@  1 kwak  staff   3738 Mar  4 11:55 INSTALL.md
+-rw-r--r--@  1 kwak  staff   1067 Jan 24 20:49 LICENSE
+-rw-r--r--@  1 kwak  staff  12159 Mar  5 14:39 README.md
+-rw-r--r--@  1 kwak  staff  12651 Mar  5 14:40 README_ko.md
+-rw-r--r--@  1 kwak  staff  13136 Mar  5 15:05 TASKS.md
+drwxr-xr-x@  4 kwak  staff    128 Mar  5 16:59 docs
+-rwxr-xr-x@  1 kwak  staff  21376 Mar  4 14:52 install.sh
+drwxr-xr-x@ 15 kwak  staff    480 Mar  5 14:39 project-team
+drwxr-xr-x@  3 kwak  staff     96 Mar  2 02:37 ref
+ succeeded in 51ms:
+4:README_ko.md
+5:README.md
+10:project-team/README.md
+14:project-team/services/README.md
+18:skills/security-review/SKILL.md
+24:skills/quality-auditor/SKILL.md
+42:skills/impact/SKILL.md
+45:skills/statusline/SKILL.md
+53:skills/coverage/SKILL.md
+54:skills/recover/SKILL.md
+55:skills/recover/README.md
+58:project-team/examples/saas/README.md
+60:skills/tasks-init/SKILL.md
+61:skills/task-board/SKILL.md
+64:project-team/examples/ecommerce/README.md
+71:skills/deps/SKILL.md
+91:project-team/hooks/README.md
+106:skills/multi-ai-review/SKILL.md
+107:skills/changelog/SKILL.md
+118:skills/orchestrate-standalone/SKILL.md
+exec
+/bin/zsh -lc "rg -n \"project-overview|user-scenarios|scenario|v4\\.9\\.0|get_recommendation|ALGORITHM\" skills/workflow-guide -S" in /Users/kwak/Projects/ai/claude-imple-skillsexec
+/bin/zsh -lc "ls -la skills/workflow-guide && find skills/workflow-guide -maxdepth 3 -type f | sed 's#"'^#- #'"'" in /Users/kwak/Projects/ai/claude-imple-skills succeeded in 52ms:
+skills/workflow-guide/SKILL.md:198:ALGORITHM get_recommendation():
+skills/workflow-guide/SKILL.md:579:**Last Updated**: 2026-03-05 (v4.9.0 - ④⑤에 incomplete_tasks>0 조건 추가 (완료 상태에서 governance-setup/install.sh 오추천 방지))
+ succeeded in 52ms:
+total 64
+drwxr-xr-x@  3 kwak  staff     96 Mar  5 19:53 .
+drwxr-xr-x@ 22 kwak  staff    704 Mar  5 14:37 ..
+-rw-r--r--@  1 kwak  staff  28754 Mar  5 19:53 SKILL.md
+- skills/workflow-guide/SKILL.md
+codex
+알고리즘 본문은 `skills/workflow-guide/SKILL.md`에 있고, 해당 파일이 v4.9.0으로 보입니다. 이제 `project-overview.md`, `user-scenarios.md` 위치를 찾아 실제 요구사항과 라우팅 규칙을 대조하겠습니다.
+exec
+/bin/zsh -lc "rg --files | rg -n \"project-overview\\.md|user-scenarios\\.md|workflow-guide\"" in /Users/kwak/Projects/ai/claude-imple-skills succeeded in 51ms:
+39:skills/workflow-guide/SKILL.md
+exec
+/bin/zsh -lc "find . -type f \\( -name \"project-overview.md\" -o -name \"user-scenarios.md\" \\)" in /Users/kwak/Projects/ai/claude-imple-skills succeeded in 52ms:
+./docs/explain/user-scenarios.md
+./docs/explain/project-overview.md
+exec
+/bin/zsh -lc "nl -ba skills/workflow-guide/SKILL.md | sed -n '170,290p'" in /Users/kwak/Projects/ai/claude-imple-skillsexec
+/bin/zsh -lc "nl -ba docs/explain/project-overview.md | sed -n '1,260p'" in /Users/kwak/Projects/ai/claude-imple-skillsexec
+/bin/zsh -lc "nl -ba docs/explain/user-scenarios.md | sed -n '1,320p'" in /Users/kwak/Projects/ai/claude-imple-skills succeeded in 52ms:
+   170	# ⚠️ incomplete=0 AND tasks>0 → all_tasks_completed = true → /audit 경로
+   171	
+   172	# 10. 거버넌스 권장 조건 감지
+   173	DOMAIN_COUNT=$(grep -h "^\s*-\s*domain:" TASKS.md 2>/dev/null | awk '{print $NF}' | sort -u | wc -l | tr -d ' ')
+   174	GOVERNANCE_DONE=$(ls management/project-plan.md 2>/dev/null && echo "yes" || echo "no")
+   175	echo "domains=$DOMAIN_COUNT governance=$GOVERNANCE_DONE"
+   176	# 거버넌스 권장: tasks>=10 AND (domains>=2 OR 팀원>=2 OR 외부API>=3)
+   177	```
+   178	
+   179	### 2단계: 결정 알고리즘 (의무 실행 — 순서대로, 첫 RETURN에서 중단)
+   180	
+   181	> ⛔ **아래 알고리즘을 IF-THEN 순서대로 실행하세요. 첫 번째 조건이 참이면 즉시 해당 스킬을 RETURN하고 나머지 조건은 평가하지 않습니다.**
+   182	>
+   183	> ⛔ **절대 금지**: TASKS.md 내용(제목·목적·설명·주석), 사용자 발언, 프로젝트 이름, 이전 대화 내용은 이 알고리즘의 입력이 아닙니다. **1단계에서 측정한 변수만 사용합니다.**
+   184	>
+   185	> ✅ **3단계 AskUserQuestion에서 이 알고리즘이 RETURN한 스킬을 반드시 ⭐으로 표시합니다. 임의 변경 금지.**
+   186	
+   187	```
+   188	# 1단계 bash 변수 → 알고리즘 변수 매핑:
+   189	# TASK_COUNT        → TASK_COUNT       (총 태스크 수)
+ succeeded in 52ms:
+     1	# Claude Imple-Skills: 프로젝트 개요
+     2	
+     3	> **작성일**: 2026-03-05
+     4	> **버전**: v3.8.0
+     5	
+     6	---
+     7	
+     8	## 1. 프로젝트 목표
+     9	
+    10	### 핵심 목표
+    11	
+    12	**"AI 에이전트 팀으로 소프트웨어를 구현하는 도구 모음"**
+    13	
+    14	이 프로젝트는 Claude Code 사용자가 AI 에이전트 팀을 활용해 소프트웨어를 구축할 수 있도록 돕는 **독립형(standalone) 스킬 팩**입니다.
+    15	
+    16	### 하위 목표
+    17	
+    18	1. **Standalone 우선**: 외부 의존성 없이 동작 (vibelab 의존 제거)
+    19	2. **Multi-AI Orchestration**: Claude + Gemini + Codex 역할별 라우팅
+    20	3. **스케일 가능한 오케스트레이션**: 30~200개 태스크 병렬 실행
+ succeeded in 52ms:
+     1	# 사용자 시나리오 및 실행 흐름
+     2	
+     3	> **작성일**: 2026-03-05
+     4	> **기준 버전**: v3.8.0
+     5	> **참조**: `docs/explain/project-overview.md`
+     6	> **작성 방법**: Multi-AI Review 3회 (Codex + Gemini → Claude 의장 종합)
+     7	
+     8	---
+     9	
+    10	## 전제 조건
+    11	
+    12	```bash
+    13	# 필수
+    14	command -v claude   # Claude Code CLI
+    15	
+    16	# Multi-AI 기능 사용 시
+    17	command -v gemini   # Gemini CLI (GEMINI_API_KEY 필요)
+    18	command -v codex    # Codex CLI (OPENAI_API_KEY 필요)
+    19	```
+    20	
+exec
+/bin/zsh -lc "nl -ba docs/explain/user-scenarios.md | sed -n '320,620p'" in /Users/kwak/Projects/ai/claude-imple-skillsexec
+/bin/zsh -lc "nl -ba docs/explain/project-overview.md | sed -n '260,520p'" in /Users/kwak/Projects/ai/claude-imple-skills succeeded in 53ms:
+   260	2. `model-routing.yaml`에서 `task.owner` 기반 검색
+   261	3. Claude 모델명(`sonnet`, `opus`, `haiku`) → `claude` fallback
+   262	4. CLI 존재 확인 + fallback
+   263	
+   264	### 5.3 Task Board
+   265	
+   266	**실시간 칸반 보드 시각화**
+   267	
+   268	```
+   269	┌─────────────────────────────────────────────────────────────┐
+   270	│  TASKS.md + orchestrate-state + collab/requests → board-state │
+   271	├─────────────────────────────────────────────────────────────┤
+   272	│  Backlog (N) │ In Progress (N) │ Blocked (N) │ Done (N)     │
+   273	├─────────────────────────────────────────────────────────────┤
+   274	│  [P1-A1]     │ [P1-B2]         │ [P2-C1]     │ [P0-S1]     │
+   275	│  [P1-A2]     │ [P1-B3]         │             │ [P0-S2]     │
+   276	│  ...         │ ...             │             │ ...         │
+   277	└─────────────────────────────────────────────────────────────┘
+   278	```
+   279	
+ succeeded in 53ms:
+   320	- Gemini가 Codex 의견을 검토 → 반박/동의
+   321	- Codex가 Gemini 의견을 검토 → 반박/동의
+   322	
+   323	**Stage 3: Chairman Synthesis**
+   324	- Claude(호스트)가 모든 의견 종합 → 합의안 + 이견 포인트 정리
+   325	
+   326	- **파일 R/W**:
+   327	  - **읽기**: `council.config.yaml`, 대상 소스 코드
+   328	  - **쓰기**: `.jobs/council-*/` (각 멤버 opinion.md, cross-review.md, status)
+   329	
+   330	### 기대 출력
+   331	```
+   332	=== Gemini 의견 ===
+   333	[창의적 관점] 토큰 갱신 로직에 Race Condition 우려...
+   334	
+   335	=== Codex 의견 ===
+   336	[기술적 관점] OWASP A07 - JWT secret 하드코딩 위험...
+   337	
+   338	=== 의장 종합 (Claude) ===
+   339	합의: JWT 관리 개선 필요 (2/2 동의)
+codex
+핵심 문서 3개를 대조해보니, v4.9.0 알고리즘과 시나리오 매핑 표가 이미 `SKILL.md`에 포함돼 있습니다. 지금은 13개 케이스를 개별로 재추적하면서, 문서 간 기준 충돌(특히 ④·⑤·S7 직접호출) 여부를 점검 중입니다.
+exec
+/bin/zsh -lc 'rg -n "S7|직접 호출|우회|governance|install.sh|incomplete_tasks|AGENT_COUNT" skills/workflow-guide/SKILL.md -S' in /Users/kwak/Projects/ai/claude-imple-skillsexec
+/bin/zsh -lc "nl -ba skills/workflow-guide/SKILL.md | sed -n '290,430p'" in /Users/kwak/Projects/ai/claude-imple-skillsexec
+/bin/zsh -lc "nl -ba skills/workflow-guide/SKILL.md | sed -n '430,620p'" in /Users/kwak/Projects/ai/claude-imple-skills succeeded in 52ms:
+30:기획 시작 ──────────── /governance-setup (Mini-PRD 내장)
+59:| **`/governance-setup`** | `/governance-setup` | 거버넌스 + Mini-PRD 기획 |
+165:AGENT_COUNT=$(ls .claude/agents/*.md 2>/dev/null | wc -l | tr -d ' ')
+168:echo "agents=$AGENT_COUNT tasks=$TASK_COUNT incomplete=$INCOMPLETE_COUNT"
+169:# ⚠️ agents=0 AND tasks>=30 → install.sh REQUIRED before orchestration
+175:echo "domains=$DOMAIN_COUNT governance=$GOVERNANCE_DONE"
+190:# INCOMPLETE_COUNT  → incomplete_tasks  (미완료 태스크: [ ] 체크박스)
+193:# AGENT_COUNT       → AGENT_COUNT      (.claude/agents/*.md 개수)
+218:  # ③ 유지보수 체크 ← 단독·소규모 유지보수 (AGENT_COUNT=0 AND GOVERNANCE_DONE=no 인 경우만)
+221:  #    ⚠️ AGENT_COUNT > 0 (거버넌스+팀 구성된 대규모 진행 중) → ③ 건너뜀
+223:  IF source_code EXISTS AND AGENT_COUNT == 0 AND GOVERNANCE_DONE == "no":
+224:    IF incomplete_tasks > 0:
+231:  #    ⚠️ incomplete_tasks == 0 (모든 완료) → 거버넌스 불필요 → ⑦·⑧으로 이동
+232:  IF TASK_COUNT >= 10 AND (DOMAIN_COUNT >= 2 OR TASK_COUNT >= 30) AND GOVERNANCE_DONE == "no" AND incomplete_tasks > 0:
+233:    RETURN "/governance-setup"
+234:    # ⚠️ AGENT_COUNT, TASKS.md 목적·설명 필드, 사용자 맥락은 이 조건에 영향 없음
+237:  #    ⚠️ all_tasks_completed이면 install.sh 불필요 → ⑥·⑧으로 이동
+238:  IF GOVERNANCE_DONE == "yes" AND TASK_COUNT >= 30 AND AGENT_COUNT == 0 AND incomplete_tasks > 0:
+239:    RETURN "project-team/install.sh --mode standard"
+243:  IF GOVERNANCE_DONE == "yes" AND AGENT_COUNT > 0:
+ succeeded in 53ms:
+   430	│                                                         │
+   431	│ 🏛️ 거버넌스 (태스크 10+ + 복잡/협업 조건)                │
+   432	│   └─ /governance-setup (Phase 0: PM/Architect/QA/DBA)   │
+   433	│       ↓                                                 │
+   434	│   └─ 규모에 따라 /agile auto 또는 /orchestrate-standalone --mode=wave │
+   435	└─────────────────────────────────────────────────────────┘
+   436	    ↓
+   437	/checkpoint (태스크 완료 시 리뷰)
+   438	    ↓
+   439	/security-review (보안 검사)
+   440	    ↓
+   441	/audit (배포 전 종합 감사)
+   442	    ↓
+   443	/multi-ai-review (심층 검토)
+   444	    ↓
+   445	배포 ✅
+   446	```
+   447	
+   448	### 레거시 프로젝트 경로
+   449	
+ succeeded in 53ms:
+   290	
+   291	진단 결과에 따라 **AskUserQuestion**으로 확인합니다:
+   292	
+   293	```json
+   294	{
+   295	  "questions": [
+   296	    {
+   297	      "question": "프로젝트 상태를 분석했습니다. 다음 단계를 선택하세요:",
+   298	      "header": "워크플로우",
+   299	      "options": [
+   300	        {
+   301	          "label": "⭐ [권장] {진단된 최적 스킬}",
+   302	          "description": "{해당 스킬이 적합한 이유}"
+   303	        },
+   304	        {
+   305	          "label": "{대안 스킬 1}",
+   306	          "description": "{대안 설명}"
+   307	        },
+   308	        {
+   309	          "label": "{대안 스킬 2}",
+exec
+/bin/zsh -lc "bash -lc '
+set -euo pipefail
+recommend() {
+  local state_exists=\""'$1" conflicts="$2" tasks_exists="$3" legacy_exists="$4" task_count="$5" inc="$6" source="$7" agents="$8" gov="$9" domains="${10}"
+  local all_done=0
+  if [[ "$task_count" -gt 0 && "$inc" -eq 0 ]]; then all_done=1; fi
+  if [[ "$state_exists" == "1" ]]; then echo "/recover"; return; fi
+  if [[ "$conflicts" == "1" ]]; then echo "/recover"; return; fi
+  if [[ "$tasks_exists" == "0" ]]; then
+    if [[ "$legacy_exists" == "1" ]]; then echo "/tasks-migrate"; else echo "/tasks-init"; fi
+    return
+  fi
+  if [[ "$task_count" -eq 0 ]]; then echo "/tasks-init"; return; fi
+  if [[ "$source" == "1" && "$agents" -eq 0 && "$gov" == "no" ]]; then
+    if [[ "$inc" -gt 0 ]]; then echo "/agile iterate"; return; fi
+    if [[ "$all_done" -eq 1 ]]; then echo "/audit"; return; fi
+  fi
+  if [[ "$task_count" -ge 10 && ( "$domains" -ge 2 || "$task_count" -ge 30 ) && "$gov" == "no" && "$inc" -gt 0 ]]; then
+    echo "/governance-setup"; return
+  fi
+  if [[ "$gov" == "yes" && "$task_count" -ge 30 && "$agents" -eq 0 && "$inc" -gt 0 ]]; then
+    echo "project-team/install.sh --mode standard"; return
+  fi
+  if [[ "$gov" == "yes" && "$agents" -gt 0 ]]; then
+    if [[ "$all_done" -eq 1 ]]; then echo "/audit"; return; fi
+    if [[ "$inc" -ge 80 ]]; then echo "/orchestrate-standalone --mode=wave"; return; fi
+    if [[ "$inc" -ge 30 ]]; then echo "/orchestrate-standalone"; return; fi
+    echo "/agile auto"; return
+  fi
+  if [[ "$task_count" -gt 0 && "$task_count" -lt 30 && "$inc" -gt 0 ]]; then
+    echo "/agile auto"; return
+  fi
+  if [[ "$all_done" -eq 1 ]]; then echo "/audit"; return; fi
+  echo "<NO_MATCH>"
+}
+run_case() {
+  local name="$1" expected="$2"; shift 2
+  local got
+  got=$(recommend "$@")
+  if [[ "$got" == "$expected" ]]; then
+    echo "PASS|$name|$got"
+  else
+    echo "FAIL|$name|expected=$expected got=$got"
+  fi
+}
+run_case S1 /tasks-init 0 0 0 0 0 0 0 0 no 0
+run_case S1-migrate /tasks-migrate 0 0 0 1 0 0 0 0 no 0
+run_case S2 /governance-setup 0 0 1 0 40 40 0 0 no 4
+run_case S2-after-gov "project-team/install.sh --mode standard" 0 0 1 0 40 40 0 0 yes 4
+run_case S2-running /orchestrate-standalone 0 0 1 0 100 50 0 5 yes 12
+run_case S3 "/agile iterate" 0 0 1 0 20 15 1 0 no 1
+run_case S3-done /audit 0 0 1 0 20 0 1 0 no 1
+run_case S4 /recover 1 0 1 0 20 10 0 0 no 1
+run_case S5 /recover 0 1 1 0 20 10 0 0 no 1
+run_case S6 /recover 1 0 1 0 100 20 0 5 yes 12
+run_case S1-done /audit 0 0 1 0 20 0 0 0 no 1
+run_case edge-small-new "/agile auto" 0 0 1 0 15 10 0 0 no 1
+'"'" in /Users/kwak/Projects/ai/claude-imple-skills succeeded in 52ms:
+PASS|S1|/tasks-init
+PASS|S1-migrate|/tasks-migrate
+PASS|S2|/governance-setup
+PASS|S2-after-gov|project-team/install.sh --mode standard
+PASS|S2-running|/orchestrate-standalone
+PASS|S3|/agile iterate
+PASS|S3-done|/audit
+PASS|S4|/recover
+PASS|S5|/recover
+PASS|S6|/recover
+PASS|S1-done|/audit
+PASS|edge-small-new|/agile auto
+codex
+13개 케이스는 알고리즘을 동일 로직으로 재구현해 시뮬레이션했고(쓰기 없이 인라인 실행), S7은 직접 호출 우회 규칙이라 별도 문서 대조로 확인했습니다. 이제 결과표와 함께 문서 간 불일치(중요도 분류) 및 수정안을 정리해 전달하겠습니다.
+codex
+검증 결과: **요청하신 13개 케이스 모두 v4.9.0 알고리즘과 일치**했습니다.
+
+기준 확인 파일:
+- [workflow-guide 알고리즘 본문](/Users/kwak/Projects/ai/claude-imple-skills/skills/workflow-guide/SKILL.md:198)
+- [workflow-guide 시나리오 추적표](/Users/kwak/Projects/ai/claude-imple-skills/skills/workflow-guide/SKILL.md:258)
+- [project-overview 진단 파이프라인](/Users/kwak/Projects/ai/claude-imple-skills/docs/explain/project-overview.md:280)
+- [user-scenarios 커버리지(S1,S2,S3,S5,S6만 workflow-guide)](/Users/kwak/Projects/ai/claude-imple-skills/docs/explain/user-scenarios.md:585)
+
+케이스별 판정:
+1. S1 → `/tasks-init` ✅  
+2. S1-migrate → `/tasks-migrate` ✅  
+3. S2 → `/governance-setup` ✅  
+4. S2-after-gov → `project-team/install.sh --mode standard` ✅  
+5. S2-running → `/orchestrate-standalone` ✅  
+6. S3 → `/agile iterate` ✅  
+7. S3-완료 → `/audit` ✅  
+8. S4 → `/recover` ✅  
+9. S5 → `/recover` ✅  
+10. S6 → `/recover` ✅  
+11. S7(직접 호출) → workflow-guide 비경유, N/A ✅  
+12. S1-완료 → `/audit` ✅  
+13. 엣지(소규모 신규) → `/agile auto` ✅  
+
+추가로 발견한 누락 엣지케이스(중요도: MEDIUM):
+1. **`AGENT_COUNT>0 && GOVERNANCE_DONE=no` 비정상 상태**
+- 현재는 ④/⑦로 흐를 수 있어 상태 복구 안내가 없음.
+- 수정안: ③~④ 사이에 가드 추가  
+  `IF AGENT_COUNT > 0 AND GOVERNANCE_DONE == "no": RETURN "/recover"` (또는 `/governance-setup` 재실행 안내)
+
+2. **stale `.claude/orchestrate-state.json` 오탐**
+- 현재는 파일 존재만으로 무조건 `/recover`.
+- 수정안: 상태 필드(`RUNNING/PAUSED` 등) 검증 후 true일 때만 `/recover`.
+
+요청하신 “project-overview.md, user-scenarios.md와의 불일치”는 **핵심 라우팅 기준(S1,S2,S3,S5,S6 + S7 독립성)에서는 발견되지 않았습니다**.
+tokens used
+50,677

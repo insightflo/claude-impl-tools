@@ -1,0 +1,34 @@
+**Findings (중요도 순)**
+1. `HIGH` `STATE_STATUS` 추출식이 실제 JSON 포맷에서 오동작합니다. 공백 있는 JSON(`"status": "RUNNING"`)을 못 읽고, `status` 키가 없을 때도 `none`이 아니라 빈 문자열이 됩니다. 또 중첩 `tasks[].status`를 섞어 읽을 수 있습니다.  
+파일: [skills/workflow-guide/SKILL.md:136](/Users/kwak/Projects/ai/claude-imple-skills/skills/workflow-guide/SKILL.md:136)
+
+2. `HIGH` 알고리즘은 상위 `status=RUNNING/PAUSED/COMPLETED`를 전제로 하지만, 현재 `orchestrate-state` 생성/갱신 경로는 주로 `tasks[].status` 중심이며 상위 `status`를 보장하지 않습니다. 즉 ① 복구 분기가 실제 운영 상태와 어긋날 수 있습니다.  
+파일: [skills/orchestrate-standalone/scripts/state.js:24](/Users/kwak/Projects/ai/claude-imple-skills/skills/orchestrate-standalone/scripts/state.js:24), [skills/orchestrate-standalone/scripts/state.js:85](/Users/kwak/Projects/ai/claude-imple-skills/skills/orchestrate-standalone/scripts/state.js:85), [skills/orchestrate-standalone/scripts/worker.js:223](/Users/kwak/Projects/ai/claude-imple-skills/skills/orchestrate-standalone/scripts/worker.js:223), [skills/orchestrate-standalone/SKILL.md:194](/Users/kwak/Projects/ai/claude-imple-skills/skills/orchestrate-standalone/SKILL.md:194)
+
+3. `MEDIUM` 문서 내 의사결정 트리와 알고리즘 본문이 일부 불일치합니다(`--mode=sprint` 분기 표시는 트리에 있으나 알고리즘 ⑥에는 직접 조건 없음).  
+파일: [skills/workflow-guide/SKILL.md:245](/Users/kwak/Projects/ai/claude-imple-skills/skills/workflow-guide/SKILL.md:245), [skills/workflow-guide/SKILL.md:351](/Users/kwak/Projects/ai/claude-imple-skills/skills/workflow-guide/SKILL.md:351)
+
+**요청 항목별 검증 결과**
+1. 14개 케이스 추적: 알고리즘 자체 시뮬레이션 기준으로 **일치**합니다.  
+- 알고리즘 평가 대상 13개 케이스: PASS  
+- `S7`은 명시한 대로 workflow-guide 우회(N/A)  
+- `S6-완료오탐`은 `STATE_STATUS=COMPLETED`가 정확히 들어오면 오탐 없음(PASS)
+
+2. `STATE_STATUS` 추출 스크립트 정확성: **현재는 부정확**합니다. 재현 결과:
+```text
+{"status":"RUNNING"} => [RUNNING]
+{"status": "RUNNING"} => []
+{"foo":1} => []
+{"tasks":[{"status":"pending"}]} => [pending]
+```
+즉 공백/키부재/중첩 status에서 잘못된 값을 만들 수 있습니다.
+
+3. 비정상 상태(`AGENT>0 + GOV=no`) 처리 방향:  
+- 현재 규칙은 `T<30`이면 `/agile auto`로 가므로 “작업 지속” 관점에서는 타당합니다.  
+- 다만 거버넌스 정합성 관점에서는 위험합니다. 명시적 가드(예: `AGENT>0 AND GOV=no`면 `/governance-setup` 또는 경고 후 확인)를 두는 것이 더 안전합니다.
+
+4. 추가 엣지케이스
+- `.claude/orchestrate/orchestrate-state.json`(신규 경로) 미체크로 복구 신호 누락 가능
+- `orchestrate-state.json` 손상/비정상 JSON일 때 현재 파싱은 빈값 처리
+- `status`가 상위가 아닌 하위(`tasks[].status`)만 있을 때 오판 가능
+- 문서 트리(standalone v4.9 표기)와 헤더 버전(v4.9.1) 혼재로 운영 혼선 가능 ([skills/workflow-guide/SKILL.md:5](/Users/kwak/Projects/ai/claude-imple-skills/skills/workflow-guide/SKILL.md:5), [skills/workflow-guide/SKILL.md:325](/Users/kwak/Projects/ai/claude-imple-skills/skills/workflow-guide/SKILL.md:325))

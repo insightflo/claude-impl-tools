@@ -1,0 +1,143 @@
+Sprint Mode 버그픽스 구현 코드 퀄리티 리뷰 요청
+
+## 검증 범위: 12개 버그 중 11개 수정 완료 (Bug #6 TTY 제외)
+
+---
+
+### 수정 파일 1: orchestrate.sh (lines 175-232) — Sprint 블록
+
+```bash
+if [ "$MODE" = "sprint" ]; then
+    header "Executing Sprint Mode (Workers: $WORKER_COUNT, Sprint Size: $SPRINT_SIZE)"
+
+    # Bug #8: resume이 아닐 때만 planner 실행
+    if [ "$RESUME" != "true" ]; then
+        if ! "$NODE_CMD" "$SCRIPT_DIR/sprint-planner.js" "$TASKS_FILE" "$SPRINT_SIZE"; then
+            log_error "Sprint planning failed or cancelled"
+            exit 1
+        fi
+    fi
+
+    # Bug #7: Sprint 루프
+    while true; do
+        SPRINT_STATE_VAL=$(node -e "
+            try {
+                const s = require('$PROJECT_DIR/.claude/sprint-state.json');
+                console.log(s.state);
+            } catch(e) { console.log('UNKNOWN'); }
+        " 2>/dev/null || echo 'UNKNOWN')
+
+        if [ "$SPRINT_STATE_VAL" = "UNKNOWN" ]; then
+            log_error "Cannot read sprint-state.json (missing or corrupted)"
+            exit 1
+        fi
+
+        # Bug #10: terminal states만 loop 종료
+        if [ "$SPRINT_STATE_VAL" = "PI_COMPLETE" ] || [ "$SPRINT_STATE_VAL" = "PAUSED" ]; then
+            log_info "Sprint state: $SPRINT_STATE_VAL — exiting loop"
+            break
+        fi
+
+        # Bug #9: set -e 환경에서 exit code 캡처
+        "$NODE_CMD" "$SCRIPT_DIR/sprint-runner.js" "$TASKS_FILE" && SPRINT_EXIT=0 || SPRINT_EXIT=$?
+
+        # Bug #2: exit code별 분기
+        case $SPRINT_EXIT in
+            0) log_success "Sprint completed" ;;
+            2)
+                log_warn "Modification requested."
+                log_info "Re-run: $0 --mode=sprint --resume"
+                exit 2
+                ;;
+            3)
+                log_info "Sprint stopped by user."
+                exit 0
+                ;;
+            *)
+                log_error "Sprint runner failed (exit code: $SPRINT_EXIT)"
+                exit 1
+                ;;
+        esac
+    done
+
+    header "Orchestration Complete"
+    log_success "Sprint mode execution finished!"
+    exit 0
+fi
+```
+
+**Bug #4 (scheduler.js 조건부 실행):** 파일 라인 148에 `if [ "$MODE" != "sprint" ]` 조건 추가됨
+
+---
+
+### 수정 파일 2: sprint-runner.js 핵심 변경
+
+```javascript
+// Bug #11: resume 시 이미 완료된 태스크 상태 복원
+const currentSprint = sprintState.sprints[sprintIndex];
+if (Array.isArray(currentSprint.tasks)) {
+  for (const t of currentSprint.tasks) {
+    if (t && typeof t === 'object' && t.status === 'completed') {
+      const key = normalizeTaskId(t.id || t.task_id || t.taskId);
+      if (Object.prototype.hasOwnProperty.call(statusById, key)) {
+        statusById[key] = 'completed';
+      }
+    }
+  }
+}
+
+for (let i = 0; i < waves.length; i += 1) {
+  const wave = waves[i];
+  // Bug #11: 완료된 태스크 제외
+  const pendingTasks = wave.tasks.filter((t) => statusById[normalizeTaskId(t.id)] !== 'completed');
+  if (pendingTasks.length === 0) {
+    console.log(`[Sprint Runner] Wave ${i + 1}: all tasks completed, skipping`);
+    continue;
+  }
+  const waveToExecute = { ...wave, tasks: pendingTasks };
+  const { results, failed } = await executeWave(waveToExecute, i, waves.length, { projectDir: process.cwd() });
+
+  // ... status updates ...
+
+  // Bug #3: wave 실패 시 throw 대신 break (review gate로 진행)
+  if (failed.length > 0) {
+    console.warn(`[Sprint Runner] Wave ${i + 1} partial failure: ${failedIds}`);
+    console.warn('[Sprint Runner] Proceeding to review gate for user decision...');
+    break;
+  }
+}
+
+// Bug #1: retro.js 호출 (review 승인 후)
+state.transition('wave_complete');
+const reviewExitCode = await runSprintReview();
+
+if (reviewExitCode === 0) {
+  const retroExitCode = await runSprintRetro();
+  return retroExitCode;
+}
+
+return reviewExitCode;
+```
+
+---
+
+### 수정 파일 3: sprint-review.js (Bug #5)
+
+```javascript
+// 마지막 스프린트 여부 판별
+const isLastSprint = sprintState.total_sprints > 0 && sprintNumber >= sprintState.total_sprints;
+const approveLabel = isLastSprint
+  ? 'PI 완료 → Retrospective'
+  : `Sprint ${sprintNumber + 1} 시작`;
+console.log(`[A] 승인 — ${approveLabel}`);
+```
+
+---
+
+## 리뷰 요청 포인트
+
+1. **로직 정확성**: 12개 버그 수정이 모두 의도대로 동작하는가?
+2. **엣지 케이스**: 놓친 시나리오 (예: SPRINT_REVIEW 상태에서 loop 재진입)
+3. **while loop 무한루프 위험**: orchestrate.sh의 loop 탈출 조건이 충분한가?
+4. **exit code 전파**: sprint-runner → orchestrate.sh → 상위 caller까지 올바른가?
+5. **새로운 버그**: 수정 과정에서 새로 도입된 문제가 있는가?

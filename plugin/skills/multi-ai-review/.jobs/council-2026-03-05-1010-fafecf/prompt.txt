@@ -1,0 +1,151 @@
+# Round 5 리뷰 요청
+
+아래 3개 파일을 순서대로 리뷰하세요.
+
+## 리뷰 목표
+workflow-guide 스킬이 아래 7개 시나리오대로 정확히 안내할 수 있는지 검증:
+- S1: 새 프로젝트 → /tasks-init
+- S2: 100 tasks, 12 domains, governance 없음 → /governance-setup
+- S3: 기존 코드 + 미완료 태스크 (유지보수) → /agile iterate
+- S4: multi-ai 리뷰 요청 (자연어 트리거) → /multi-ai-review
+- S5: 모든 태스크 완료, 배포 직전 → /audit
+- S6: orchestrate-state.json 존재 → /recover
+- S7: 모델 라우팅 실행 → /multi-ai-run
+
+## 검증 포인트
+
+### 1. 알고리즘 정확성 (workflow-guide SKILL.md)
+- ① 복구 체크 → ② 태스크 파일 → ③ 유지보수(source_code) → ④ 거버넌스 → ⑤ 인프라 → ⑥ 신규 → ⑦ 소규모 → ⑧ 완료
+- 각 시나리오의 RETURN이 정확한가?
+- MANDATORY 규칙(TASKS.md 내용 무시)이 명확한가?
+- S4, S7은 workflow-guide 없이 직접 호출 시나리오인지 확인
+
+### 2. 시나리오 커버리지 (user-scenarios.md)
+- S1~S7 각각 Step 0 (workflow-guide)가 올바른지
+- 커버 스킬 footer가 정확한지
+- 전체 커버리지 테이블 20/20 정확한지
+
+### 3. 프로젝트 개요 정확성 (project-overview.md)
+- 에이전트 수(9), 스킬 수(20), 모드 정보가 실제와 일치하는지
+- workflow-guide 설명(5.4절)이 알고리즘을 정확히 반영하는지
+
+## 파일 내용
+
+### workflow-guide/SKILL.md (핵심 알고리즘 부분)
+ALGORITHM get_recommendation():
+
+  # ① 복구 체크 (최우선)
+  IF .claude/orchestrate-state.json EXISTS:
+    RETURN "/recover"  # 이후 /orchestrate-standalone --resume 안내
+
+  IF git dirty OR git conflicts:
+    RETURN "/recover"
+
+  # ② 태스크 파일 체크
+  IF TASKS.md NOT EXISTS:
+    IF docs/planning/06-tasks.md EXISTS:
+      RETURN "/tasks-migrate"
+    ELSE:
+      RETURN "/tasks-init"
+
+  # ③ 유지보수 체크 ← 거버넌스 체크보다 반드시 먼저
+  #    source_code = package.json/pyproject.toml/requirements.txt/src/ 중 하나 이상 존재
+  IF source_code EXISTS:
+    IF incomplete_tasks > 0:
+      RETURN "/agile iterate"   # 기존 코드 수정/확장 → iterate 사용
+    IF all_tasks_completed:
+      RETURN "/audit"
+
+  # ④ 거버넌스 체크 ← source_code 없는 신규 프로젝트 전용
+  #    DOMAIN_COUNT는 TASKS.md 'domain:' 필드 기반; 없으면 TASK_COUNT>=30으로 대체
+  IF TASK_COUNT >= 10 AND (DOMAIN_COUNT >= 2 OR TASK_COUNT >= 30) AND GOVERNANCE_DONE == "no":
+    RETURN "/governance-setup"
+    # ⚠️ AGENT_COUNT, TASKS.md 목적·설명 필드, 사용자 맥락은 이 조건에 영향 없음
+
+  # ⑤ 인프라 체크 (거버넌스 완료 후)
+  IF GOVERNANCE_DONE == "yes" AND TASK_COUNT >= 30 AND AGENT_COUNT == 0:
+    RETURN "project-team/install.sh --mode standard"
+    # 참고: claude-imple-skills 클론 디렉토리 내 project-team/ 에서 실행
+
+  # ⑥ 신규 구현 (거버넌스 완료 + 인프라 준비, 코드 없음)
+  IF GOVERNANCE_DONE == "yes" AND AGENT_COUNT > 0:
+    IF TASK_COUNT >= 80: RETURN "/orchestrate-standalone --mode=wave"
+    IF TASK_COUNT >= 30: RETURN "/orchestrate-standalone"
+    ELSE: RETURN "/agile auto"
+
+  # ⑦ 소규모 신규 구현 (거버넌스 불필요, 코드 없음)
+  IF TASK_COUNT > 0 AND TASK_COUNT < 30:
+    RETURN "/agile auto"
+
+  # ⑧ 완료
+  IF all_tasks_completed:
+    RETURN "/audit"
+```
+
+**시나리오별 추적 검증:**
+
+| 시나리오 | 초기 상태 | 알고리즘 경로 | 예상 추천 |
+|---------|-----------|--------------|----------|
+| S1 (새 프로젝트) | TASKS.md 없음 | ② → /tasks-init | ✅ `/tasks-init` |
+| S1 (tasks-init 후) | 20 tasks, domain<2, 코드 없음 | ③ skip, ④ skip(20<30), ⑦ → /agile auto | ✅ `/agile auto` |
+| S2 (100 tasks, 12 domains, 거버넌스 없음) | 코드 없음, GOVERNANCE_DONE=no | ③ skip(코드없음), ④ 100>=30 → /governance-setup | ✅ `/governance-setup` |
+| S2 (거버넌스 후, agents=0) | GOVERNANCE_DONE=yes, AGENT_COUNT=0 | ⑤ → project-team/install.sh | ✅ `install.sh` |
+| S2 (설치 후) | GOVERNANCE_DONE=yes, AGENT_COUNT>0 | ⑥ 100>=80 → /orchestrate-standalone --mode=wave | ✅ `/orchestrate-standalone --mode=wave` |
+| S3 (유지보수) | 코드 있음, 미완료 태스크 | ③ source_code EXISTS → /agile iterate | ✅ `/agile iterate` |
+| S6 (복구) | orchestrate-state.json 존재 | ① → /recover | ✅ `/recover` |
+| S1-레거시 | TASKS.md 없음, 06-tasks.md 있음 | ② → /tasks-migrate | ✅ `/tasks-migrate` |
+
+### 2-1단계: 부분 완료 상태 판단 기준
+
+**기획 완료 기준** (Socrates 기준 7개 문서):
+- `01-prd.md`, `02-trd.md`, `03-uxd.md`, `04-database-design.md`, `05-resources.md`, `06-tasks.md`, `07-acceptance-criteria.md`
+- 7개 미만 → "기획 진행 중"
+
+**거버넌스 완료 기준** (5개 산출물):
+- `management/project-plan.md` (PM)
+- `management/decisions/ADR-*.md` 4개 이상 (Architect)
+- `design/system/*.md` 4개 이상 (Designer)
+- `management/quality-gates.md` (QA)
+- `database/standards.md` (DBA)
+- 일부만 존재 → "거버넌스 진행 중"
+
+### 3단계: 맞춤 추천 + 사용자 확인
+
+진단 결과에 따라 **AskUserQuestion**으로 확인합니다:
+
+
+### user-scenarios.md (S2, S3, S5, S6 Step 0 섹션)
+#### 0단계: 워크플로우 가이드
+- **트리거 스킬**: `workflow-guide` ("뭐해야해?", "어떤 스킬?", `/workflow`)
+- **SKILL.md 위치**: `skills/workflow-guide/SKILL.md`
+- **동작**: 현재 상태(TASKS.md 유무, 태스크 수, 에이전트 수)를 bash로 silent 분석 → 상황별 추천 스킬 안내 (스크립트 없음, Claude 직접 수행)
+
+#### 1단계: 기존 태스크 마이그레이션 (선택)
+--
+#### 0단계: 워크플로우 가이드
+- **트리거 스킬**: `workflow-guide` (`/workflow`, `/workflow-guide`, "뭐해야해?")
+- **SKILL.md 위치**: `skills/workflow-guide/SKILL.md`
+- **동작**: bash로 TASK_COUNT=100, DOMAIN_COUNT=12, GOVERNANCE_DONE=no 감지 → **`/governance-setup` 추천** (100개 태스크, 12개 도메인, 거버넌스 없음 조건 충족)
+- **기대 출력**: "⭐ /governance-setup — 대규모 프로젝트 거버넌스 팀 설정 권장"
+
+--
+#### 0단계: 워크플로우 가이드 (유지보수 감지)
+- **트리거 스킬**: `workflow-guide` ("뭐해야해?", `/workflow`)
+- **동작**: bash로 source_code EXISTS(package.json/src/), TASKS.md 미완료 태스크 있음 감지 → **`/agile iterate` 추천** (기존 코드베이스 수정 경로)
+- **기대 출력**: "⭐ /agile iterate — 기존 코드베이스에 미완료 작업 감지. 수정 전 /impact 영향도 분석 권장"
+
+#### 1단계: 영향도 분석
+--
+#### 0단계: 워크플로우 가이드 (배포 준비 감지)
+- **트리거 스킬**: `workflow-guide` ("뭐해야해?", `/workflow`)
+- **동작**: bash로 source_code EXISTS, 모든 TASKS.md 태스크 완료 감지 → **`/audit` 추천** (배포 전 감사 경로)
+- **기대 출력**: "⭐ /audit — 모든 태스크 완료. 배포 전 종합 품질 감사 권장"
+
+#### 1단계: 종합 품질 감사
+--
+#### 0단계: 워크플로우 가이드 (중단 감지 — 재시작 시)
+- **트리거 스킬**: `workflow-guide` ("뭐해야해?", `/workflow`)
+- **동작**: `.claude/orchestrate-state.json` 존재 감지 → **`/recover` 추천** (알고리즘 ① 최우선 경로)
+- **기대 출력**: "⭐ /recover — 중단된 오케스트레이션 감지. 복구 후 /orchestrate-standalone --resume 으로 재개"
+
+#### 사전 단계: 체크포인트 (중단 전 — 선제적 습관)

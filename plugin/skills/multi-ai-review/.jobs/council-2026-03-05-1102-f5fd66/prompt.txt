@@ -1,0 +1,104 @@
+# Round 11 — workflow-guide v4.9.0 검증 요청
+
+## 검증 목표
+workflow-guide 알고리즘이 모든 7개 사용자 시나리오(S1~S7)와 엣지케이스(13개 이상 테스트케이스)를 올바르게 라우팅하는지 확인
+
+## 현재 알고리즘 (v4.9.0)
+
+```
+ALGORITHM get_recommendation():
+
+  # ① 복구 체크 (최우선)
+  IF .claude/orchestrate-state.json EXISTS:
+    RETURN "/recover"
+  IF git merge conflicts exist (git diff --diff-filter=U 결과 있음):
+    RETURN "/recover"
+
+  # ② 태스크 파일 체크
+  IF TASKS.md NOT EXISTS:
+    IF docs/planning/06-tasks.md EXISTS: RETURN "/tasks-migrate"
+    ELSE: RETURN "/tasks-init"
+  IF TASK_COUNT == 0:
+    RETURN "/tasks-init"
+
+  # ③ 유지보수 체크 (AGENT_COUNT=0 AND GOVERNANCE_DONE=no 인 경우만)
+  IF source_code EXISTS AND AGENT_COUNT == 0 AND GOVERNANCE_DONE == "no":
+    IF incomplete_tasks > 0: RETURN "/agile iterate"
+    IF all_tasks_completed: RETURN "/audit"
+
+  # ④ 거버넌스 체크 (미완료 태스크 있을 때만)
+  IF TASK_COUNT >= 10 AND (DOMAIN_COUNT >= 2 OR TASK_COUNT >= 30) AND GOVERNANCE_DONE == "no" AND incomplete_tasks > 0:
+    RETURN "/governance-setup"
+
+  # ⑤ 인프라 체크 (거버넌스 완료 후, 미완료 태스크 있을 때만)
+  IF GOVERNANCE_DONE == "yes" AND TASK_COUNT >= 30 AND AGENT_COUNT == 0 AND incomplete_tasks > 0:
+    RETURN "project-team/install.sh --mode standard"
+
+  # ⑥ 구현/배포 판단 (거버넌스 완료 + 인프라 준비)
+  IF GOVERNANCE_DONE == "yes" AND AGENT_COUNT > 0:
+    IF all_tasks_completed: RETURN "/audit"
+    IF incomplete_tasks >= 80: RETURN "/orchestrate-standalone --mode=wave"
+    IF incomplete_tasks >= 30: RETURN "/orchestrate-standalone"
+    ELSE: RETURN "/agile auto"
+
+  # ⑦ 소규모 신규 구현 (거버넌스 불필요, 코드 없음, 미완료 태스크 있음)
+  IF TASK_COUNT > 0 AND TASK_COUNT < 30 AND incomplete_tasks > 0:
+    RETURN "/agile auto"
+
+  # ⑧ 완료
+  IF all_tasks_completed:
+    RETURN "/audit"
+```
+
+## 변수 정의
+- TASK_COUNT: TASKS.md 전체 태스크 수 (체크박스 줄 기준)
+- incomplete_tasks: [ ] 미완료 태스크 수
+- all_tasks_completed: TASK_COUNT > 0 AND incomplete_tasks == 0
+- source_code EXISTS: src/ or app/ or lib/ 에 파일 존재
+- AGENT_COUNT: .claude/agents/*.md 파일 수
+- GOVERNANCE_DONE: management/project-plan.md 존재 여부 (yes/no)
+- DOMAIN_COUNT: TASKS.md 내 'domain:' 필드 유니크 수
+- git dirty (uncommitted): 정상 상태, /recover 트리거 아님
+
+## 13개 테스트케이스 추적
+
+| 케이스 | 상태 | 예상 알고리즘 경로 | 예상 결과 |
+|--------|------|-------------------|-----------|
+| S1 | TASKS.md 없음, 코드 없음 | ② NOT EXISTS → | `/tasks-init` |
+| S1-migrate | TASKS.md 없음, 06-tasks.md 있음 | ② 06-tasks.md EXISTS → | `/tasks-migrate` |
+| S2 | TASKS.md 있음(40개), TASK_COUNT=40, inc=40, 코드 없음, GOV=no | ② ok, ③ skip(코드없음), ④ 40>=10 + 40>=30 + no + 40>0 → | `/governance-setup` |
+| S2-after-gov | GOV=yes, AGENT_COUNT=0, TASK_COUNT=40, inc=40 | ② ok, ③ skip(GOV=yes), ④ skip(GOV=yes), ⑤ yes+40+0+40>0 → | `install.sh` |
+| S2-running | GOV=yes, AGENT_COUNT=5, inc=50 | ② ok, ③-⑤ skip, ⑥ yes+5>0, 50>=30 → | `/orchestrate-standalone` |
+| S3 | 코드 있음(src/), TASK_COUNT=20, inc=15, AGENT_COUNT=0, GOV=no | ② ok, ③ EXISTS+0+no → inc>0 → | `/agile iterate` |
+| S3-완료 | 코드 있음, TASK_COUNT=20, inc=0, GOV=no | ② ok, ③ EXISTS+0+no → completed → | `/audit` |
+| S4 | orchestrate-state.json 있음 | ① state.json → | `/recover` |
+| S5 | merge conflicts 있음 | ① conflicts → | `/recover` |
+| S6 | orchestrate-state.json 있음 (중단) | ① state.json → | `/recover` |
+| S7 | /multi-ai-review, /checkpoint 직접 호출 | workflow-guide 스킬 자체 미호출 | N/A |
+| S1-완료 | TASK_COUNT=20, inc=0, 코드 없음 | ③ skip(코드없음), ④ skip(inc=0), ⑦ skip(inc=0), ⑧ all done → | `/audit` |
+| 엣지: 소규모신규 | TASK_COUNT=15, inc=10, 코드 없음, GOV=no | ② ok, ③ skip, ④ 15>=10 + GOV=no + 10>0, DOMAIN<2 AND <30 → ④ skip, ⑦ 15<30+10>0 → | `/agile auto` |
+
+## 중요 검증 포인트
+
+1. **S3 vs S2 분기**: source_code + AGENT_COUNT=0 + GOVERNANCE_DONE=no 시 ③이 잡아야 함 (S3)
+   - S2 post-governance: GOV=yes → ③ 건너뜀 → ⑤로 이동 (올바름)
+
+2. **④ 소규모 엣지**: DOMAIN_COUNT < 2 AND TASK_COUNT < 30 이면 ④ 건너뜀 → ⑦로
+
+3. **모든 완료 상태**: ⑦·④·⑤는 incomplete_tasks > 0 조건으로 건너뜀 → ⑧ /audit
+
+4. **S7 독립성**: /multi-ai-review, /checkpoint는 workflow-guide를 거치지 않고 직접 호출
+
+## 검증 요청 항목
+
+1. 13개 케이스 각각 알고리즘 추적 → 결과 일치 여부
+2. 누락된 엣지케이스 발견 시 보고
+3. HIGH/MEDIUM 이슈 발견 시 수정안 제시
+4. project-overview.md, user-scenarios.md와의 불일치 여부
+
+## 최근 수정 이력 (v4.9.0)
+- R10: ④에 incomplete_tasks > 0 추가
+- R10: ⑤에 incomplete_tasks > 0 추가
+- R9: ⑦에 incomplete_tasks > 0 추가
+- R8: ③에 GOVERNANCE_DONE == "no" 추가
+- R6: ③에 AGENT_COUNT == 0 추가
