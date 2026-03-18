@@ -4,7 +4,7 @@
 
 [**English**](./README.md) | [**한국어**](./README_ko.md)
 
-Claude Code용 **23개 스킬** 플러그인. 스킬 실행 시 프로젝트 레벨 훅과 에이전트를 자동 설치합니다 — 수동 설정 불필요.
+Claude Code용 **25개 스킬** 플러그인. 스킬 실행 시 프로젝트 레벨 훅과 에이전트를 자동 설치합니다 — 수동 설정 불필요.
 
 ---
 
@@ -33,7 +33,7 @@ curl -fsSL https://raw.githubusercontent.com/insightflo/claude-impl-tools/main/s
 
 | 구성요소 | 개수 | 설치 시점 |
 |----------|------|-----------|
-| **스킬** | 23개 | 플러그인 설치 시 |
+| **스킬** | 25개 | 플러그인 설치 시 |
 | **훅** | 최대 17개 | 필요 시 (스킬이 `install.sh --local` 실행) |
 | **워커 에이전트** | 4개 | 필요 시 (프로젝트 레벨) |
 | **템플릿** | 11개 | 필요 시 (프로젝트 레벨) |
@@ -73,6 +73,8 @@ curl -fsSL https://raw.githubusercontent.com/insightflo/claude-impl-tools/main/s
 |------|------|
 | `/team-orchestrate` | 네이티브 Agent Teams 오케스트레이션 — tmux pane 자동 생성 |
 | `/cmux-orchestrate` | cmux 기반 멀티-AI 팀 오케스트레이션 — 물리적 3-Level 계층, Claude/Gemini/Codex 혼합 |
+| `/cmux-ai-run` | cmux 창 분할 병렬 태스크 실행 — Codex/Gemini가 분할 패널에서 동시 실행 |
+| `/cmux-ai-review` | cmux 창 분할 병렬 리뷰 — Gemini + Codex 나란히, 3-Stage 파이프라인 |
 | `/multi-ai-run` | Claude/Gemini/Codex 자동 CLI 라우팅 병렬 실행 |
 | `/whitebox` | 실행 대시보드, health/state 확인 |
 | `/cmux` | cmux 터미널 멀티플렉서 제어 (워크스페이스, 패널, 브라우저 자동화) |

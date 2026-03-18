@@ -1,0 +1,37 @@
+# cmux-ai-run 모델 설정
+# 프로젝트별 오버라이드: .claude/cmux-ai-models.yaml
+
+models:
+  codex:
+    command: "codex"
+    model: "gpt-5.4"
+    effort: "high"        # low | medium | high
+    args: "-q"            # quiet mode (no interactive prompts)
+
+  gemini:
+    command: "gemini"
+    model: "gemini-3.1-pro-preview"
+    args: "--yolo"        # non-interactive mode
+
+  claude:
+    command: "claude"
+    model: "opus"         # opus | sonnet | haiku
+    args: "--dangerously-skip-permissions"
+
+# 역할별 기본 AI 배정
+routing:
+  code_generation: codex
+  code_review: codex
+  refactoring: codex
+  test_writing: codex
+  design_implementation: gemini
+  ui_components: gemini
+  design_review: gemini
+  architecture: claude
+  planning: claude
+  orchestration: claude
+
+# 도메인별 오버라이드 (선택)
+# domains:
+#   auth: codex
+#   ui: gemini

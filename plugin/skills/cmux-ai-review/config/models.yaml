@@ -1,0 +1,46 @@
+# cmux-ai-review 모델 설정
+# 프로젝트별 오버라이드: .claude/cmux-ai-models.yaml
+
+models:
+  codex:
+    command: "codex"
+    model: "gpt-5.4"
+    effort: "high"
+    args: "-q"
+
+  gemini:
+    command: "gemini"
+    model: "gemini-3.1-pro-preview"
+    args: "--yolo"
+
+  claude:
+    command: "claude"
+    model: "opus"
+    args: "--dangerously-skip-permissions"
+
+# 도메인별 패널 역할
+# 각 패널이 어떤 관점으로 리뷰할지 결정
+panel_roles:
+  code-review:
+    gemini: "architecture, UX, readability"
+    codex:  "technical correctness, security, performance"
+  market-regime:
+    gemini: "macro trends, news sentiment"
+    codex:  "quantitative indicators, historical patterns"
+  investment:
+    gemini: "market positioning, strategy"
+    codex:  "financials, risk metrics"
+  risk-assessment:
+    gemini: "external threats, business impact"
+    codex:  "internal weaknesses, technical risks"
+  default:
+    gemini: "strategic opportunities, big picture"
+    codex:  "execution risks, concrete issues"
+
+# Score Card 가중치 (code-review 기준)
+weights:
+  security: 25
+  performance: 20
+  maintainability: 25
+  correctness: 20
+  style: 10
