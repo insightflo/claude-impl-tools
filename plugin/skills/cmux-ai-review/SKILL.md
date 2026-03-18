@@ -132,6 +132,8 @@ cmux set-progress 0.2 --label "Stage 1: starting reviewers..."
 
 ### Step 3: Stage 1 — 병렬 의견 수집
 
+각 에이전트(Claude 서브에이전트)는 **코디네이터**로서 실제 AI CLI를 호출하고, 진행 로그를 기록하며, Stage 전환 시 `SendMessage`로 보고:
+
 ```
 Agent(
   subagent_type="builder",
@@ -139,43 +141,42 @@ Agent(
   name="gemini-reviewer",
   run_in_background=true,
   prompt="""
-    다음 대상을 {gemini_role} 관점에서 리뷰하세요.
-    대상: {review_target}
+    너는 Gemini CLI 코디네이터다. 직접 리뷰하지 말고,
+    실제 gemini CLI를 호출해서 리뷰를 수행하라.
 
-    작업 진행 중 아래 규칙으로 .claude/cmux-ai/review/gemini-reviewer.log 에 실시간 기록:
-      - 리뷰 항목 시작 시:  echo "[Stage1][HH:MM:SS] ▶ {항목 이름} 분석 시작" >> ...log
-      - 파일 읽을 때:        echo "[Stage1][HH:MM:SS]   📖 reading {file}" >> ...log
-      - 발견 내용:           echo "[Stage1][HH:MM:SS]   🔍 {발견 내용 한 줄}" >> ...log
-      - 판단/결정 시:        echo "[Stage1][HH:MM:SS]   💡 {판단 내용}" >> ...log
-      - 명령 실행 시:        echo "[Stage1][HH:MM:SS]   $ {command}" >> ...log
-      - 명령 결과:           echo "[Stage1][HH:MM:SS]   → {결과 한 줄}" >> ...log
-      - 이슈 발견 시:        echo "[Stage1][HH:MM:SS]   ⚠️  {이슈 내용}" >> ...log
-      - 항목 완료 시:        echo "[Stage1][HH:MM:SS] ✅ {항목 이름} 분석 완료" >> ...log
+    ## Stage 1: 초기 의견 수집
+    1. 리뷰 프롬프트 파일 작성:
+       Write: .claude/cmux-ai/review/gemini-stage1-prompt.md
+       내용: "{gemini_role} 관점에서 다음을 리뷰하세요: {review_target}
+             의견을 마크다운 형식으로 출력하세요."
+    2. 로그 기록:
+       Bash: echo "[Stage1][$(date +%H:%M:%S)] ▶ gemini -y -p 실행 — {gemini_role} 리뷰" >> .claude/cmux-ai/review/gemini-reviewer.log
+    3. gemini CLI 호출:
+       Bash: gemini -y -p "$(cat .claude/cmux-ai/review/gemini-stage1-prompt.md)" 2>&1 | tee .claude/cmux-ai/review/gemini-opinion.md
+    4. 결과 확인 + 로그:
+       Bash: echo "[Stage1][$(date +%H:%M:%S)] ✅ Gemini 의견 수집 완료 ($(wc -l < .claude/cmux-ai/review/gemini-opinion.md) lines)" >> .claude/cmux-ai/review/gemini-reviewer.log
+    5. SendMessage:
+       Bash: echo "[Stage1][$(date +%H:%M:%S)] ━━━━━━━━━━━━━━━━━━━━━━━━━" >> .claude/cmux-ai/review/gemini-reviewer.log
+       Bash: echo "[Stage1][$(date +%H:%M:%S)] 🏁 gemini-reviewer Stage1 DONE" >> .claude/cmux-ai/review/gemini-reviewer.log
+       SendMessage(to="team-lead", message=Read(.claude/cmux-ai/review/gemini-opinion.md), summary="gemini-reviewer: Stage1 DONE — opinion ready")
 
-    완료 후:
-      - 의견 전체를 .claude/cmux-ai/review/gemini-opinion.md 에 저장
-      echo "[Stage1][HH:MM:SS] ━━━━━━━━━━━━━━━━━━━━━━━━━" >> .claude/cmux-ai/review/gemini-reviewer.log
-      echo "[Stage1][HH:MM:SS] 🏁 gemini-reviewer Stage1 DONE" >> .claude/cmux-ai/review/gemini-reviewer.log
-      SendMessage(
-        to="team-lead",
-        message="{의견 전체 내용}",
-        summary="gemini-reviewer: Stage1 DONE — opinion ready"
-      )
+    ## Stage 2: 반론 (SendMessage 수신 대기)
+    수신 시 {codex_opinion}을 받아:
+    1. 반론 프롬프트 파일 작성:
+       Write: .claude/cmux-ai/review/gemini-stage2-prompt.md
+       내용: "아래는 상대(Codex) 리뷰 의견입니다. 반론을 작성하세요.
+             {수신한 codex_opinion 전체}"
+    2. 로그:
+       Bash: echo "[Stage2][$(date +%H:%M:%S)] ▶ gemini -y -p 실행 — Rebuttal" >> .claude/cmux-ai/review/gemini-reviewer.log
+    3. gemini CLI 호출:
+       Bash: gemini -y -p "$(cat .claude/cmux-ai/review/gemini-stage2-prompt.md)" 2>&1 | tee .claude/cmux-ai/review/gemini-rebuttal.md
+    4. 로그 + SendMessage:
+       Bash: echo "[Stage2][$(date +%H:%M:%S)] ━━━━━━━━━━━━━━━━━━━━━━━━━" >> .claude/cmux-ai/review/gemini-reviewer.log
+       Bash: echo "[Stage2][$(date +%H:%M:%S)] 🏁 gemini-reviewer Stage2 DONE" >> .claude/cmux-ai/review/gemini-reviewer.log
+       SendMessage(to="team-lead", message=Read(.claude/cmux-ai/review/gemini-rebuttal.md), summary="gemini-reviewer: Stage2 DONE — rebuttal ready")
 
-    Stage 2 SendMessage 수신 대기. 수신 시 {codex_opinion}을 받아:
-      - 반론 시작:           echo "[Stage2][HH:MM:SS] ▶ Rebuttal 시작 (상대 의견 검토 중)" >> ...log
-      - 동의 포인트:         echo "[Stage2][HH:MM:SS]   ✓ 동의: {내용}" >> ...log
-      - 반박 포인트:         echo "[Stage2][HH:MM:SS]   ✗ 반박: {내용}" >> ...log
-      - 추가 발견 시:        echo "[Stage2][HH:MM:SS]   🔍 추가 발견: {내용}" >> ...log
-      - 판단/결정 시:        echo "[Stage2][HH:MM:SS]   💡 {판단 내용}" >> ...log
-      반론을 .claude/cmux-ai/review/gemini-rebuttal.md 에 저장
-      echo "[Stage2][HH:MM:SS] ━━━━━━━━━━━━━━━━━━━━━━━━━" >> .claude/cmux-ai/review/gemini-reviewer.log
-      echo "[Stage2][HH:MM:SS] 🏁 gemini-reviewer Stage2 DONE" >> .claude/cmux-ai/review/gemini-reviewer.log
-      SendMessage(
-        to="team-lead",
-        message="{반론 전체 내용}",
-        summary="gemini-reviewer: Stage2 DONE — rebuttal ready"
-      )
+    ## Fallback
+    gemini CLI 실행 실패 시 → Claude가 직접 리뷰 수행 후 로그에 "[FALLBACK] Claude 직접 처리" 기록.
   """
 )
 
@@ -185,43 +186,42 @@ Agent(
   name="codex-reviewer",
   run_in_background=true,
   prompt="""
-    다음 대상을 {codex_role} 관점에서 리뷰하세요.
-    대상: {review_target}
+    너는 Codex CLI 코디네이터다. 직접 리뷰하지 말고,
+    실제 codex CLI를 호출해서 리뷰를 수행하라.
 
-    작업 진행 중 아래 규칙으로 .claude/cmux-ai/review/codex-reviewer.log 에 실시간 기록:
-      - 리뷰 항목 시작 시:  echo "[Stage1][HH:MM:SS] ▶ {항목 이름} 분석 시작" >> ...log
-      - 파일 읽을 때:        echo "[Stage1][HH:MM:SS]   📖 reading {file}" >> ...log
-      - 발견 내용:           echo "[Stage1][HH:MM:SS]   🔍 {발견 내용 한 줄}" >> ...log
-      - 판단/결정 시:        echo "[Stage1][HH:MM:SS]   💡 {판단 내용}" >> ...log
-      - 명령 실행 시:        echo "[Stage1][HH:MM:SS]   $ {command}" >> ...log
-      - 명령 결과:           echo "[Stage1][HH:MM:SS]   → {결과 한 줄}" >> ...log
-      - 이슈 발견 시:        echo "[Stage1][HH:MM:SS]   ⚠️  {이슈 내용}" >> ...log
-      - 항목 완료 시:        echo "[Stage1][HH:MM:SS] ✅ {항목 이름} 분석 완료" >> ...log
+    ## Stage 1: 초기 의견 수집
+    1. 리뷰 프롬프트 파일 작성:
+       Write: .claude/cmux-ai/review/codex-stage1-prompt.md
+       내용: "{codex_role} 관점에서 다음을 리뷰하세요: {review_target}
+             의견을 마크다운 형식으로 출력하세요."
+    2. 로그 기록:
+       Bash: echo "[Stage1][$(date +%H:%M:%S)] ▶ codex exec 실행 — {codex_role} 리뷰" >> .claude/cmux-ai/review/codex-reviewer.log
+    3. codex CLI 호출:
+       Bash: codex exec "$(cat .claude/cmux-ai/review/codex-stage1-prompt.md)" 2>&1 | tee .claude/cmux-ai/review/codex-opinion.md
+    4. 결과 확인 + 로그:
+       Bash: echo "[Stage1][$(date +%H:%M:%S)] ✅ Codex 의견 수집 완료 ($(wc -l < .claude/cmux-ai/review/codex-opinion.md) lines)" >> .claude/cmux-ai/review/codex-reviewer.log
+    5. SendMessage:
+       Bash: echo "[Stage1][$(date +%H:%M:%S)] ━━━━━━━━━━━━━━━━━━━━━━━━━" >> .claude/cmux-ai/review/codex-reviewer.log
+       Bash: echo "[Stage1][$(date +%H:%M:%S)] 🏁 codex-reviewer Stage1 DONE" >> .claude/cmux-ai/review/codex-reviewer.log
+       SendMessage(to="team-lead", message=Read(.claude/cmux-ai/review/codex-opinion.md), summary="codex-reviewer: Stage1 DONE — opinion ready")
 
-    완료 후:
-      - 의견 전체를 .claude/cmux-ai/review/codex-opinion.md 에 저장
-      echo "[Stage1][HH:MM:SS] ━━━━━━━━━━━━━━━━━━━━━━━━━" >> .claude/cmux-ai/review/codex-reviewer.log
-      echo "[Stage1][HH:MM:SS] 🏁 codex-reviewer Stage1 DONE" >> .claude/cmux-ai/review/codex-reviewer.log
-      SendMessage(
-        to="team-lead",
-        message="{의견 전체 내용}",
-        summary="codex-reviewer: Stage1 DONE — opinion ready"
-      )
+    ## Stage 2: 반론 (SendMessage 수신 대기)
+    수신 시 {gemini_opinion}을 받아:
+    1. 반론 프롬프트 파일 작성:
+       Write: .claude/cmux-ai/review/codex-stage2-prompt.md
+       내용: "아래는 상대(Gemini) 리뷰 의견입니다. 반론을 작성하세요.
+             {수신한 gemini_opinion 전체}"
+    2. 로그:
+       Bash: echo "[Stage2][$(date +%H:%M:%S)] ▶ codex exec 실행 — Rebuttal" >> .claude/cmux-ai/review/codex-reviewer.log
+    3. codex CLI 호출:
+       Bash: codex exec "$(cat .claude/cmux-ai/review/codex-stage2-prompt.md)" 2>&1 | tee .claude/cmux-ai/review/codex-rebuttal.md
+    4. 로그 + SendMessage:
+       Bash: echo "[Stage2][$(date +%H:%M:%S)] ━━━━━━━━━━━━━━━━━━━━━━━━━" >> .claude/cmux-ai/review/codex-reviewer.log
+       Bash: echo "[Stage2][$(date +%H:%M:%S)] 🏁 codex-reviewer Stage2 DONE" >> .claude/cmux-ai/review/codex-reviewer.log
+       SendMessage(to="team-lead", message=Read(.claude/cmux-ai/review/codex-rebuttal.md), summary="codex-reviewer: Stage2 DONE — rebuttal ready")
 
-    Stage 2 SendMessage 수신 대기. 수신 시 {gemini_opinion}을 받아:
-      - 반론 시작:           echo "[Stage2][HH:MM:SS] ▶ Rebuttal 시작 (상대 의견 검토 중)" >> ...log
-      - 동의 포인트:         echo "[Stage2][HH:MM:SS]   ✓ 동의: {내용}" >> ...log
-      - 반박 포인트:         echo "[Stage2][HH:MM:SS]   ✗ 반박: {내용}" >> ...log
-      - 추가 발견 시:        echo "[Stage2][HH:MM:SS]   🔍 추가 발견: {내용}" >> ...log
-      - 판단/결정 시:        echo "[Stage2][HH:MM:SS]   💡 {판단 내용}" >> ...log
-      반론을 .claude/cmux-ai/review/codex-rebuttal.md 에 저장
-      echo "[Stage2][HH:MM:SS] ━━━━━━━━━━━━━━━━━━━━━━━━━" >> .claude/cmux-ai/review/codex-reviewer.log
-      echo "[Stage2][HH:MM:SS] 🏁 codex-reviewer Stage2 DONE" >> .claude/cmux-ai/review/codex-reviewer.log
-      SendMessage(
-        to="team-lead",
-        message="{반론 전체 내용}",
-        summary="codex-reviewer: Stage2 DONE — rebuttal ready"
-      )
+    ## Fallback
+    codex CLI 실행 실패 시 → Claude가 직접 리뷰 수행 후 로그에 "[FALLBACK] Claude 직접 처리" 기록.
   """
 )
 ```
@@ -330,16 +330,20 @@ Chairman이 아래 조건 중 하나 해당 시 Step 3부터 재실행:
 ├── 로그 파일 생성 → cmux 패널에서 tail -f (실시간 가시화)
 ├── TeamCreate → 통신 채널 수립
 │
-├── [Stage 1] Agent(gemini-reviewer, bg) + Agent(codex-reviewer, bg) — 동시 시작
+├── [Stage 1] Agent(gemini-reviewer, bg) = Claude 코디네이터
+│            └── gemini -y -p "리뷰 프롬프트" → 진짜 Gemini가 리뷰
+│            Agent(codex-reviewer, bg) = Claude 코디네이터
+│            └── codex exec "리뷰 프롬프트" → 진짜 Codex가 리뷰
 │            각자 로그 기록 → SendMessage(summary="Stage1 DONE")
 │            ↓ 두 SendMessage 수신 후 즉시 Stage 2
 │
 ├── [Stage 2] SendMessage(gemini-reviewer, {codex_opinion})
 │            SendMessage(codex-reviewer, {gemini_opinion})
-│            각자 반론 + 로그 기록 → SendMessage(summary="Stage2 DONE")
+│            └── 각자 CLI 재호출로 반론 수행
+│            각자 로그 기록 → SendMessage(summary="Stage2 DONE")
 │            ↓ 두 SendMessage 수신 후 즉시 Stage 3
 │
-└── [Stage 3] Chairman 합성 → Score Card 출력
+└── [Stage 3] Chairman Claude 합성 → Score Card 출력
 ```
 
 ---
@@ -502,7 +506,7 @@ cmux set-progress 0.8 --label "Stage 3: synthesis..."
 
 | | 기본 모드 | --live-mode |
 |--|--|--|
-| **실제 사용 AI** | Claude 서브에이전트 (이름만 gemini/codex) | 진짜 Gemini + 진짜 Codex CLI |
+| **실제 사용 AI** | Claude 코디네이터가 gemini/codex CLI 호출 | 패널에서 gemini/codex CLI 직접 실행 |
 | Stage 1/2 실행 | Background subagent | 패널에서 실제 CLI 프로세스 |
 | Stage 전환 | SendMessage (이벤트) | 동일 패널에 새 명령 전송 |
 | 시각화 | 로그 파일 tail -f | 에이전트가 직접 작업하는 모습 |

@@ -108,7 +108,7 @@ cmux set-progress 0.2 --label "Agents starting..."
 
 ### Step 3: 병렬 에이전트 실행
 
-각 에이전트는 진행 상황을 로그 파일에 기록하고, 완료 시 `SendMessage`로 보고:
+각 에이전트(Claude 서브에이전트)는 **코디네이터**로서 실제 AI CLI를 호출하고, 진행 로그를 기록하며, 완료 시 `SendMessage`로 보고:
 
 ```
 Agent(
@@ -117,27 +117,36 @@ Agent(
   name="codex-runner",
   run_in_background=true,
   prompt="""
-    다음 태스크를 실행하세요.
-    태스크: {codex_tasks_list}
+    너는 Codex CLI 코디네이터다. 직접 코드를 작성하지 말고,
+    실제 codex CLI를 호출해서 작업을 수행하라.
 
-    작업 진행 중 아래 규칙으로 .claude/cmux-ai/runs/codex-runner.log 에 실시간 기록:
-      - 태스크 시작 시:    echo "[HH:MM:SS] ▶ {task 이름}" >> ...log
-      - 파일 읽을 때:      echo "[HH:MM:SS]   📖 reading {file}" >> ...log
-      - 파일 쓸 때:        echo "[HH:MM:SS]   ✏️  writing {file}" >> ...log
-      - 명령 실행 시:      echo "[HH:MM:SS]   $ {command}" >> ...log
-      - 명령 결과:         echo "[HH:MM:SS]   → {결과 한 줄}" >> ...log
-      - 결정/판단 시:      echo "[HH:MM:SS]   💡 {결정 내용}" >> ...log
-      - 태스크 완료 시:    echo "[HH:MM:SS] ✅ {task 이름} done" >> ...log
-      - 에러 발생 시:      echo "[HH:MM:SS]   ⚠️  {에러 내용}" >> ...log
+    ## 수행할 태스크
+    {codex_tasks_list}
 
-    모든 태스크 완료 후:
-      echo "[HH:MM:SS] ━━━━━━━━━━━━━━━━━━━━━━━━━" >> .claude/cmux-ai/runs/codex-runner.log
-      echo "[HH:MM:SS] 🏁 codex-runner ALL DONE ({N}개 태스크)" >> .claude/cmux-ai/runs/codex-runner.log
-      SendMessage(
-        to="team-lead",
-        message="{결과 전체 내용}",
-        summary="codex-runner: DONE — {완료된 태스크 수}개 완료"
-      )
+    ## 실행 방법
+    각 태스크마다:
+    1. 프롬프트 파일 작성:
+       Write("{task_prompt}") > .claude/cmux-ai/runs/codex-task-{N}.md
+    2. 로그 기록:
+       Bash: echo "[$(date +%H:%M:%S)] ▶ {task 이름} — codex exec 실행" >> .claude/cmux-ai/runs/codex-runner.log
+    3. codex CLI 호출:
+       Bash: codex exec "$(cat .claude/cmux-ai/runs/codex-task-{N}.md)" 2>&1
+    4. 결과 확인 후 로그:
+       Bash: echo "[$(date +%H:%M:%S)] ✅ {task 이름} done" >> .claude/cmux-ai/runs/codex-runner.log
+    5. 에러 시:
+       Bash: echo "[$(date +%H:%M:%S)] ⚠️  {에러 내용}" >> .claude/cmux-ai/runs/codex-runner.log
+
+    ## 완료 후
+    Bash: echo "[$(date +%H:%M:%S)] ━━━━━━━━━━━━━━━━━━━━━━━━━" >> .claude/cmux-ai/runs/codex-runner.log
+    Bash: echo "[$(date +%H:%M:%S)] 🏁 codex-runner ALL DONE" >> .claude/cmux-ai/runs/codex-runner.log
+    SendMessage(
+      to="team-lead",
+      message="{결과 전체 요약}",
+      summary="codex-runner: DONE — {완료된 태스크 수}개 완료"
+    )
+
+    ## Fallback
+    codex CLI 실행 실패 시 → Claude가 직접 해당 태스크 수행 후 로그에 "[FALLBACK] Claude 직접 처리" 기록.
   """
 )
 
@@ -147,27 +156,36 @@ Agent(
   name="gemini-runner",
   run_in_background=true,
   prompt="""
-    다음 태스크를 실행하세요.
-    태스크: {gemini_tasks_list}
+    너는 Gemini CLI 코디네이터다. 직접 작업하지 말고,
+    실제 gemini CLI를 호출해서 작업을 수행하라.
 
-    작업 진행 중 아래 규칙으로 .claude/cmux-ai/runs/gemini-runner.log 에 실시간 기록:
-      - 태스크 시작 시:    echo "[HH:MM:SS] ▶ {task 이름}" >> ...log
-      - 파일 읽을 때:      echo "[HH:MM:SS]   📖 reading {file}" >> ...log
-      - 파일 쓸 때:        echo "[HH:MM:SS]   ✏️  writing {file}" >> ...log
-      - 명령 실행 시:      echo "[HH:MM:SS]   $ {command}" >> ...log
-      - 명령 결과:         echo "[HH:MM:SS]   → {결과 한 줄}" >> ...log
-      - 결정/판단 시:      echo "[HH:MM:SS]   💡 {결정 내용}" >> ...log
-      - 태스크 완료 시:    echo "[HH:MM:SS] ✅ {task 이름} done" >> ...log
-      - 에러 발생 시:      echo "[HH:MM:SS]   ⚠️  {에러 내용}" >> ...log
+    ## 수행할 태스크
+    {gemini_tasks_list}
 
-    모든 태스크 완료 후:
-      echo "[HH:MM:SS] ━━━━━━━━━━━━━━━━━━━━━━━━━" >> .claude/cmux-ai/runs/gemini-runner.log
-      echo "[HH:MM:SS] 🏁 gemini-runner ALL DONE ({N}개 태스크)" >> .claude/cmux-ai/runs/gemini-runner.log
-      SendMessage(
-        to="team-lead",
-        message="{결과 전체 내용}",
-        summary="gemini-runner: DONE — {완료된 태스크 수}개 완료"
-      )
+    ## 실행 방법
+    각 태스크마다:
+    1. 프롬프트 파일 작성:
+       Write("{task_prompt}") > .claude/cmux-ai/runs/gemini-task-{N}.md
+    2. 로그 기록:
+       Bash: echo "[$(date +%H:%M:%S)] ▶ {task 이름} — gemini -y -p 실행" >> .claude/cmux-ai/runs/gemini-runner.log
+    3. gemini CLI 호출:
+       Bash: gemini -y -p "$(cat .claude/cmux-ai/runs/gemini-task-{N}.md)" 2>&1
+    4. 결과 확인 후 로그:
+       Bash: echo "[$(date +%H:%M:%S)] ✅ {task 이름} done" >> .claude/cmux-ai/runs/gemini-runner.log
+    5. 에러 시:
+       Bash: echo "[$(date +%H:%M:%S)] ⚠️  {에러 내용}" >> .claude/cmux-ai/runs/gemini-runner.log
+
+    ## 완료 후
+    Bash: echo "[$(date +%H:%M:%S)] ━━━━━━━━━━━━━━━━━━━━━━━━━" >> .claude/cmux-ai/runs/gemini-runner.log
+    Bash: echo "[$(date +%H:%M:%S)] 🏁 gemini-runner ALL DONE" >> .claude/cmux-ai/runs/gemini-runner.log
+    SendMessage(
+      to="team-lead",
+      message="{결과 전체 요약}",
+      summary="gemini-runner: DONE — {완료된 태스크 수}개 완료"
+    )
+
+    ## Fallback
+    gemini CLI 실행 실패 시 → Claude가 직접 해당 태스크 수행 후 로그에 "[FALLBACK] Claude 직접 처리" 기록.
   """
 )
 ```
@@ -232,8 +250,12 @@ cmux clear-status "gemini"
 메인 Claude (오케스트레이터)
 ├── 로그 파일 생성 → cmux 패널에서 tail -f (실시간 가시화)
 ├── TeamCreate → 통신 채널 수립
-├── Agent(codex-runner, bg) → 작업 + 로그 기록 → SendMessage(summary="DONE")
-├── Agent(gemini-runner, bg) → 작업 + 로그 기록 → SendMessage(summary="DONE")
+├── Agent(codex-runner, bg) = Claude 코디네이터
+│   └── codex exec "task prompt" → 진짜 Codex가 코드 작업
+│   └── 로그 기록 → SendMessage(summary="DONE")
+├── Agent(gemini-runner, bg) = Claude 코디네이터
+│   └── gemini -y -p "task prompt" → 진짜 Gemini가 디자인 작업
+│   └── 로그 기록 → SendMessage(summary="DONE")
 └── SendMessage 수신 → 결과 통합 (이벤트 기반)
 ```
 
@@ -343,7 +365,7 @@ cmux clear-status "gemini"
 
 | | 기본 모드 | --live-mode |
 |--|--|--|
-| **실제 사용 AI** | Claude 서브에이전트 (이름만 codex/gemini) | 진짜 Codex + 진짜 Gemini CLI |
+| **실제 사용 AI** | Claude 코디네이터가 codex/gemini CLI 호출 | 패널에서 codex/gemini CLI 직접 실행 |
 | 에이전트 실행 | Background subagent | 패널에서 실제 CLI 프로세스 |
 | 시각화 | 로그 파일 tail -f | 에이전트가 직접 작업하는 모습 |
 | 완료 감지 | SendMessage (이벤트) | .done 파일 폴링 (5분 타임아웃) |
