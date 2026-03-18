@@ -141,13 +141,20 @@ Agent(
     다음 대상을 {gemini_role} 관점에서 리뷰하세요.
     대상: {review_target}
 
-    진행할 때마다 .claude/cmux-ai/review/gemini-reviewer.log 에 기록 (append):
-      echo "[Stage1][$(date +%H:%M:%S)] 리뷰 시작" >> .claude/cmux-ai/review/gemini-reviewer.log
-      echo "[Stage1][$(date +%H:%M:%S)] {발견 내용}" >> .claude/cmux-ai/review/gemini-reviewer.log
+    작업 진행 중 아래 규칙으로 .claude/cmux-ai/review/gemini-reviewer.log 에 실시간 기록:
+      - 리뷰 항목 시작 시:  echo "[Stage1][HH:MM:SS] ▶ {항목 이름} 분석 시작" >> ...log
+      - 파일 읽을 때:        echo "[Stage1][HH:MM:SS]   📖 reading {file}" >> ...log
+      - 발견 내용:           echo "[Stage1][HH:MM:SS]   🔍 {발견 내용 한 줄}" >> ...log
+      - 판단/결정 시:        echo "[Stage1][HH:MM:SS]   💡 {판단 내용}" >> ...log
+      - 명령 실행 시:        echo "[Stage1][HH:MM:SS]   $ {command}" >> ...log
+      - 명령 결과:           echo "[Stage1][HH:MM:SS]   → {결과 한 줄}" >> ...log
+      - 이슈 발견 시:        echo "[Stage1][HH:MM:SS]   ⚠️  {이슈 내용}" >> ...log
+      - 항목 완료 시:        echo "[Stage1][HH:MM:SS] ✅ {항목 이름} 분석 완료" >> ...log
 
     완료 후:
       - 의견 전체를 .claude/cmux-ai/review/gemini-opinion.md 에 저장
-      echo "[Stage1][$(date +%H:%M:%S)] ✅ Opinion saved" >> .claude/cmux-ai/review/gemini-reviewer.log
+      echo "[Stage1][HH:MM:SS] ━━━━━━━━━━━━━━━━━━━━━━━━━" >> .claude/cmux-ai/review/gemini-reviewer.log
+      echo "[Stage1][HH:MM:SS] 🏁 gemini-reviewer Stage1 DONE" >> .claude/cmux-ai/review/gemini-reviewer.log
       SendMessage(
         to="team-lead",
         message="{의견 전체 내용}",
@@ -155,10 +162,14 @@ Agent(
       )
 
     Stage 2 SendMessage 수신 대기. 수신 시 {codex_opinion}을 받아:
-      echo "[Stage2][$(date +%H:%M:%S)] Rebuttal 시작" >> .claude/cmux-ai/review/gemini-reviewer.log
-      echo "[Stage2][$(date +%H:%M:%S)] {반론 내용}" >> .claude/cmux-ai/review/gemini-reviewer.log
+      - 반론 시작:           echo "[Stage2][HH:MM:SS] ▶ Rebuttal 시작 (상대 의견 검토 중)" >> ...log
+      - 동의 포인트:         echo "[Stage2][HH:MM:SS]   ✓ 동의: {내용}" >> ...log
+      - 반박 포인트:         echo "[Stage2][HH:MM:SS]   ✗ 반박: {내용}" >> ...log
+      - 추가 발견 시:        echo "[Stage2][HH:MM:SS]   🔍 추가 발견: {내용}" >> ...log
+      - 판단/결정 시:        echo "[Stage2][HH:MM:SS]   💡 {판단 내용}" >> ...log
       반론을 .claude/cmux-ai/review/gemini-rebuttal.md 에 저장
-      echo "[Stage2][$(date +%H:%M:%S)] ✅ Rebuttal saved" >> .claude/cmux-ai/review/gemini-reviewer.log
+      echo "[Stage2][HH:MM:SS] ━━━━━━━━━━━━━━━━━━━━━━━━━" >> .claude/cmux-ai/review/gemini-reviewer.log
+      echo "[Stage2][HH:MM:SS] 🏁 gemini-reviewer Stage2 DONE" >> .claude/cmux-ai/review/gemini-reviewer.log
       SendMessage(
         to="team-lead",
         message="{반론 전체 내용}",
@@ -176,13 +187,20 @@ Agent(
     다음 대상을 {codex_role} 관점에서 리뷰하세요.
     대상: {review_target}
 
-    진행할 때마다 .claude/cmux-ai/review/codex-reviewer.log 에 기록 (append):
-      echo "[Stage1][$(date +%H:%M:%S)] 리뷰 시작" >> .claude/cmux-ai/review/codex-reviewer.log
-      echo "[Stage1][$(date +%H:%M:%S)] {발견 내용}" >> .claude/cmux-ai/review/codex-reviewer.log
+    작업 진행 중 아래 규칙으로 .claude/cmux-ai/review/codex-reviewer.log 에 실시간 기록:
+      - 리뷰 항목 시작 시:  echo "[Stage1][HH:MM:SS] ▶ {항목 이름} 분석 시작" >> ...log
+      - 파일 읽을 때:        echo "[Stage1][HH:MM:SS]   📖 reading {file}" >> ...log
+      - 발견 내용:           echo "[Stage1][HH:MM:SS]   🔍 {발견 내용 한 줄}" >> ...log
+      - 판단/결정 시:        echo "[Stage1][HH:MM:SS]   💡 {판단 내용}" >> ...log
+      - 명령 실행 시:        echo "[Stage1][HH:MM:SS]   $ {command}" >> ...log
+      - 명령 결과:           echo "[Stage1][HH:MM:SS]   → {결과 한 줄}" >> ...log
+      - 이슈 발견 시:        echo "[Stage1][HH:MM:SS]   ⚠️  {이슈 내용}" >> ...log
+      - 항목 완료 시:        echo "[Stage1][HH:MM:SS] ✅ {항목 이름} 분석 완료" >> ...log
 
     완료 후:
       - 의견 전체를 .claude/cmux-ai/review/codex-opinion.md 에 저장
-      echo "[Stage1][$(date +%H:%M:%S)] ✅ Opinion saved" >> .claude/cmux-ai/review/codex-reviewer.log
+      echo "[Stage1][HH:MM:SS] ━━━━━━━━━━━━━━━━━━━━━━━━━" >> .claude/cmux-ai/review/codex-reviewer.log
+      echo "[Stage1][HH:MM:SS] 🏁 codex-reviewer Stage1 DONE" >> .claude/cmux-ai/review/codex-reviewer.log
       SendMessage(
         to="team-lead",
         message="{의견 전체 내용}",
@@ -190,10 +208,14 @@ Agent(
       )
 
     Stage 2 SendMessage 수신 대기. 수신 시 {gemini_opinion}을 받아:
-      echo "[Stage2][$(date +%H:%M:%S)] Rebuttal 시작" >> .claude/cmux-ai/review/codex-reviewer.log
-      echo "[Stage2][$(date +%H:%M:%S)] {반론 내용}" >> .claude/cmux-ai/review/codex-reviewer.log
+      - 반론 시작:           echo "[Stage2][HH:MM:SS] ▶ Rebuttal 시작 (상대 의견 검토 중)" >> ...log
+      - 동의 포인트:         echo "[Stage2][HH:MM:SS]   ✓ 동의: {내용}" >> ...log
+      - 반박 포인트:         echo "[Stage2][HH:MM:SS]   ✗ 반박: {내용}" >> ...log
+      - 추가 발견 시:        echo "[Stage2][HH:MM:SS]   🔍 추가 발견: {내용}" >> ...log
+      - 판단/결정 시:        echo "[Stage2][HH:MM:SS]   💡 {판단 내용}" >> ...log
       반론을 .claude/cmux-ai/review/codex-rebuttal.md 에 저장
-      echo "[Stage2][$(date +%H:%M:%S)] ✅ Rebuttal saved" >> .claude/cmux-ai/review/codex-reviewer.log
+      echo "[Stage2][HH:MM:SS] ━━━━━━━━━━━━━━━━━━━━━━━━━" >> .claude/cmux-ai/review/codex-reviewer.log
+      echo "[Stage2][HH:MM:SS] 🏁 codex-reviewer Stage2 DONE" >> .claude/cmux-ai/review/codex-reviewer.log
       SendMessage(
         to="team-lead",
         message="{반론 전체 내용}",

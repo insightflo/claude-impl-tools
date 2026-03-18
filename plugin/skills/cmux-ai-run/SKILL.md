@@ -120,12 +120,19 @@ Agent(
     다음 태스크를 실행하세요.
     태스크: {codex_tasks_list}
 
-    진행할 때마다 .claude/cmux-ai/runs/codex-runner.log 에 기록 (append):
-      echo "[$(date +%H:%M:%S)] 태스크 시작: {task}" >> .claude/cmux-ai/runs/codex-runner.log
-      echo "[$(date +%H:%M:%S)] 완료: {result}" >> .claude/cmux-ai/runs/codex-runner.log
+    작업 진행 중 아래 규칙으로 .claude/cmux-ai/runs/codex-runner.log 에 실시간 기록:
+      - 태스크 시작 시:    echo "[HH:MM:SS] ▶ {task 이름}" >> ...log
+      - 파일 읽을 때:      echo "[HH:MM:SS]   📖 reading {file}" >> ...log
+      - 파일 쓸 때:        echo "[HH:MM:SS]   ✏️  writing {file}" >> ...log
+      - 명령 실행 시:      echo "[HH:MM:SS]   $ {command}" >> ...log
+      - 명령 결과:         echo "[HH:MM:SS]   → {결과 한 줄}" >> ...log
+      - 결정/판단 시:      echo "[HH:MM:SS]   💡 {결정 내용}" >> ...log
+      - 태스크 완료 시:    echo "[HH:MM:SS] ✅ {task 이름} done" >> ...log
+      - 에러 발생 시:      echo "[HH:MM:SS]   ⚠️  {에러 내용}" >> ...log
 
     모든 태스크 완료 후:
-      echo "[$(date +%H:%M:%S)] ✅ ALL DONE" >> .claude/cmux-ai/runs/codex-runner.log
+      echo "[HH:MM:SS] ━━━━━━━━━━━━━━━━━━━━━━━━━" >> .claude/cmux-ai/runs/codex-runner.log
+      echo "[HH:MM:SS] 🏁 codex-runner ALL DONE ({N}개 태스크)" >> .claude/cmux-ai/runs/codex-runner.log
       SendMessage(
         to="team-lead",
         message="{결과 전체 내용}",
@@ -143,12 +150,19 @@ Agent(
     다음 태스크를 실행하세요.
     태스크: {gemini_tasks_list}
 
-    진행할 때마다 .claude/cmux-ai/runs/gemini-runner.log 에 기록 (append):
-      echo "[$(date +%H:%M:%S)] 태스크 시작: {task}" >> .claude/cmux-ai/runs/gemini-runner.log
-      echo "[$(date +%H:%M:%S)] 완료: {result}" >> .claude/cmux-ai/runs/gemini-runner.log
+    작업 진행 중 아래 규칙으로 .claude/cmux-ai/runs/gemini-runner.log 에 실시간 기록:
+      - 태스크 시작 시:    echo "[HH:MM:SS] ▶ {task 이름}" >> ...log
+      - 파일 읽을 때:      echo "[HH:MM:SS]   📖 reading {file}" >> ...log
+      - 파일 쓸 때:        echo "[HH:MM:SS]   ✏️  writing {file}" >> ...log
+      - 명령 실행 시:      echo "[HH:MM:SS]   $ {command}" >> ...log
+      - 명령 결과:         echo "[HH:MM:SS]   → {결과 한 줄}" >> ...log
+      - 결정/판단 시:      echo "[HH:MM:SS]   💡 {결정 내용}" >> ...log
+      - 태스크 완료 시:    echo "[HH:MM:SS] ✅ {task 이름} done" >> ...log
+      - 에러 발생 시:      echo "[HH:MM:SS]   ⚠️  {에러 내용}" >> ...log
 
     모든 태스크 완료 후:
-      echo "[$(date +%H:%M:%S)] ✅ ALL DONE" >> .claude/cmux-ai/runs/gemini-runner.log
+      echo "[HH:MM:SS] ━━━━━━━━━━━━━━━━━━━━━━━━━" >> .claude/cmux-ai/runs/gemini-runner.log
+      echo "[HH:MM:SS] 🏁 gemini-runner ALL DONE ({N}개 태스크)" >> .claude/cmux-ai/runs/gemini-runner.log
       SendMessage(
         to="team-lead",
         message="{결과 전체 내용}",
