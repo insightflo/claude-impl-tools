@@ -201,6 +201,8 @@ cmux sidebar-state [--workspace <id>]
 
 ## 9. Browser Automation 명령
 
+브라우저 자동화 전체 레퍼런스는 `references/browser-automation.md` 참조.
+
 ### 9.1 Navigation
 
 ```bash
