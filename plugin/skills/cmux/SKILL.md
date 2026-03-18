@@ -1,6 +1,14 @@
 ---
 name: cmux
 description: cmux 터미널 멀티플렉서 제어 스킬. 워크스페이스/패널/서피스 관리, 명령 전송, 브라우저 자동화, 알림, 사이드바 메타데이터 제어. '/cmux', 'cmux', '워크스페이스 만들어', '패널 분할', '브라우저 열어', '알림 보내' 등 cmux 터미널 제어 요청이라면 반드시 이 스킬을 사용하세요.
+triggers:
+  - /cmux
+  - cmux
+  - 워크스페이스
+  - 패널 분할
+  - 브라우저 열어
+  - 알림 보내
+version: 1.0.0
 ---
 
 # /cmux — cmux Terminal Multiplexer Control
@@ -465,4 +473,20 @@ cmux browser $SURF fill "#password" --text "$PASSWORD"
 cmux browser $SURF click "button[type='submit']" --snapshot-after
 cmux browser $SURF wait --text "Dashboard"
 cmux browser $SURF screenshot --out /tmp/dashboard.png
+```
+
+---
+
+## 아키텍처 요약
+
+```
+cmux (Ghostty 기반 macOS 네이티브)
+├── Window ← 최상위 컨테이너
+│   └── Workspace ← 탭 단위 (new-workspace)
+│       └── Pane ← 분할 영역 (new-split right/down)
+│           └── Surface ← 입출력 단위 (send --surface)
+│
+├── CLI: cmux <command> [options]
+├── Socket: /tmp/cmux.sock (JSON-RPC)
+└── 제어 영역: 입력전송 / 알림 / 상태바 / 사이드바 / 브라우저
 ```
