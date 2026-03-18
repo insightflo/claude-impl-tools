@@ -51,6 +51,10 @@ TASK_COUNT=$(grep -cE '^\s*[-*]\s*\[|^#{1,6}\s+\[' TASKS.md 2>/dev/null || echo 
 INCOMPLETE_COUNT=$(grep -cE '^\s*[-*]\s*\[\s*\]|^#{1,6}\s+\[\s*\]' TASKS.md 2>/dev/null || echo 0)
 GOVERNANCE_DONE=$(ls management/project-plan.md 2>/dev/null && echo "yes" || echo "no")
 echo "agents=$AGENT_COUNT tasks=$TASK_COUNT incomplete=$INCOMPLETE_COUNT governance=$GOVERNANCE_DONE"
+
+# 6. cmux 감지
+CMUX_AVAILABLE=$(cmux ping 2>/dev/null && echo "yes" || echo "no")
+echo "cmux=$CMUX_AVAILABLE"
 ```
 
 ### Stage 2: Decision Algorithm (simple router — each skill handles its own prerequisites)
@@ -67,6 +71,16 @@ echo "agents=$AGENT_COUNT tasks=$TASK_COUNT incomplete=$INCOMPLETE_COUNT governa
 ⑤ Large-scale implementation: incomplete>0 + TASK>=30 → /team-orchestrate
 ⑥ Done: all_tasks_completed → /audit
 ```
+
+**cmux 오버라이드** (CMUX_AVAILABLE=yes일 때 ⑤ 이후 적용):
+
+| 기본 추천 | cmux 대체 | 이유 |
+|-----------|-----------|------|
+| `/team-orchestrate` | `/cmux-orchestrate` | 물리적 계층 + 이기종 AI 팀 |
+| `/multi-ai-run` | `/cmux-ai-run` | 창 분할 진짜 병렬 실행 |
+| `/multi-ai-review` | `/cmux-ai-review` | 패널 나란히 동시 리뷰 |
+
+cmux 감지 시 추천 메시지에 cmux 변형 스킬을 ⭐ 추천으로 올리고, 기존 스킬은 대안으로 제시.
 
 Prerequisite checks each skill performs on its own:
 - `/team-orchestrate` → checks TASKS.md format and Agent Teams installation
@@ -92,7 +106,7 @@ Display the diagnosis result with a starred recommendation for user confirmation
 
 ---
 
-## Standalone Skill Catalog (21 skills)
+## Standalone Skill Catalog (25 skills)
 
 | Skill | Trigger | Role |
 |-------|---------|------|
@@ -102,11 +116,14 @@ Display the diagnosis result with a starred recommendation for user confirmation
 | **`/tasks-migrate`** | `/tasks-migrate` | Consolidate legacy tasks |
 | **`/agile`** | `/agile auto` | Layer-based sprint execution |
 | **`/team-orchestrate`** | `/team-orchestrate` | Agent Teams dynamic team formation + parallel execution |
+| **`/cmux-orchestrate`** | `/cmux-orchestrate` | cmux 물리적 3-Level 팀 (Claude/Gemini/Codex 혼합) |
 | **`/multi-ai-run`** | `/multi-ai-run` | Role-based model routing |
+| **`/cmux-ai-run`** | `/cmux-ai-run` | cmux 창 분할 병렬 태스크 실행 |
 | **`/checkpoint`** | "review this" | Two-stage review on task completion |
 | **`/security-review`** | `/security-review` | OWASP Top 10 security scan |
 | **`/audit`** | `/audit` | Pre-deployment comprehensive audit |
 | **`/multi-ai-review`** | `/multi-ai-review` | 3-AI consensus review |
+| **`/cmux-ai-review`** | `/cmux-ai-review` | cmux 창 분할 병렬 3-Stage 리뷰 |
 | **`/recover`** | "work was interrupted" | Work recovery hub |
 | **`/impact`** | `/impact <file>` | Change impact analysis |
 | **`/deps`** | `/deps` | Dependency graph |
@@ -116,6 +133,7 @@ Display the diagnosis result with a starred recommendation for user confirmation
 | **`/compress`** | "compress context" | Long context optimization |
 | **`/statusline`** | auto-activated | Progress status bar display |
 | **`/changelog`** | `/changelog` | Change history query |
+| **`/cmux`** | `/cmux` | cmux 터미널 멀티플렉서 제어 |
 
 ---
 
@@ -136,14 +154,15 @@ Display the diagnosis result with a starred recommendation for user confirmation
 "I have a spec, start coding"          → /agile auto
 "Fix this feature"                     → /agile iterate
 "Review the code"                      → /checkpoint
-"Do a deep review"                     → /multi-ai-review
+"Do a deep review"                     → /multi-ai-review (cmux: /cmux-ai-review)
 "Run a security check"                 → /security-review
 "Run a quality check"                  → /audit
 "Work was interrupted"                 → /recover
 "This is a large project"              → /governance-setup
 "Fix this bug"                         → /maintenance
 "Fix this in production"               → /maintenance
-"Run with an agent team"               → /team-orchestrate
+"Run with an agent team"               → /team-orchestrate (cmux: /cmux-orchestrate)
+"Use multiple AIs in parallel"         → /cmux-ai-run (cmux 감지 시) / /multi-ai-run
 "Show execution status"                → /whitebox status
 "Compress the context"                 → /compress
 ```
@@ -159,4 +178,4 @@ For detailed algorithms, skill integration matrix, and quality gates, see:
 
 ---
 
-**Last Updated**: 2026-03-12 (v5.0.0 — Progressive Disclosure applied)
+**Last Updated**: 2026-03-18 (v5.1.0 — cmux auto-detection + cmux skill routing added)
