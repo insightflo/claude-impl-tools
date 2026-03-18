@@ -115,13 +115,15 @@ TaskCreate(team_name=..., subject="stage2-rebuttals", description="Cross-rebutta
 
 ```bash
 # 패널 생성 + 즉시 tail -f 실행
-GEMINI_SURFACE=$(cmux new-split down --json | jq -r '.surface_id')
-CODEX_SURFACE=$(cmux new-split right --surface $GEMINI_SURFACE --json | jq -r '.surface_id')
+GEMINI_SURFACE=$(cmux new-split down 2>&1 | awk '{print $2}')
+CODEX_SURFACE=$(cmux new-split right --surface $GEMINI_SURFACE 2>&1 | awk '{print $2}')
 
-cmux send-surface --surface $GEMINI_SURFACE \
-  "tail -f .claude/cmux-ai/review/gemini-reviewer.log\n"
-cmux send-surface --surface $CODEX_SURFACE \
-  "tail -f .claude/cmux-ai/review/codex-reviewer.log\n"
+cmux send --surface $GEMINI_SURFACE \
+  "tail -f .claude/cmux-ai/review/gemini-reviewer.log
+"
+cmux send --surface $CODEX_SURFACE \
+  "tail -f .claude/cmux-ai/review/codex-reviewer.log
+"
 
 cmux set-status "review" "Stage 1: collecting opinions" --icon doc --color "#ff9500"
 cmux set-progress 0.2 --label "Stage 1: starting reviewers..."

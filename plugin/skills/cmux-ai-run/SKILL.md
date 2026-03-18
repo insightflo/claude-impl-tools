@@ -90,14 +90,16 @@ TaskCreate(team_name=..., subject="gemini-tasks", description="{gemini_tasks_lis
 
 ```bash
 # cmux 패널 생성 + 즉시 tail -f 실행
-CODEX_SURFACE=$(cmux new-split right --json | jq -r '.surface_id')
-GEMINI_SURFACE=$(cmux new-split down --surface $CODEX_SURFACE --json | jq -r '.surface_id')
+CODEX_SURFACE=$(cmux new-split right 2>&1 | awk '{print $2}')
+GEMINI_SURFACE=$(cmux new-split down --surface $CODEX_SURFACE 2>&1 | awk '{print $2}')
 
 # 패널에 로그 스트리밍 시작 (에이전트 작업이 보임)
-cmux send-surface --surface $CODEX_SURFACE \
-  "tail -f .claude/cmux-ai/runs/codex-runner.log\n"
-cmux send-surface --surface $GEMINI_SURFACE \
-  "tail -f .claude/cmux-ai/runs/gemini-runner.log\n"
+cmux send --surface $CODEX_SURFACE \
+  "tail -f .claude/cmux-ai/runs/codex-runner.log
+"
+cmux send --surface $GEMINI_SURFACE \
+  "tail -f .claude/cmux-ai/runs/gemini-runner.log
+"
 
 cmux set-status "codex" "running" --icon gear --color "#007aff"
 cmux set-status "gemini" "running" --icon brush --color "#5856d6"
