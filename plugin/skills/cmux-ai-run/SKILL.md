@@ -282,15 +282,17 @@ cmux set-status "gemini" "live" --icon brush --color "#5856d6"
 cmux set-progress 0.2 --label "Live agents starting..."
 ```
 
-**Step 2: 패널에서 실제 CLI 프로세스 직접 실행**
+**Step 2: 패널에서 실제 AI CLI 직접 실행**
 
 ```bash
-# 실제 claude 프로세스를 패널에서 실행 — 패널에서 작업하는 모습이 보임
+# Codex 패널: 실제 codex CLI 실행 — 코드 작업
 cmux send --surface $CODEX_SURFACE \
-  "claude --dangerously-skip-permissions -p \"\$(cat .claude/cmux-ai/runs/codex-prompt.md)\"
+  "codex exec \"\$(cat .claude/cmux-ai/runs/codex-prompt.md)\"
 "
+
+# Gemini 패널: 실제 gemini CLI 실행 — 디자인/UI 작업
 cmux send --surface $GEMINI_SURFACE \
-  "claude --dangerously-skip-permissions -p \"\$(cat .claude/cmux-ai/runs/gemini-prompt.md)\"
+  "gemini -y -p \"\$(cat .claude/cmux-ai/runs/gemini-prompt.md)\"
 "
 
 cmux set-progress 0.4 --label "Live agents running (watch panels)..."
@@ -330,17 +332,18 @@ cmux clear-status "gemini"
 
 ```
 메인 Claude (오케스트레이터)
-├── 프롬프트 파일 작성 → claude -p "$(cat prompt.md)"
-├── cmux new-split → 패널에서 실제 프로세스 직접 실행
-├── codex 패널: claude 프로세스가 살아서 작업 (tmux-style)
-├── gemini 패널: claude 프로세스가 살아서 작업 (tmux-style)
-└── .done 파일 감지 (5분 타임아웃) → 결과 통합
+├── 프롬프트 파일 작성 → 패널에서 실제 AI CLI 직접 실행
+├── cmux new-split → 이기종 AI가 패널에서 동시 작업
+├── codex 패널: codex exec "..."  ← 진짜 Codex가 코드 작업
+├── gemini 패널: gemini -y -p "..." ← 진짜 Gemini가 디자인 작업
+└── .done 파일 감지 (5분 타임아웃) → Claude가 결과 통합
 ```
 
 ### 기본 모드 vs --live-mode 비교
 
 | | 기본 모드 | --live-mode |
 |--|--|--|
+| **실제 사용 AI** | Claude 서브에이전트 (이름만 codex/gemini) | 진짜 Codex + 진짜 Gemini CLI |
 | 에이전트 실행 | Background subagent | 패널에서 실제 CLI 프로세스 |
 | 시각화 | 로그 파일 tail -f | 에이전트가 직접 작업하는 모습 |
 | 완료 감지 | SendMessage (이벤트) | .done 파일 폴링 (5분 타임아웃) |

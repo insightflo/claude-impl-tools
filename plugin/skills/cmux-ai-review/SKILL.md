@@ -409,14 +409,17 @@ cmux set-status "review" "Stage 1: live opinions" --icon doc --color "#ff9500"
 cmux set-progress 0.2 --label "Stage 1: live reviewers starting..."
 ```
 
-**Step 2: Stage 1 — 패널에서 직접 실행**
+**Step 2: Stage 1 — 패널에서 실제 AI CLI 직접 실행**
 
 ```bash
+# Gemini 패널: 실제 gemini CLI 실행
 cmux send --surface $GEMINI_SURFACE \
-  "claude --dangerously-skip-permissions -p \"\$(cat .claude/cmux-ai/review/gemini-stage1-prompt.md)\"
+  "gemini -y -p \"\$(cat .claude/cmux-ai/review/gemini-stage1-prompt.md)\"
 "
+
+# Codex 패널: 실제 codex CLI 실행
 cmux send --surface $CODEX_SURFACE \
-  "claude --dangerously-skip-permissions -p \"\$(cat .claude/cmux-ai/review/codex-stage1-prompt.md)\"
+  "codex exec \"\$(cat .claude/cmux-ai/review/codex-stage1-prompt.md)\"
 "
 
 # Stage 1 완료 대기 (5분 타임아웃)
@@ -454,12 +457,12 @@ $(cat .claude/cmux-ai/review/gemini-opinion.md)
   echo "DONE" > .claude/cmux-ai/review/codex-stage2.done
 PROMPTEOF
 
-# 동일 패널에 Stage 2 프로세스 이어서 실행
+# 동일 패널에 Stage 2 — 실제 AI CLI로 반론 실행
 cmux send --surface $GEMINI_SURFACE \
-  "claude --dangerously-skip-permissions -p \"\$(cat .claude/cmux-ai/review/gemini-stage2-prompt.md)\"
+  "gemini -y -p \"\$(cat .claude/cmux-ai/review/gemini-stage2-prompt.md)\"
 "
 cmux send --surface $CODEX_SURFACE \
-  "claude --dangerously-skip-permissions -p \"\$(cat .claude/cmux-ai/review/codex-stage2-prompt.md)\"
+  "codex exec \"\$(cat .claude/cmux-ai/review/codex-stage2-prompt.md)\"
 "
 
 # Stage 2 완료 대기 (5분 타임아웃)
@@ -484,21 +487,22 @@ cmux set-progress 0.8 --label "Stage 3: synthesis..."
 
 ```
 메인 Claude (Chairman/오케스트레이터)
-├── Stage 1 프롬프트 파일 작성 → 패널에서 실제 claude 프로세스 실행
-│   ├── Gemini 패널: claude -p "$(cat gemini-stage1-prompt.md)"  ← 패널에서 보임
-│   └── Codex  패널: claude -p "$(cat codex-stage1-prompt.md)"   ← 패널에서 보임
+├── Stage 1 프롬프트 파일 작성 → 패널에서 실제 AI CLI 직접 실행
+│   ├── Gemini 패널: gemini -y -p "..."  ← 진짜 Gemini가 리뷰
+│   └── Codex  패널: codex exec "..."    ← 진짜 Codex가 리뷰
 │   ↓ .stage1.done 감지
 ├── Stage 2 프롬프트 파일 작성 → 동일 패널에 이어서 전송
-│   ├── Gemini 패널: claude -p "$(cat gemini-stage2-prompt.md)"  ← 이어서 실행
-│   └── Codex  패널: claude -p "$(cat codex-stage2-prompt.md)"   ← 이어서 실행
+│   ├── Gemini 패널: gemini -y -p "..."  ← 진짜 Gemini가 반론
+│   └── Codex  패널: codex exec "..."    ← 진짜 Codex가 반론
 │   ↓ .stage2.done 감지
-└── Stage 3: Chairman 합성 → Score Card
+└── Stage 3: Chairman Claude 합성 → Score Card
 ```
 
 ### 기본 모드 vs --live-mode 비교
 
 | | 기본 모드 | --live-mode |
 |--|--|--|
+| **실제 사용 AI** | Claude 서브에이전트 (이름만 gemini/codex) | 진짜 Gemini + 진짜 Codex CLI |
 | Stage 1/2 실행 | Background subagent | 패널에서 실제 CLI 프로세스 |
 | Stage 전환 | SendMessage (이벤트) | 동일 패널에 새 명령 전송 |
 | 시각화 | 로그 파일 tail -f | 에이전트가 직접 작업하는 모습 |
