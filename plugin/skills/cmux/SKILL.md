@@ -126,8 +126,8 @@ cmux send "ls -la\n"           # \n = Enter
 cmux send-key enter
 
 # 특정 서피스에 전송
-cmux send-surface --surface <id> "command"
-cmux send-key-surface --surface <id> enter
+cmux send --surface <id> "command"
+cmux send-key --surface <id> enter
 ```
 
 ### Socket API
@@ -432,7 +432,8 @@ cmux new-workspace  # agent-2
 cmux new-workspace  # agent-3
 
 # 특정 워크스페이스의 서피스에 명령 전송
-cmux send-surface --surface <id> "claude code --resume\n"
+cmux send --workspace <id> "claude code --resume
+"
 ```
 
 ### 빌드 알림 패턴

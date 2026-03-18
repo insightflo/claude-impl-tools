@@ -28,7 +28,7 @@ SUPERVISES: backend-builder, reviewer (네가 직접 스폰)
 2. backend-builder 스폰 (아래 스폰 방법 참고)
 3. 태스크 완료 보고를 받으면 도메인 테스트 실행:
    Bash('cd backend && pytest' or 'npm test')
-4. 테스트 FAIL → 워커에게 직접 send-surface로 수정 지시
+4. 테스트 FAIL → 워커에게 직접 cmux send --workspace로 수정 지시
 5. 테스트 PASS → TASKS.md [x] 업데이트 + 사이드바 진행률 갱신
 6. Phase 완료 시 리포트 파일 작성
 
@@ -41,8 +41,9 @@ cat > .claude/collab/contexts/backend-builder.md << 'WORKEREOF'
 WORKEREOF
 
 # 워크스페이스 생성 + 에이전트 시작
-WORKER_WS=$(cmux new-workspace --json | jq -r '.workspace_id')
-cmux send-surface --surface $WORKER_WS "cd $(pwd) && codex -q \"$(cat .claude/collab/contexts/backend-builder.md)\"\n"
+WORKER_WS=$(cmux new-workspace 2>&1 | awk '{print $2}')
+cmux send --workspace $WORKER_WS "cd $(pwd) && codex -q \"$(cat .claude/collab/contexts/backend-builder.md)\"
+"
 cmux set-status "backend-builder" "active" --icon gear --color "#007aff"
 
 # 워커 ID 저장 (나중에 지시 전달용)
@@ -109,7 +110,8 @@ cmux set-status "arch-lead" "complete" --icon flag --color "#34c759"
 cmux log --level success -- "arch-lead: All tasks done"
 # 워커 정리
 WORKER_WS=$(cat .claude/collab/contexts/backend-builder-ws-id)
-cmux send-surface --surface $WORKER_WS "exit\n"
+cmux send --workspace $WORKER_WS "exit
+"
 cmux close-workspace --workspace $WORKER_WS
 ```
 ```
@@ -150,8 +152,9 @@ cat > .claude/collab/contexts/frontend-builder.md << 'WORKEREOF'
 [frontend-builder 템플릿 내용]
 WORKEREOF
 
-WORKER_WS=$(cmux new-workspace --json | jq -r '.workspace_id')
-cmux send-surface --surface $WORKER_WS "cd $(pwd) && gemini --yolo \"$(cat .claude/collab/contexts/frontend-builder.md)\"\n"
+WORKER_WS=$(cmux new-workspace 2>&1 | awk '{print $2}')
+cmux send --workspace $WORKER_WS "cd $(pwd) && gemini --yolo \"$(cat .claude/collab/contexts/frontend-builder.md)\"
+"
 cmux set-status "frontend-builder" "active" --icon paintbrush --color "#5856d6"
 echo $WORKER_WS > .claude/collab/contexts/frontend-builder-ws-id
 ```
@@ -219,7 +222,7 @@ cmux log --level error -- "Phase N blocked: {이유}"
 You are backend-builder for project {project-name}.
 
 ROLE: Backend 구현 워커.
-REPORTS TO: arch-lead (워크스페이스에서 직접 보고 — send-surface 또는 파일)
+REPORTS TO: arch-lead (워크스페이스에서 직접 보고 — cmux send --workspace 또는 파일)
 AI: Codex (코드 생성에 특화)
 
 ---
