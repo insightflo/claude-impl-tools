@@ -15,8 +15,8 @@ version: 1.3.0
 > **multi-ai-review와의 차이**: CLI 순차 호출 대신 cmux 패널 분할로 Stage 1을 진짜 동시 실행.
 >
 > **두 가지 실행 모드:**
-> - **기본 모드**: Background Agent + `tail -f` 로그 스트리밍. SendMessage로 Stage 전환.
-> - **`--live-mode`**: 패널에서 실제 `claude -p` 프로세스 직접 실행. Stage 전환도 패널에서 새 명령으로 이어짐.
+> - **기본 모드**: Background Agent(코디네이터)가 CLI 호출 + `tail -f` 로그 스트리밍. SendMessage로 Stage 전환.
+> - **`--live-mode`**: Claude Chairman이 cmux 명령어로 패널을 직접 제어. CLI 전송 → Read 결과 확인 → Stage 전환까지 직접 수행.
 
 ---
 
@@ -376,4 +376,6 @@ Chairman이 아래 조건 중 하나 해당 시 Step 3부터 재실행:
 
 ## --live-mode
 
-패널에서 실제 AI CLI 프로세스를 직접 실행하는 모드. 상세 실행 순서, 아키텍처 다이어그램, 비교표는 `references/live-mode.md` 참조.
+Claude Chairman이 cmux 명령어로 패널을 **직접 제어**하는 모드. 패널에 gemini/codex CLI를 전송하고, 결과 파일을 Read로 확인하며, Stage 전환도 cmux send로 직접 수행. .done 파일 폴링 없이 Claude가 능동적으로 리뷰 파이프라인을 오케스트레이션.
+
+상세 실행 순서, 아키텍처, 비교표는 `references/live-mode.md` 참조.

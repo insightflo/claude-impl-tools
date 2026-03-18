@@ -1,138 +1,121 @@
-## --live-mode
+## --live-mode — cmux 직접 제어 리뷰
 
-> 패널에서 실제 `claude -p` 프로세스가 직접 리뷰하는 모습이 보임.
-> Stage 전환은 동일한 패널에 새 명령을 전송해서 이어받음.
-> Stage 1 완료는 `.stage1.done` 파일 감지, Stage 2 완료는 `.stage2.done` 파일 감지.
+Claude가 cmux 패널에서 gemini/codex CLI를 직접 실행하고,
+결과 파일을 Read로 확인하며, Stage 전환도 cmux send로 직접 제어하는 대화형 리뷰.
 
-### Live Mode 실행 순서
+기본 모드가 Background Agent(코디네이터)를 통해 CLI를 간접 호출하는 반면,
+live-mode는 Claude Chairman이 cmux 명령어로 패널을 직접 제어한다.
 
-**Step 1: 프롬프트 파일 + 패널 생성**
+### 실행 순서
+
+**Step 1: 패널 생성**
 
 ```bash
 mkdir -p .claude/cmux-ai/review
-rm -f .claude/cmux-ai/review/*.done
 
-# Stage 1 프롬프트 파일 작성
-cat > .claude/cmux-ai/review/gemini-stage1-prompt.md << 'PROMPTEOF'
-다음 대상을 {gemini_role} 관점에서 리뷰하세요.
-대상: {review_target}
-
-의견 전체를 .claude/cmux-ai/review/gemini-opinion.md 에 저장 후:
-  echo "DONE" > .claude/cmux-ai/review/gemini-stage1.done
-PROMPTEOF
-
-cat > .claude/cmux-ai/review/codex-stage1-prompt.md << 'PROMPTEOF'
-다음 대상을 {codex_role} 관점에서 리뷰하세요.
-대상: {review_target}
-
-의견 전체를 .claude/cmux-ai/review/codex-opinion.md 에 저장 후:
-  echo "DONE" > .claude/cmux-ai/review/codex-stage1.done
-PROMPTEOF
-
-# 패널 생성
 GEMINI_SURFACE=$(cmux new-split down 2>&1 | awk '{print $2}')
 CODEX_SURFACE=$(cmux new-split right --surface $GEMINI_SURFACE 2>&1 | awk '{print $2}')
 
-cmux set-status "review" "Stage 1: live opinions" --icon doc --color "#ff9500"
-cmux set-progress 0.2 --label "Stage 1: live reviewers starting..."
+cmux set-status "review" "Stage 1: live" --icon doc --color "#ff9500"
 ```
 
-**Step 2: Stage 1 — 패널에서 실제 AI CLI 직접 실행**
+**Step 2: Stage 1 — 프롬프트 작성 → 패널에 전송**
 
 ```bash
-# Gemini 패널: 실제 gemini CLI 실행
+# 프롬프트 파일 작성
+Write("{gemini_role} 관점에서 리뷰: {review_target}
+      결과를 마크다운으로 출력하세요.") > .claude/cmux-ai/review/gemini-stage1-prompt.md
+
+Write("{codex_role} 관점에서 리뷰: {review_target}
+      결과를 마크다운으로 출력하세요.") > .claude/cmux-ai/review/codex-stage1-prompt.md
+
+# 패널에서 CLI 실행 — 결과를 opinion 파일로 리다이렉트
 cmux send --surface $GEMINI_SURFACE \
-  "gemini -y -p \"\$(cat .claude/cmux-ai/review/gemini-stage1-prompt.md)\"
-"
-
-# Codex 패널: 실제 codex CLI 실행
-cmux send --surface $CODEX_SURFACE \
-  "codex exec \"\$(cat .claude/cmux-ai/review/codex-stage1-prompt.md)\"
-"
-
-# Stage 1 완료 대기 (5분 타임아웃)
-TIMEOUT=300; ELAPSED=0
-while true; do
-  [ -f .claude/cmux-ai/review/gemini-stage1.done ] && \
-  [ -f .claude/cmux-ai/review/codex-stage1.done ] && break
-  sleep 5; ELAPSED=$((ELAPSED + 5))
-  [ $ELAPSED -ge $TIMEOUT ] && { cmux notify --title "Stage 1 timeout" --body "직접 처리로 전환"; break; }
-done
-
-cmux set-status "review" "Stage 2: live rebuttal" --icon arrow.2.squarepath --color "#5856d6"
-cmux set-progress 0.55 --label "Stage 2: cross-rebuttal..."
-```
-
-**Step 3: Stage 2 — 동일 패널에 반론 프롬프트 이어서 전송**
-
-```bash
-# 상대 의견을 포함한 Stage 2 프롬프트 작성
-cat > .claude/cmux-ai/review/gemini-stage2-prompt.md << 'PROMPTEOF'
-아래는 Codex의 리뷰 의견입니다. 이에 대한 반론을 작성하세요.
-
-$(cat .claude/cmux-ai/review/codex-opinion.md)
-
-반론 전체를 .claude/cmux-ai/review/gemini-rebuttal.md 에 저장 후:
-  echo "DONE" > .claude/cmux-ai/review/gemini-stage2.done
-PROMPTEOF
-
-cat > .claude/cmux-ai/review/codex-stage2-prompt.md << 'PROMPTEOF'
-아래는 Gemini의 리뷰 의견입니다. 이에 대한 반론을 작성하세요.
-
-$(cat .claude/cmux-ai/review/gemini-opinion.md)
-
-반론 전체를 .claude/cmux-ai/review/codex-rebuttal.md 에 저장 후:
-  echo "DONE" > .claude/cmux-ai/review/codex-stage2.done
-PROMPTEOF
-
-# 동일 패널에 Stage 2 — 실제 AI CLI로 반론 실행
-cmux send --surface $GEMINI_SURFACE \
-  "gemini -y -p \"\$(cat .claude/cmux-ai/review/gemini-stage2-prompt.md)\"
+  "gemini -y -p \"\$(cat .claude/cmux-ai/review/gemini-stage1-prompt.md)\" > .claude/cmux-ai/review/gemini-opinion.md 2>&1; echo __EXIT_\$?__ >> .claude/cmux-ai/review/gemini-opinion.md
 "
 cmux send --surface $CODEX_SURFACE \
-  "codex exec \"\$(cat .claude/cmux-ai/review/codex-stage2-prompt.md)\"
+  "codex exec \"\$(cat .claude/cmux-ai/review/codex-stage1-prompt.md)\" > .claude/cmux-ai/review/codex-opinion.md 2>&1; echo __EXIT_\$?__ >> .claude/cmux-ai/review/codex-opinion.md
 "
-
-# Stage 2 완료 대기 (5분 타임아웃)
-TIMEOUT=300; ELAPSED=0
-while true; do
-  [ -f .claude/cmux-ai/review/gemini-stage2.done ] && \
-  [ -f .claude/cmux-ai/review/codex-stage2.done ] && break
-  sleep 5; ELAPSED=$((ELAPSED + 5))
-  [ $ELAPSED -ge $TIMEOUT ] && { cmux notify --title "Stage 2 timeout" --body "직접 처리로 전환"; break; }
-done
 ```
 
-**Step 4: Stage 3 — Chairman 합성 (기본 모드 Step 5와 동일)**
+**Step 3: Claude가 Stage 1 결과를 직접 확인**
+
+```
+# __EXIT__ 마커가 나타날 때까지 대기 후 Read
+Read(".claude/cmux-ai/review/gemini-opinion.md")
+Read(".claude/cmux-ai/review/codex-opinion.md")
+```
+
+- `__EXIT_0__` → 의견 수집 성공
+- 에러 → 동일 패널에 `cmux send`로 재시도 또는 대체 CLI
+
+**Step 4: Stage 2 — 동일 패널에 반론 명령 전송**
+
+Claude가 양쪽 의견을 읽은 뒤, 상대 의견을 포함한 반론 프롬프트를 작성해서
+동일 패널에 바로 전송한다:
 
 ```bash
-cmux set-status "review" "Stage 3: chairman synthesis" --icon star --color "#34c759"
-cmux set-progress 0.8 --label "Stage 3: synthesis..."
-# 4개 파일 읽어 Score Card 작성 (기본 모드와 동일 로직)
+cmux set-status "review" "Stage 2: rebuttal" --icon arrow.2.squarepath --color "#5856d6"
+
+# 상대 의견을 포함한 반론 프롬프트 작성
+Write("아래는 Codex 리뷰 의견입니다. 반론을 작성하세요.
+      {codex_opinion 전체}") > .claude/cmux-ai/review/gemini-stage2-prompt.md
+
+Write("아래는 Gemini 리뷰 의견입니다. 반론을 작성하세요.
+      {gemini_opinion 전체}") > .claude/cmux-ai/review/codex-stage2-prompt.md
+
+# 동일 패널에 Stage 2 전송
+cmux send --surface $GEMINI_SURFACE \
+  "gemini -y -p \"\$(cat .claude/cmux-ai/review/gemini-stage2-prompt.md)\" > .claude/cmux-ai/review/gemini-rebuttal.md 2>&1; echo __EXIT_\$?__ >> .claude/cmux-ai/review/gemini-rebuttal.md
+"
+cmux send --surface $CODEX_SURFACE \
+  "codex exec \"\$(cat .claude/cmux-ai/review/codex-stage2-prompt.md)\" > .claude/cmux-ai/review/codex-rebuttal.md 2>&1; echo __EXIT_\$?__ >> .claude/cmux-ai/review/codex-rebuttal.md
+"
 ```
 
-### Live Mode 아키텍처
+**Step 5: Claude가 Stage 2 결과를 직접 확인**
 
 ```
-메인 Claude (Chairman/오케스트레이터)
-├── Stage 1 프롬프트 파일 작성 → 패널에서 실제 AI CLI 직접 실행
-│   ├── Gemini 패널: gemini -y -p "..."  ← 진짜 Gemini가 리뷰
-│   └── Codex  패널: codex exec "..."    ← 진짜 Codex가 리뷰
-│   ↓ .stage1.done 감지
-├── Stage 2 프롬프트 파일 작성 → 동일 패널에 이어서 전송
-│   ├── Gemini 패널: gemini -y -p "..."  ← 진짜 Gemini가 반론
-│   └── Codex  패널: codex exec "..."    ← 진짜 Codex가 반론
-│   ↓ .stage2.done 감지
-└── Stage 3: Chairman Claude 합성 → Score Card
+Read(".claude/cmux-ai/review/gemini-rebuttal.md")
+Read(".claude/cmux-ai/review/codex-rebuttal.md")
+```
+
+**Step 6: Stage 3 — Chairman 합성 (기본 모드와 동일)**
+
+4개 파일(opinion × 2 + rebuttal × 2)을 읽어 Score Card 작성.
+
+```bash
+cmux set-status "review" "Stage 3: synthesis" --icon star --color "#34c759"
+# ... Score Card 작성 ...
+cmux set-progress 1.0 --label "Done"
+cmux clear-status "review"
+```
+
+### 아키텍처
+
+```
+메인 Claude (Chairman — 직접 제어)
+│
+├── [Stage 1] cmux send → gemini/codex CLI 패널 전송 (opinion → 파일)
+│   ├── Read(gemini-opinion.md) → 결과/에러 확인
+│   └── Read(codex-opinion.md) → 결과/에러 확인
+│   ↓ Claude가 직접 확인 후 즉시 Stage 2
+│
+├── [Stage 2] cmux send → 동일 패널에 반론 전송 (rebuttal → 파일)
+│   ├── Read(gemini-rebuttal.md)
+│   └── Read(codex-rebuttal.md)
+│   ↓ Claude가 직접 확인 후 즉시 Stage 3
+│
+└── [Stage 3] Chairman 합성 → Score Card
 ```
 
 ### 기본 모드 vs --live-mode 비교
 
 | | 기본 모드 | --live-mode |
 |--|--|--|
-| **실제 사용 AI** | Claude 코디네이터가 gemini/codex CLI 호출 | 패널에서 gemini/codex CLI 직접 실행 |
-| Stage 1/2 실행 | Background subagent | 패널에서 실제 CLI 프로세스 |
-| Stage 전환 | SendMessage (이벤트) | 동일 패널에 새 명령 전송 |
-| 시각화 | 로그 파일 tail -f | 에이전트가 직접 작업하는 모습 |
-| 완료 감지 | SendMessage | .done 파일 폴링 (5분 타임아웃) |
-| 개입 가능 여부 | 불가 | 패널 클릭 후 직접 조작 가능 |
+| 오케스트레이터 | Background Agent (코디네이터) | Claude Chairman이 직접 |
+| Stage 전환 | SendMessage (이벤트) | Claude가 Read 확인 후 cmux send |
+| 완료 감지 | SendMessage | Read(result) + __EXIT__ 마커 |
+| 에러 대응 | Agent 내 Fallback | Claude가 읽고 즉시 대체 CLI 전송 |
+| 시각화 | tail -f 로그 | 패널에서 CLI가 직접 리뷰 |
+| 후속 명령 | SendMessage로 간접 | cmux send로 자유롭게 추가 |

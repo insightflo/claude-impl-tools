@@ -14,8 +14,8 @@ version: 1.3.0
 > **multi-ai-run과의 차이**: Bash 서브프로세스(순차) 대신 cmux 패널 분할(진짜 병렬).
 >
 > **두 가지 실행 모드:**
-> - **기본 모드**: Background Agent + `tail -f` 로그 스트리밍. SendMessage 완료 감지.
-> - **`--live-mode`**: 패널에서 실제 `claude -p` 프로세스 직접 실행. Claude Code의 `teammateMode=tmux`처럼 에이전트가 패널에서 살아있는 상태로 보임.
+> - **기본 모드**: Background Agent(코디네이터)가 CLI 호출 + `tail -f` 로그 스트리밍. SendMessage 완료 감지.
+> - **`--live-mode`**: Claude가 cmux 명령어로 패널을 직접 제어. CLI 전송 → Read 결과 확인 → 에러 시 즉시 대응.
 
 ---
 
@@ -263,7 +263,9 @@ cmux clear-status "gemini"
 
 ## --live-mode
 
-패널에서 실제 codex/gemini CLI를 직접 실행하는 모드. 상세 실행 순서, 아키텍처 다이어그램, 비교표는 `references/live-mode.md` 참조.
+Claude가 cmux 명령어로 패널을 **직접 제어**하는 모드. 패널에 CLI 명령을 전송하고, 결과 파일을 Read로 확인하며, 에러 시 즉시 cmux send로 대응한다. .done 파일 폴링 없이 Claude가 능동적으로 오케스트레이션.
+
+상세 실행 순서, 아키텍처, 비교표는 `references/live-mode.md` 참조.
 
 ---
 
