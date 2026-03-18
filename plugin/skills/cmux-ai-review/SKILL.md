@@ -7,13 +7,15 @@ triggers:
   - cmux 코드 리뷰
   - 패널 리뷰
   - 병렬 AI 리뷰
-version: 1.0.0
+version: 1.1.0
 ---
 
 # /cmux-ai-review — cmux 창 분할 병렬 AI 리뷰
 
 > **multi-ai-review와의 차이**: CLI 순차 호출 대신 cmux 패널 분할로 Stage 1을 진짜 동시 실행.
 > 두 AI가 나란히 리뷰하는 것을 실시간으로 볼 수 있고, Stage 간 전환도 명확함.
+>
+> **완료 감지**: cmux 패널은 시각적 표시 전용. Stage 전환은 Agent Teams API (SendMessage)로 구동 — 파일 폴링 없음.
 
 ---
 
@@ -57,16 +59,17 @@ CONFIG="${PROJECT_ROOT}/.claude/cmux-ai-models.yaml"
 ### Stage 1: 초기 의견 수집 (진짜 병렬)
 
 ```
-Gemini 패널 ─── 리뷰 프롬프트 ──→ .claude/cmux-ai/review/gemini-opinion.md
-Codex 패널  ─── 리뷰 프롬프트 ──→ .claude/cmux-ai/review/codex-opinion.md
-                    ↑ 동시 실행 (cmux send-surface로 양쪽에 동시 전송)
+gemini-reviewer 에이전트 ──→ gemini CLI 실행 ──→ SendMessage("opinion-ready", {...})
+codex-reviewer 에이전트  ──→ codex CLI 실행  ──→ SendMessage("opinion-ready", {...})
+                    ↑ 동시 실행 (백그라운드 에이전트)
 ```
 
 ### Stage 2: 상호 반론 (교차 리뷰)
 
 ```
-Gemini 패널 ─── Codex 의견 읽기 ──→ .claude/cmux-ai/review/gemini-rebuttal.md
-Codex 패널  ─── Gemini 의견 읽기 ──→ .claude/cmux-ai/review/codex-rebuttal.md
+두 의견 수신 확인 후 → 각 에이전트에 상대 의견 전달 (SendMessage) → 반론 작성
+gemini-reviewer ← Codex 의견 전달 → 반론 → SendMessage("rebuttal-ready", {...})
+codex-reviewer  ← Gemini 의견 전달 → 반론 → SendMessage("rebuttal-ready", {...})
 ```
 
 ### Stage 3: Chairman 합성
@@ -93,15 +96,21 @@ Claude ─── 양쪽 의견 + 반론 분석 ──→ Score Card + 최종 판
 
 감지 실패 시 `default` 프리셋 적용.
 
-### Step 2: 패널 생성
+### Step 2: Agent Teams 세션 + cmux 패널 생성
+
+```
+# Agent Teams 세션 생성
+TeamCreate(name="cmux-ai-review-{project}-{timestamp}")
+
+# Stage별 태스크 등록
+TaskCreate(team_name=..., title="stage1-opinions", description="Collect parallel opinions")
+TaskCreate(team_name=..., title="stage2-rebuttals", description="Cross-rebuttal exchange")
+```
 
 ```bash
+# cmux 패널 생성 (시각적 표시)
 mkdir -p .claude/cmux-ai/review
-
-# 현재 패널(Claude) 하단 분할
 GEMINI_SURFACE=$(cmux new-split down --json | jq -r '.surface_id')
-
-# Gemini 패널 우측 분할
 CODEX_SURFACE=$(cmux new-split right --surface $GEMINI_SURFACE --json | jq -r '.surface_id')
 
 cmux set-status "review" "Stage 1: collecting opinions" --icon doc --color "#ff9500"
@@ -109,102 +118,123 @@ cmux set-status "review" "Stage 1: collecting opinions" --icon doc --color "#ff9
 
 ### Step 3: Stage 1 — 병렬 의견 수집
 
-Gemini와 Codex에 동시 전송:
+두 에이전트를 동시에 실행. 완료 시 SendMessage로 의견을 전달:
 
-```bash
-GEMINI_MODEL=$(yq '.models.gemini.model' $CONFIG)
-CODEX_MODEL=$(yq '.models.codex.model' $CONFIG)
-CODEX_EFFORT=$(yq '.models.codex.effort' $CONFIG)
-DOMAIN_ROLE_G="[config/models.yaml panel_roles.{domain}.gemini 값]"
-DOMAIN_ROLE_C="[config/models.yaml panel_roles.{domain}.codex 값]"
+```
+# gemini-reviewer 에이전트 (백그라운드)
+Agent(
+  subagent_type="builder",
+  team_name="cmux-ai-review-{project}-{timestamp}",
+  name="gemini-reviewer",
+  run_in_background=true,
+  prompt="""
+    다음 대상을 {gemini_role} 관점에서 리뷰하세요.
+    모델: gemini-3.1-pro-preview
+    대상: {review_target}
 
-# Gemini 패널 전송
-cmux send-surface --surface $GEMINI_SURFACE \
-  "gemini --model $GEMINI_MODEL --yolo \"
-당신의 역할: $DOMAIN_ROLE_G 관점에서 리뷰
-대상: {review_target}
+    1. `gemini --model gemini-3.1-pro-preview --yolo "{review_prompt}"` 실행
+    2. 결과를 .claude/cmux-ai/review/gemini-opinion.md에 저장
+    3. SendMessage("team-lead", JSON.stringify({
+         stage: "opinion",
+         reviewer: "gemini",
+         summary: "...(100자 요약)",
+         file: ".claude/cmux-ai/review/gemini-opinion.md"
+       }))
+  """
+)
 
-리뷰를 완료한 후:
-1. 의견을 .claude/cmux-ai/review/gemini-opinion.md에 저장
-2. touch .claude/cmux-ai/review/gemini-opinion.done 실행
-\"\n"
+# codex-reviewer 에이전트 (백그라운드, 동시 실행)
+Agent(
+  subagent_type="builder",
+  team_name="cmux-ai-review-{project}-{timestamp}",
+  name="codex-reviewer",
+  run_in_background=true,
+  prompt="""
+    다음 대상을 {codex_role} 관점에서 리뷰하세요.
+    모델: gpt-5.4 (effort=high)
+    대상: {review_target}
 
-# Codex 패널 전송 (동시에)
-cmux send-surface --surface $CODEX_SURFACE \
-  "codex -q --model $CODEX_MODEL --effort $CODEX_EFFORT \"
-당신의 역할: $DOMAIN_ROLE_C 관점에서 리뷰
-대상: {review_target}
-
-리뷰를 완료한 후:
-1. 의견을 .claude/cmux-ai/review/codex-opinion.md에 저장
-2. touch .claude/cmux-ai/review/codex-opinion.done 실행
-\"\n"
-
-# 완료 대기
-until [ -f .claude/cmux-ai/review/gemini-opinion.done ] && \
-      [ -f .claude/cmux-ai/review/codex-opinion.done ]; do
-  sleep 3
-done
+    1. `codex -q --model gpt-5.4 --effort high "{review_prompt}"` 실행
+    2. 결과를 .claude/cmux-ai/review/codex-opinion.md에 저장
+    3. SendMessage("team-lead", JSON.stringify({
+         stage: "opinion",
+         reviewer: "codex",
+         summary: "...(100자 요약)",
+         file: ".claude/cmux-ai/review/codex-opinion.md"
+       }))
+  """
+)
 ```
 
-### Step 4: Stage 2 — 상호 반론
+cmux 패널에 진행 상황 시각화:
 
-각 AI에게 상대방의 의견을 전달:
+```bash
+cmux send-surface --surface $GEMINI_SURFACE "echo '🔍 Gemini reviewing...'\n"
+cmux send-surface --surface $CODEX_SURFACE "echo '🔍 Codex reviewing...'\n"
+cmux set-progress 0.3 --label "Stage 1: parallel opinions..."
+```
+
+메인 Claude는 두 `SendMessage(stage="opinion")` 수신 대기.
+
+### Step 4: Stage 2 — 상호 반론 (이벤트 기반 전환)
+
+두 의견 SendMessage 수신 확인 후 즉시 Stage 2 시작 (폴링 없음):
+
+```
+# 수신된 의견 파일 읽기
+gemini_opinion = read(".claude/cmux-ai/review/gemini-opinion.md")
+codex_opinion  = read(".claude/cmux-ai/review/codex-opinion.md")
+```
 
 ```bash
 cmux set-status "review" "Stage 2: cross-rebuttal" --icon arrow.2.squarepath --color "#5856d6"
+cmux set-progress 0.5 --label "Stage 2: cross-rebuttal..."
+```
 
-GEMINI_OPINION=$(cat .claude/cmux-ai/review/gemini-opinion.md)
-CODEX_OPINION=$(cat .claude/cmux-ai/review/codex-opinion.md)
+각 에이전트에 상대 의견 전달 후 반론 요청:
 
-# Gemini → Codex 의견 검토
-cmux send-surface --surface $GEMINI_SURFACE \
-  "gemini --model $GEMINI_MODEL --yolo \"
-다음은 Codex의 리뷰 의견입니다:
----
-$CODEX_OPINION
----
-동의하거나 반론할 부분을 구체적으로 기술하세요.
-결과를 .claude/cmux-ai/review/gemini-rebuttal.md에 저장 후
-touch .claude/cmux-ai/review/gemini-rebuttal.done 실행
-\"\n"
+```
+# gemini-reviewer에게 Codex 의견 전달 (SendMessage)
+SendMessage("gemini-reviewer", JSON.stringify({
+  instruction: "rebuttal",
+  opponent_opinion: codex_opinion,
+  output_file: ".claude/cmux-ai/review/gemini-rebuttal.md",
+  reply_when_done: true
+}))
 
-# Codex → Gemini 의견 검토 (동시에)
-cmux send-surface --surface $CODEX_SURFACE \
-  "codex -q --model $CODEX_MODEL --effort $CODEX_EFFORT \"
-다음은 Gemini의 리뷰 의견입니다:
----
-$GEMINI_OPINION
----
-동의하거나 반론할 부분을 구체적으로 기술하세요.
-결과를 .claude/cmux-ai/review/codex-rebuttal.md에 저장 후
-touch .claude/cmux-ai/review/codex-rebuttal.done 실행
-\"\n"
+# codex-reviewer에게 Gemini 의견 전달 (SendMessage)
+SendMessage("codex-reviewer", JSON.stringify({
+  instruction: "rebuttal",
+  opponent_opinion: gemini_opinion,
+  output_file: ".claude/cmux-ai/review/codex-rebuttal.md",
+  reply_when_done: true
+}))
 
-until [ -f .claude/cmux-ai/review/gemini-rebuttal.done ] && \
-      [ -f .claude/cmux-ai/review/codex-rebuttal.done ]; do
-  sleep 3
-done
+# 각 에이전트는 반론 작성 후 SendMessage(stage="rebuttal") 전송
+# 메인 Claude는 두 rebuttal SendMessage 수신 대기
 ```
 
 ### Step 5: Stage 3 — Chairman 합성 (Claude)
 
-Claude가 모든 의견과 반론을 종합해 Score Card 작성:
+두 반론 SendMessage 수신 후 즉시 합성:
 
 ```bash
 cmux set-status "review" "Stage 3: chairman synthesis" --icon star --color "#34c759"
+cmux set-progress 0.85 --label "Stage 3: synthesis..."
+```
 
+```
 # 4개 파일 읽기
-GEMINI_OP=$(cat .claude/cmux-ai/review/gemini-opinion.md)
-CODEX_OP=$(cat .claude/cmux-ai/review/codex-opinion.md)
-GEMINI_RB=$(cat .claude/cmux-ai/review/gemini-rebuttal.md)
-CODEX_RB=$(cat .claude/cmux-ai/review/codex-rebuttal.md)
+gemini_opinion  = read(".claude/cmux-ai/review/gemini-opinion.md")
+codex_opinion   = read(".claude/cmux-ai/review/codex-opinion.md")
+gemini_rebuttal = read(".claude/cmux-ai/review/gemini-rebuttal.md")
+codex_rebuttal  = read(".claude/cmux-ai/review/codex-rebuttal.md")
 ```
 
 Chairman 합성 규칙:
 - 점수 차이 ≥ 15 → 증거 검증 후 결정 (평균 금지)
 - code-review 도메인 → Codex 의견 2배 가중 (파일:라인 인용 시)
-- 미해결 쟁점 → 추가 라운드 (최대 2회)
+- 미해결 쟁점 → 추가 라운드 (최대 2회, Step 3부터 재실행)
 
 Score Card 형식:
 
@@ -231,24 +261,46 @@ Score Card 형식:
 ### Step 6: 완료 + 패널 정리
 
 ```bash
+cmux set-progress 1.0 --label "Done"
 cmux set-status "review" "complete" --icon checkmark --color "#34c759"
 cmux log --level success -- "cmux-ai-review: {grade} ({score}/100)"
 cmux notify --title "Review Complete" --body "{grade}: {top finding}"
 
 # 결과를 .claude/cmux-ai/review/final-scorecard.md에 저장
-# 패널 정리 (선택)
+# 패널 정리는 사용자 선택에 맡김
 ```
 
 ---
 
 ## 추가 라운드 조건
 
-Chairman이 아래 조건 중 하나 해당 시 Stage 2 재실행:
+Chairman이 아래 조건 중 하나 해당 시 Step 3부터 재실행 (에이전트 재활용):
+
 - 두 AI 점수 차이 ≥ 15점
 - Critical 이슈가 한쪽만 언급
 - 핵심 사실 관계 불일치
 
 최대 2회까지 반복.
+
+---
+
+## 아키텍처 요약
+
+```
+메인 Claude (Chairman/오케스트레이터)
+├── TeamCreate → 통신 채널 수립
+├── cmux 패널 생성 → 시각적 표시
+│
+├── [Stage 1] Agent(gemini-reviewer, bg) → gemini CLI → SendMessage(stage="opinion")
+│            Agent(codex-reviewer, bg)  → codex CLI  → SendMessage(stage="opinion")
+│            ↓ 두 의견 수신 후 즉시 Stage 2
+│
+├── [Stage 2] SendMessage(gemini-reviewer, {codex_opinion}) → 반론 → SendMessage(stage="rebuttal")
+│            SendMessage(codex-reviewer, {gemini_opinion})  → 반론 → SendMessage(stage="rebuttal")
+│            ↓ 두 반론 수신 후 즉시 Stage 3
+│
+└── [Stage 3] Chairman 합성 → Score Card 출력
+```
 
 ---
 
@@ -259,6 +311,7 @@ Chairman이 아래 조건 중 하나 해당 시 Stage 2 재실행:
 | `gemini` CLI 없음 | Gemini 패널 대신 Claude가 Perspective A 담당 |
 | `codex` CLI 없음 | Codex 패널 대신 Claude가 Perspective B 담당 |
 | cmux 없음 | `/multi-ai-review` 사용 권장 |
+| Agent 무응답 | SendMessage 미수신 시 5분 후 Claude가 직접 해당 역할 수행 |
 
 ---
 
