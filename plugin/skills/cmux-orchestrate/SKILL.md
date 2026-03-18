@@ -169,7 +169,7 @@ cmux send --workspace $ARCH_WS \
 # 작업량 증가 → 워커 추가 스폰
 EXTRA_WS=$(cmux new-workspace 2>&1 | awk '{print $2}')
 cmux send --workspace $ARCH_WS \
-  "WS=\$(cmux new-workspace 2>&1 | awk '{print \$2}') && cmux send --workspace \$WS \"cd $(pwd) && codex -q '\$(cat .claude/collab/contexts/backend-builder-2.md)'\"
+  "WS=\$(cmux new-workspace 2>&1 | awk '{print \$2}') && cmux send --workspace \$WS \"cd $(pwd) && codex exec '\$(cat .claude/collab/contexts/backend-builder-2.md)'\"
 "
 
 # 완료된 워커 종료
@@ -244,7 +244,7 @@ cat > $WORKER_CTX << 'EOF'
 EOF
 
 WS=$(cmux new-workspace 2>&1 | awk '{print $2}')
-cmux send --workspace $WS "cd $(pwd) && codex -q \"\$(cat $WORKER_CTX)\"
+cmux send --workspace $WS "cd $(pwd) && codex exec \"\$(cat $WORKER_CTX)\"
 "
 cmux set-status "backend-builder" "spawned" --icon gear --color "#007aff"
 ```

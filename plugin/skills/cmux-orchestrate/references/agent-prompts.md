@@ -42,7 +42,7 @@ WORKEREOF
 
 # 워크스페이스 생성 + 에이전트 시작
 WORKER_WS=$(cmux new-workspace 2>&1 | awk '{print $2}')
-cmux send --workspace $WORKER_WS "cd $(pwd) && codex -q \"$(cat .claude/collab/contexts/backend-builder.md)\"
+cmux send --workspace $WORKER_WS "cd $(pwd) && codex exec \"$(cat .claude/collab/contexts/backend-builder.md)\"
 "
 cmux set-status "backend-builder" "active" --icon gear --color "#007aff"
 

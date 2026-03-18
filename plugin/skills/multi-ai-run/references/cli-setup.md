@@ -39,7 +39,7 @@ export OPENAI_API_KEY="sk-..."
 ### Test
 
 ```bash
-codex -q "Write a hello world in Python"
+codex exec "Write a hello world in Python"
 ```
 
 ### Recommended Configuration

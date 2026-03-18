@@ -25,7 +25,7 @@ routing:
 |----|-------------|--------|
 | Claude | `claude --dangerously-skip-permissions -p "$(cat context.md)"` | `claude` |
 | Gemini | `gemini --yolo "$(cat context.md)"` | `gemini` |
-| Codex | `codex -q "$(cat context.md)"` | `codex` |
+| Codex | `codex exec "$(cat context.md)"` | `codex` |
 
 ---
 

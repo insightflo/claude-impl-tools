@@ -136,7 +136,7 @@ Used when no project-level configuration exists.
 
 ```bash
 # Code generation with Codex
-codex -q "Implement the auth service based on: $(cat specs/auth-service.md)"
+codex exec "Implement the auth service based on: $(cat specs/auth-service.md)"
 
 # UI implementation with Gemini
 gemini -p "Create React component following design: $(cat design/button.md)"
