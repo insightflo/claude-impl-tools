@@ -376,6 +376,6 @@ Chairman이 아래 조건 중 하나 해당 시 Step 3부터 재실행:
 
 ## --live-mode
 
-Claude Chairman이 cmux 명령어로 패널을 **직접 제어**하는 모드. 패널에 gemini/codex CLI를 전송하고, 결과 파일을 Read로 확인하며, Stage 전환도 cmux send로 직접 수행. .done 파일 폴링 없이 Claude가 능동적으로 리뷰 파이프라인을 오케스트레이션.
+Claude Chairman이 cmux 패널에서 CLI를 인터랙티브 세션으로 띄우고, 프롬프트를 주입한 뒤, `cmux wait-for` 시그널로 Stage 전환을 제어한다. 인터랙티브 세션이므로 Stage 1→2 전환 시 이전 분석 컨텍스트가 유지되어 더 깊은 반론이 가능.
 
-상세 실행 순서, 아키텍처, 비교표는 `references/live-mode.md` 참조.
+상세 실행 순서, CLI별 옵션, 시그널 컨벤션은 `references/live-mode.md` 참조.

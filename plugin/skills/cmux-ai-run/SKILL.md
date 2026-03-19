@@ -263,9 +263,9 @@ cmux clear-status "gemini"
 
 ## --live-mode
 
-Claude가 cmux 명령어로 패널을 **직접 제어**하는 모드. 패널에 CLI 명령을 전송하고, 결과 파일을 Read로 확인하며, 에러 시 즉시 cmux send로 대응한다. .done 파일 폴링 없이 Claude가 능동적으로 오케스트레이션.
+Claude가 cmux 패널에서 CLI를 인터랙티브 세션으로 띄우고, 프롬프트를 주입한 뒤, `cmux wait-for` 시그널로 완료를 감지한다. Agent/SendMessage 없이 Claude가 cmux 명령어로 직접 오케스트레이션. 패널에서 에이전트가 작업하는 모습이 실시간으로 보인다.
 
-상세 실행 순서, 아키텍처, 비교표는 `references/live-mode.md` 참조.
+상세 실행 순서, CLI별 옵션, 시그널 컨벤션은 `references/live-mode.md` 참조.
 
 ---
 

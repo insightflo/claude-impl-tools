@@ -3,26 +3,24 @@
 
 models:
   codex:
-    command: "codex"
+    command: "codex --dangerously-bypass-approvals-and-sandbox"
     model: "gpt-5.4"
     effort: "high"
-    oneshot: "codex exec"
-    interactive_submit: "enter enter"  # Enter 2번으로 제출
+    submit: "cmux send-key Return"
+    signal: "review-codex-{stage}"
 
   gemini:
-    command: "gemini"
+    command: "gemini -y -m gemini-3-flash-preview"
     model: "gemini-3-flash-preview"
-    args: "-y"
-    oneshot: "gemini -y -m gemini-3-flash-preview -p"
-    interactive_submit: "enter"  # Enter 1번으로 제출
+    submit: "cmux send-key Return"
+    signal: "review-gemini-{stage}"
+    note: "API 400/429 빈번, 불안정 시 codex로 대체"
 
   claude:
-    command: "claude"
+    command: "claude --dangerously-skip-permissions"
     model: "opus"
-    args: "--dangerously-skip-permissions"
 
 # 도메인별 패널 역할
-# 각 패널이 어떤 관점으로 리뷰할지 결정
 panel_roles:
   code-review:
     gemini: "architecture, UX, readability"

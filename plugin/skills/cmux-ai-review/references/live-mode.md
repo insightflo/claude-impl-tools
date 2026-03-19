@@ -1,151 +1,167 @@
 ## --live-mode — cmux 직접 제어 리뷰
 
-Claude Chairman이 cmux 패널에서 gemini/codex CLI를 직접 실행하고,
-`capture-pane`으로 결과를 확인하며, Stage 전환도 cmux send로 직접 수행하는 대화형 리뷰.
+Claude Chairman이 cmux 패널에서 codex/gemini CLI를 인터랙티브 세션으로 띄우고,
+프롬프트를 주입한 뒤, `cmux wait-for` 시그널로 Stage 전환을 제어하는 방식.
 
-### CLI별 주의사항
+인터랙티브 세션이므로 Stage 1→2 전환 시 이전 분석 컨텍스트가 유지되어
+더 깊은 반론이 가능하다.
 
-| CLI | 원샷 명령 | 인터랙티브 실행 | 프롬프트 제출 | 기본 모델 |
-|-----|----------|---------------|-------------|----------|
-| codex | `codex exec "prompt"` | `codex` | **Enter 2번** | gpt-5.4 |
-| gemini | `gemini -y -m gemini-3-flash-preview -p "prompt"` | `gemini -y -m gemini-3-flash-preview` | Enter 1번 | gemini-3-flash-preview |
+### CLI별 실행 옵션
 
-> gemini는 `gemini-3-flash-preview` 모델을 사용한다. `gemini-3.1-pro-preview`는 용량 부족(429)이 빈번하다.
+| CLI | 실행 명령 | 프롬프트 제출 | 안정성 |
+|-----|----------|-------------|--------|
+| **Codex** | `codex --dangerously-bypass-approvals-and-sandbox` | `cmux send-key Return` | 가장 안정적 |
+| **Gemini** | `gemini -y -m gemini-3-flash-preview` | `cmux send-key Return` | API 400/429 빈번, 불안정 |
 
-### 두 가지 실행 방식
+> 리뷰 작업도 Codex가 더 안정적. Gemini 불안정 시 Codex로 대체.
 
-Claude가 리뷰 특성을 보고 판단해서 선택한다:
+### 실행 순서
 
-- **원샷**: 단순 코드 리뷰, 정형화된 체크리스트
-- **인터랙티브**: 복잡한 아키텍처 리뷰, 시장 분석, 투자 실사 등 탐색적 분석.
-  특히 Stage 1→2 전환 시 이전 분석 컨텍스트가 유지되어 더 깊은 반론이 가능.
-
-### 원샷 실행 순서
-
-**Step 1: 패널 생성 + Stage 1 전송**
+**Step 1: 패널 생성 + CLI 실행 + Ready 확인**
 
 ```bash
 mkdir -p .claude/cmux-ai/review
 
-GEMINI_SURFACE=$(cmux new-split down 2>&1 | awk '{print $2}')
-CODEX_SURFACE=$(cmux new-split right --surface $GEMINI_SURFACE 2>&1 | awk '{print $2}')
+GMN=$(cmux new-split down 2>&1 | awk '{print $2}')
+CDX=$(cmux new-split right --surface $GMN 2>&1 | awk '{print $2}')
 
-cmux send --surface $GEMINI_SURFACE \
-  "gemini -y -m gemini-3-flash-preview -p \"\$(cat .claude/cmux-ai/review/gemini-stage1-prompt.md)\" > .claude/cmux-ai/review/gemini-opinion.md 2>&1; echo __EXIT_\$?__ >> .claude/cmux-ai/review/gemini-opinion.md
+cmux send --surface $GMN "gemini -y -m gemini-3-flash-preview
 "
-cmux send --surface $CODEX_SURFACE \
-  "codex exec \"\$(cat .claude/cmux-ai/review/codex-stage1-prompt.md)\" > .claude/cmux-ai/review/codex-opinion.md 2>&1; echo __EXIT_\$?__ >> .claude/cmux-ai/review/codex-opinion.md
+cmux send --surface $CDX "codex --dangerously-bypass-approvals-and-sandbox
 "
+
+cmux rename-tab --surface $GMN "gemini-reviewer"
+cmux rename-tab --surface $CDX "codex-reviewer"
+
+sleep 5
+# Ready 확인
+cmux capture-pane --surface $GMN --lines 3  # "Type your message" 확인
+cmux capture-pane --surface $CDX --lines 3  # "gpt-5.4 high fast" 확인
 ```
 
-**Step 2: Stage 1 결과 확인 → Stage 2 전송**
+**Step 2: Stage 1 — 리뷰 프롬프트 주입**
 
-```
-Read(".claude/cmux-ai/review/gemini-opinion.md")  # __EXIT_0__ 확인
-Read(".claude/cmux-ai/review/codex-opinion.md")    # __EXIT_0__ 확인
-```
-
-상대 의견을 포함한 반론 프롬프트를 동일 패널에 전송:
+프롬프트에 완료 콜백 포함:
 
 ```bash
-cmux send --surface $GEMINI_SURFACE \
-  "gemini -y -m gemini-3-flash-preview -p \"\$(cat .claude/cmux-ai/review/gemini-stage2-prompt.md)\" > .claude/cmux-ai/review/gemini-rebuttal.md 2>&1; echo __EXIT_\$?__ >> .claude/cmux-ai/review/gemini-rebuttal.md
-"
+Write: .claude/cmux-ai/review/gemini-stage1-prompt.md
+  {gemini_role} 관점에서 다음을 리뷰하세요: {review_target}
+  의견을 .claude/cmux-ai/review/gemini-opinion.md 에 저장하세요.
+
+  ## 완료 후 반드시 실행
+  cmux wait-for -S review-gemini-s1 && cmux notify --title "Gemini" --body "Stage 1 완료"
+
+Write: .claude/cmux-ai/review/codex-stage1-prompt.md
+  {codex_role} 관점에서 다음을 리뷰하세요: {review_target}
+  의견을 .claude/cmux-ai/review/codex-opinion.md 에 저장하세요.
+
+  ## 완료 후 반드시 실행
+  cmux wait-for -S review-codex-s1 && cmux notify --title "Codex" --body "Stage 1 완료"
 ```
 
-**Step 3: Stage 3 — Chairman 합성 (기본 모드와 동일)**
-
-### 인터랙티브 실행 순서
-
-**Step 1: 패널에서 CLI 인터랙티브 모드 실행**
-
 ```bash
-GEMINI_SURFACE=$(cmux new-split down 2>&1 | awk '{print $2}')
-CODEX_SURFACE=$(cmux new-split right --surface $GEMINI_SURFACE 2>&1 | awk '{print $2}')
+cmux send --surface $GMN "$(cat .claude/cmux-ai/review/gemini-stage1-prompt.md)"
+sleep 1
+cmux send-key --surface $GMN Return
 
-cmux send --surface $GEMINI_SURFACE "gemini -y -m gemini-3-flash-preview
-"
-cmux send --surface $CODEX_SURFACE "codex
-"
-# CLI 초기화 대기 (8초)
+cmux send --surface $CDX "$(cat .claude/cmux-ai/review/codex-stage1-prompt.md)"
+sleep 1
+cmux send-key --surface $CDX Return
 ```
 
-**Step 2: Stage 1 — 리뷰 질문 입력**
+**Step 3: Stage 1 완료 대기**
 
 ```bash
-# gemini: Enter 1번
-cmux send --surface $GEMINI_SURFACE "{gemini_role} 관점에서 리뷰해줘: {review_target}
-"
+cmux wait-for review-gemini-s1 --timeout 600 &
+cmux wait-for review-codex-s1 --timeout 600 &
 
-# codex: Enter 2번
-cmux send --surface $CODEX_SURFACE "{codex_role} 관점에서 리뷰해줘: {review_target}"
-cmux send-key --surface $CODEX_SURFACE enter
-cmux send-key --surface $CODEX_SURFACE enter
-```
-
-**Step 3: 결과 확인 (`capture-pane`)**
-
-```bash
-cmux capture-pane --surface $GEMINI_SURFACE | tail -20
-cmux capture-pane --surface $CODEX_SURFACE | tail -20
+cmux set-status "review" "Stage 1: opinions" --icon doc --color "#ff9500"
 ```
 
 **Step 4: Stage 2 — 같은 세션에서 반론 이어가기**
 
-인터랙티브의 강점: Stage 1 분석 컨텍스트가 유지된 상태에서 반론.
+시그널 수신 후, 양쪽 의견 파일을 읽어 상대 의견을 전달.
+인터랙티브 세션이므로 Stage 1 분석 컨텍스트가 유지된다:
 
 ```bash
-# gemini
-cmux send --surface $GEMINI_SURFACE "상대(Codex)가 이렇게 말했어:
-{codex_opinion}
-반론을 작성해줘.
-"
+cmux set-status "review" "Stage 2: rebuttal" --icon arrow.2.squarepath --color "#5856d6"
 
-# codex (Enter 2번)
-cmux send --surface $CODEX_SURFACE "상대(Gemini)가 이렇게 말했어:
-{gemini_opinion}
-반론을 작성해줘."
-cmux send-key --surface $CODEX_SURFACE enter
-cmux send-key --surface $CODEX_SURFACE enter
+# 의견 읽기
+gemini_opinion=$(cat .claude/cmux-ai/review/gemini-opinion.md)
+codex_opinion=$(cat .claude/cmux-ai/review/codex-opinion.md)
+
+Write: .claude/cmux-ai/review/gemini-stage2-prompt.md
+  상대(Codex)의 리뷰 의견:
+  {codex_opinion}
+  이에 대한 반론을 작성하고 .claude/cmux-ai/review/gemini-rebuttal.md 에 저장하세요.
+
+  ## 완료 후 반드시 실행
+  cmux wait-for -S review-gemini-s2 && cmux notify --title "Gemini" --body "Stage 2 완료"
+
+# 같은 패널에 반론 프롬프트 전송 (컨텍스트 유지)
+cmux send --surface $GMN "$(cat .claude/cmux-ai/review/gemini-stage2-prompt.md)"
+sleep 1
+cmux send-key --surface $GMN Return
+
+# Codex도 동일하게
+cmux send --surface $CDX "$(cat .claude/cmux-ai/review/codex-stage2-prompt.md)"
+sleep 1
+cmux send-key --surface $CDX Return
 ```
 
-**Step 5: 결과 확인 + 종료 + Stage 3 합성**
-
 ```bash
-cmux capture-pane --surface $GEMINI_SURFACE | tail -30
-cmux capture-pane --surface $CODEX_SURFACE | tail -30
-
-cmux send --surface $GEMINI_SURFACE "/exit
-"
-cmux send --surface $CODEX_SURFACE "/exit
-"
-# Chairman이 결과를 합성 → Score Card
+cmux wait-for review-gemini-s2 --timeout 600 &
+cmux wait-for review-codex-s2 --timeout 600 &
 ```
 
-### 에러 대응 (공통)
+**Step 5: Stage 3 — Chairman 합성 (기본 모드와 동일)**
+
+시그널 수신 후 4개 파일 읽어 Score Card 작성:
 
 ```bash
-cmux capture-pane --surface $SURFACE | grep -i "error\|429\|fail"
-cmux send-key --surface $SURFACE ctrl+c
-cmux send --surface $SURFACE "codex exec ..." # 대체 CLI
+cmux set-status "review" "Stage 3: synthesis" --icon star --color "#34c759"
+# Read: gemini-opinion.md, codex-opinion.md, gemini-rebuttal.md, codex-rebuttal.md
+# → Score Card 작성 → final-scorecard.md
+```
+
+### 시그널 네이밍
+
+| Stage | Gemini 시그널 | Codex 시그널 |
+|-------|-------------|-------------|
+| Stage 1 | `review-gemini-s1` | `review-codex-s1` |
+| Stage 2 | `review-gemini-s2` | `review-codex-s2` |
+
+### 에러 대응
+
+```bash
+# 타임아웃 시 수동 확인
+cmux capture-pane --surface $GMN --lines 10
+
+# Gemini 불안정 시 → Ctrl+C → Codex로 대체
+cmux send-key --surface $GMN ctrl+c
+sleep 2
+cmux send --surface $GMN "codex --dangerously-bypass-approvals-and-sandbox
+"
+
+# 패널 죽었는지 확인
+cmux capture-pane --surface $GMN --lines 1 2>&1
+# "Error: invalid_params: Surface is not a terminal" → 패널 닫힘
 ```
 
 ### 아키텍처
 
 ```
-메인 Claude (Chairman — 직접 제어)
+Claude (Chairman — 직접 제어)
 │
-├── [판단] 리뷰 특성에 따라 원샷/인터랙티브 선택
+├── [Stage 1] cmux send → 리뷰 프롬프트 + 콜백 주입
+│   ├── Gemini: 리뷰 → opinion.md 저장 → wait-for -S review-gemini-s1
+│   └── Codex:  리뷰 → opinion.md 저장 → wait-for -S review-codex-s1
+│   ↓ cmux wait-for 시그널 수신
 │
-├── 원샷 흐름:
-│   ├── [Stage 1] cmux send → CLI 원샷 (opinion → 파일) → Read 확인
-│   ├── [Stage 2] cmux send → CLI 원샷 (rebuttal → 파일) → Read 확인
-│   └── [Stage 3] Chairman 합성
+├── [Stage 2] cmux send → 같은 세션에 반론 주입 (컨텍스트 유지)
+│   ├── Gemini: 반론 → rebuttal.md 저장 → wait-for -S review-gemini-s2
+│   └── Codex:  반론 → rebuttal.md 저장 → wait-for -S review-codex-s2
+│   ↓ cmux wait-for 시그널 수신
 │
-├── 인터랙티브 흐름:
-│   ├── [Stage 1] CLI 띄움 → 프롬프트 (codex: Enter 2번) → capture-pane 확인
-│   ├── [Stage 2] 같은 세션에 반론 질문 (컨텍스트 유지) → capture-pane 확인
-│   └── [Stage 3] Chairman 합성
-│
-└── 에러 → capture-pane 확인 → Ctrl+C → 대체 CLI 전송
+└── [Stage 3] Chairman 합성 → Score Card
 ```
