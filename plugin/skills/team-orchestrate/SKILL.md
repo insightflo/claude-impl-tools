@@ -1,17 +1,45 @@
 ---
 name: team-orchestrate
-description: 3-level hierarchical agent orchestration using Claude Code native Agent Teams. Analyzes TASKS.md, creates a flat team via TeamCreate, enforces logical hierarchy (lead → domain-leads → workers) through SendMessage protocols. Supports parallel execution, inter-agent communication, and governance hooks.
+description: "Unified orchestration engine with 3 modes: team (Agent Teams API, 3-level hierarchy), auto (direct Task dispatch, worktree-based phases), and thin (ultra-minimal context for 50-200 tasks). Use this skill for any multi-task project execution — it auto-selects the right mode based on task count and infrastructure. Triggers on /team-orchestrate, /auto-orchestrate, /orchestrate, '에이전트 팀 실행', '오케스트레이트', '자동 실행', '완전 자동화', and any request to execute TASKS.md at scale."
 triggers:
   - /team-orchestrate
+  - /auto-orchestrate
+  - /orchestrate
   - 에이전트 팀 실행
   - 팀 오케스트레이트
-version: 3.4.0
-updated: 2026-03-17
+  - 완전 자동화
+  - 자동 실행
+version: 4.0.0
+updated: 2026-03-27
 ---
 
-# Agent Teams Orchestration (3-Level)
+# Unified Orchestration Engine
 
-> **Goal**: Parallel agent execution with hierarchical coordination using native Agent Teams API.
+> **Goal**: Execute TASKS.md at any scale with the right coordination strategy.
+
+## Mode Selection
+
+| Mode | Task count | Infrastructure | Command |
+|------|-----------|----------------|---------|
+| **auto** | 1-50 | Task tool only | `/team-orchestrate --mode=auto` |
+| **team** | 10-80 | Agent Teams API | `/team-orchestrate --mode=team` |
+| **thin** | 50-200 | Task tool + background | `/team-orchestrate --mode=thin` |
+
+**Auto-selection** (when no `--mode` specified):
+```
+IF tasks < 30 AND no Agent Teams → auto
+IF tasks < 80 AND Agent Teams available → team
+IF tasks >= 50 → thin
+```
+
+For mode-specific details:
+- **auto**: `references/auto-mode.md` — Direct subagent dispatch, worktree-based phases
+- **thin**: `references/thin-mode.md` — Ultra-minimal context, 76% token reduction
+- **team**: Below (this document) — Agent Teams API, 3-level hierarchy
+
+---
+
+## Mode: team (Agent Teams API)
 
 ## Mandatory Tools (순서대로 호출)
 

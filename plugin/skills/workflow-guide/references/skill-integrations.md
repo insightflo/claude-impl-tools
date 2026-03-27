@@ -107,6 +107,30 @@ Gates that must be passed after all implementation is complete:
 
 ---
 
+## Memento Integration (Experience-Based Learning)
+
+```
+Every skill execution
+    ↓
+/memento log (automatic or manual)
+    ↓
+experience.jsonl grows
+    ↓
+┌─────────────────────────────────────────────────────────┐
+│ Memento feedback loops:                                   │
+│                                                         │
+│ 📊 /memento health                                       │
+│   └─ Periodic ecosystem dashboard                       │
+│                                                         │
+│ 🔍 /memento reflect <skill>                              │
+│   └─ When failure pattern detected → improvement proposal│
+│       └─ /autoresearch-skills (automated improvement)   │
+│                                                         │
+│ 🧭 /memento route <task>                                 │
+│   └─ Enhances workflow-guide Stage 2 with experience     │
+└─────────────────────────────────────────────────────────┘
+```
+
 ## Hook System Integration
 
 Built-in hooks in `project-team/hooks/` automate the workflow:

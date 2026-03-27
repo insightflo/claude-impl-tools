@@ -1,15 +1,15 @@
 ---
 name: quality-auditor
-description: Comprehensive quality audit before phase completion or deployment. Performs planning conformance, DDD validation, security checks, tests, and browser verification. Run this skill before deploying, before merging a PR, and after completing significant changes — no exceptions. Triggers immediately on "quality check", "pre-deploy check", "audit this", or "QA". Trigger: /audit.
-version: 2.7.0
-updated: 2026-03-12
+description: "Comprehensive quality audit before phase completion or deployment. Performs planning conformance, DDD validation, security checks, tests, browser verification, and quantitative metrics. Also enforces verification-before-completion discipline — no claims without evidence. Run this skill before deploying, before merging a PR, after completing significant changes, and whenever anyone claims 'it works' or 'tests pass'. Triggers immediately on 'quality check', 'pre-deploy check', 'audit this', 'QA', 'verify this', 'does this work', '품질 검사', '배포 전 검사'. Trigger: /audit, /evaluate, /verify."
+version: 3.0.0
+updated: 2026-03-27
 ---
 
-# Quality Auditor (Pre-Deployment Comprehensive Audit)
+# Quality Auditor (Comprehensive Audit + Verification + Metrics)
 
-> **Purpose**: Performs a **comprehensive quality audit against planning documents** at phase completion or before deployment.
+> **Purpose**: Comprehensive quality audit against planning documents + quantitative metric tracking + verification discipline enforcement.
 >
-> **v2.7.0**: Progressive Disclosure applied (Agent Team details moved to references/)
+> **v3.0.0**: Absorbed `evaluation` (metrics) and `verification-before-completion` (evidence discipline)
 
 ---
 
@@ -175,10 +175,69 @@ Automates the deployment approval process in collaboration with the QA Manager a
 
 ---
 
+## Step 7: Verification Discipline (Iron Law)
+
+> Absorbed from `verification-before-completion`. Applies to ALL completion claims.
+
+**Iron Law: No claims without fresh evidence.**
+
+Before asserting any state ("tests pass", "bug fixed", "build succeeds"):
+
+```
+1. IDENTIFY — What command proves this claim?
+2. RUN — Execute the full command (fresh, complete)
+3. READ — Check full output, exit code, failure count
+4. VERIFY — Does the output confirm the claim?
+   - NO → state actual status with evidence
+   - YES → state claim with evidence
+5. ONLY THEN — Make the claim
+```
+
+| Claim | Required evidence | NOT sufficient |
+|-------|------------------|----------------|
+| Tests pass | Test command output: 0 failures | Previous run, "should pass" |
+| Lint clean | Lint output: 0 errors | Partial check, inference |
+| Build succeeds | Build command: exit 0 | Lint passed, logs look OK |
+| Bug fixed | Original symptom test: passes | Code changed, assumed fixed |
+
+**Red flags — stop immediately if you catch yourself:**
+- Using "should", "probably", "seems to"
+- Expressing satisfaction before running verification
+- Trusting agent success reports without checking
+
+---
+
+## Step 8: Quantitative Metrics (Dashboard)
+
+> Absorbed from `evaluation`. Optional — run when metrics tracking is needed.
+
+### Code Quality Metrics
+
+| Metric | Command | Target | Warning |
+|--------|---------|--------|---------|
+| Test coverage | `pytest --cov` / `vitest --coverage` | ≥70% | <60% |
+| Cyclomatic complexity | `radon cc` / `eslint complexity` | ≤10 | >15 |
+| Code duplication | `jscpd` / `pylint duplicate` | ≤5% | >10% |
+| Lint errors | `ruff` / `eslint` | 0 | >5 |
+| Type errors | `mypy` / `tsc` | 0 | >0 |
+| Security score | `bandit` / `npm audit` | 0 critical | any critical |
+
+### Agent Performance Metrics
+
+| Metric | Target |
+|--------|--------|
+| Task completion rate | ≥95% |
+| Average retries per task | ≤2 |
+| First-attempt success rate | ≥80% |
+
+Store metrics in `.claude/metrics/` for trend tracking across phases.
+
+---
+
 ## Reference Documents
 
 - `references/agent-integration.md` — QA Manager integration patterns, feedback routing
 
 ---
 
-**Last Updated**: 2026-03-12 (v2.7.0 - Progressive Disclosure applied)
+**Last Updated**: 2026-03-27 (v3.0.0 - Absorbed evaluation + verification-before-completion)

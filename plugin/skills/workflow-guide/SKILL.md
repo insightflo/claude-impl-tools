@@ -57,10 +57,10 @@ CMUX_AVAILABLE=$(cmux ping 2>/dev/null && echo "yes" || echo "no")
 echo "cmux=$CMUX_AVAILABLE"
 ```
 
-### Stage 2: Decision Algorithm (simple router — each skill handles its own prerequisites)
+### Stage 2: Decision Algorithm (rules + experience hybrid)
 
-> workflow-guide only does **current state → recommend 1 skill**.
-> When the recommended skill runs, its own "prerequisite check" section detects any missing dependencies and guides accordingly.
+> workflow-guide does **current state → recommend 1 skill**.
+> When experience data exists, memento's Smart Router can override the rule-based recommendation.
 
 ```
 ① Recovery: state file incomplete OR merge conflicts → /recover
@@ -68,9 +68,14 @@ echo "cmux=$CMUX_AVAILABLE"
 ③ Maintenance: source_code exists + bug/fix request → /maintenance
 ③-b Maintenance (iterative): source_code exists + incomplete>0 → /agile iterate
 ④ New implementation: incomplete>0 + TASK<30 → /agile auto
-⑤ Large-scale implementation: incomplete>0 + TASK>=30 → /team-orchestrate
+⑤ Large-scale (30-50): incomplete>=30 → /team-orchestrate --mode=auto (or --mode=team if Agent Teams)
+⑤-b Very large (50+): incomplete>=50 → /team-orchestrate --mode=thin
 ⑥ Done: all_tasks_completed → /audit
 ```
+
+**Memento Experience Override** (when `.claude/memento/experience.jsonl` exists with 5+ entries):
+
+After computing the rule-based recommendation, check if memento's experience-weighted router suggests a different skill with confidence > 0.75. If so, use the experience-based recommendation and note the override reason. See `/memento route` for the full algorithm. This ensures backward compatibility — without experience data, routing is purely rule-based.
 
 **cmux 오버라이드** (CMUX_AVAILABLE=yes일 때 ⑤ 이후 적용):
 
@@ -115,7 +120,7 @@ Display the diagnosis result with a starred recommendation for user confirmation
 | **`/tasks-init`** | `/tasks-init` | TASKS.md scaffolding |
 | **`/tasks-migrate`** | `/tasks-migrate` | Consolidate legacy tasks |
 | **`/agile`** | `/agile auto` | Layer-based sprint execution |
-| **`/team-orchestrate`** | `/team-orchestrate` | Agent Teams dynamic team formation + parallel execution |
+| **`/team-orchestrate`** | `/team-orchestrate`, `/auto-orchestrate` | Unified orchestration — auto/team/thin modes |
 | **`/cmux-orchestrate`** | `/cmux-orchestrate` | cmux 물리적 3-Level 팀 (Claude/Gemini/Codex 혼합) |
 | **`/multi-ai-run`** | `/multi-ai-run` | Role-based model routing |
 | **`/cmux-ai-run`** | `/cmux-ai-run` | cmux 창 분할 병렬 태스크 실행 |
@@ -134,16 +139,18 @@ Display the diagnosis result with a starred recommendation for user confirmation
 | **`/statusline`** | auto-activated | Progress status bar display |
 | **`/changelog`** | `/changelog` | Change history query |
 | **`/cmux`** | `/cmux` | cmux 터미널 멀티플렉서 제어 |
+| **`/memento`** | "skill health", "which skill" | Skill ecosystem intelligence — experience logging, smart routing, health dashboard |
 
 ---
 
 ## Skill Selection by Task Scale
 
-| Task count | Recommended skill | Agent Teams | Prerequisite skills |
-|------------|-------------------|-------------|---------------------|
-| **1–30** | `/agile auto` | Not required | — |
-| **30+** | `/team-orchestrate` | Dynamic team formation | `/governance-setup` + `install.sh --mode=team` |
-| **200+** | Split into sub-projects | Required | `/governance-setup` |
+| Task count | Recommended skill | Mode | Prerequisite skills |
+|------------|-------------------|------|---------------------|
+| **1–30** | `/agile auto` | — | — |
+| **30–50** | `/team-orchestrate` | `--mode=auto` or `--mode=team` | `/governance-setup` (optional) |
+| **50–200** | `/team-orchestrate` | `--mode=thin` | `/governance-setup` |
+| **200+** | `/team-orchestrate --mode=thin --phase N` | split by phase | `/governance-setup` |
 
 ---
 
@@ -165,6 +172,9 @@ Display the diagnosis result with a starred recommendation for user confirmation
 "Use multiple AIs in parallel"         → /cmux-ai-run (cmux 감지 시) / /multi-ai-run
 "Show execution status"                → /whitebox status
 "Compress the context"                 → /compress
+"Which skill works best for this?"     → /memento route
+"Show skill performance"               → /memento health
+"Why does this skill keep failing?"    → /memento reflect
 ```
 
 ---
