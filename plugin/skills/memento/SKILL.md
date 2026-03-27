@@ -30,6 +30,11 @@ Invoke with: `/memento <mode>`
 | `reflect <skill>` | Analyze failure patterns, suggest fixes | When a skill underperforms repeatedly |
 | `profile <skill>` | Show detailed skill execution history | Before deciding to modify or deprecate a skill |
 | `harness <skill>` | Generate validation scripts from failure patterns | When a skill has recurring failures that could be caught by code |
+| `global search <query>` | Cross-project knowledge search via DuckDB | When you need context from other projects |
+| `global health` | Unified skill dashboard across all projects | Periodic ecosystem review |
+| `global recall <topic>` | Retrieve cross-project learnings on a topic | Before starting work that other projects have done |
+| `global sync` | Sync all project MEMORY.md files to global DB | After adding new memory files |
+| `global sql <query>` | Direct SQL on the unified experience store | Advanced queries |
 
 ---
 
@@ -279,6 +284,67 @@ skill-name/
 Harness scripts are deterministic (no LLM calls). They're the cheapest possible guardrails.
 
 See `references/harness-generation.md` for the full generation algorithm and templates.
+
+---
+
+## Mode: `global <subcommand>`
+
+> Unified Experience Store powered by DuckDB. Breaks project silos.
+> 22개 프로젝트의 66개 메모리 파일을 하나의 SQL DB로 통합 검색.
+
+### Setup
+
+```bash
+pip install duckdb  # 1회만
+python3 ~/.claude/memento/query.py sync  # MEMORY.md → DB 동기화
+```
+
+### Subcommands
+
+**`global search <query>`** — 전 프로젝트 학습 검색
+```bash
+python3 ~/.claude/memento/query.py search "cross-domain bugfix"
+# → 14개 프로젝트에서 관련 학습 검색
+```
+
+**`global recall <topic>`** — 특정 주제의 크로스 프로젝트 지식 회수
+```bash
+python3 ~/.claude/memento/query.py recall "FastAPI 인증"
+# → feedback/project 타입 우선, 실행 가능한 지식 반환
+```
+
+**`global health`** — 통합 대시보드
+```bash
+python3 ~/.claude/memento/query.py health
+# → 프로젝트별 학습 현황 + 스킬 건강 (experience 데이터 있을 때)
+```
+
+**`global sync`** — MEMORY.md 동기화
+```bash
+python3 ~/.claude/memento/query.py sync
+# → 모든 프로젝트의 메모리 파일을 DB에 upsert
+```
+
+**`global sql <query>`** — 직접 SQL
+```bash
+python3 ~/.claude/memento/query.py sql "SELECT type, COUNT(*) FROM learnings GROUP BY type"
+```
+
+### DB Location
+
+```
+~/.claude/memento/experience.duckdb  ← 전역 통합 저장소
+~/.claude/memento/query.py           ← CLI 쿼리 도구
+```
+
+### Tables & Views
+
+| Name | Type | Content |
+|------|------|---------|
+| `experience` | table | 스킬 실행 경험 (memento log에서 축적) |
+| `learnings` | table | MEMORY.md 파일들 (22개 프로젝트 통합) |
+| `skill_health` | view | 스킬별 사용횟수, 성공률, 평균토큰 |
+| `project_knowledge` | view | 프로젝트별 학습 통계 |
 
 ---
 
